@@ -1,6 +1,7 @@
 import 'cordova-plugin-purchase';
 
 import { IAPError, IAPErrorCode } from '../../../lib/errors.js';
+import { getPlatform } from '../../../lib/platform.js';
 import type { ConfiguredProduct, Product, ProductType } from '../../../types/product.js';
 import type { Platform as IAPPlatform, NativeTransaction } from '../../../types/transaction.js';
 import type { NativeAdapter, NativePurchaseOptions } from '../types.js';
@@ -23,6 +24,8 @@ export class CdvNativeAdapter implements NativeAdapter {
   private bootstrapped = false;
   private bootstrapping: Promise<void> | null = null;
   private readonly pendingFinish = new Map<string, CdvPurchase.Transaction>();
+  /** Long-lived bootstrap-time .approved() listener — kept for dispose(). */
+  private bootstrapApprovedHandler: ((tx: CdvPurchase.Transaction) => void) | null = null;
 
   constructor(opts: { products: ConfiguredProduct[] }) {
     this.products = opts.products;
@@ -61,23 +64,49 @@ export class CdvNativeAdapter implements NativeAdapter {
       });
     }
 
-    const offer = native.getOffer();
+    // For multi-plan Android subscriptions (e.g. monthly + yearly under one
+    // product) the consumer's androidPlanId selects which offer to order.
+    // On iOS the offer id is ignored.
+    const offer = opts.androidPlanId
+      ? (native.getOffer(opts.androidPlanId) ?? native.getOffer())
+      : native.getOffer();
     if (!offer) {
       throw new IAPError({
         code: IAPErrorCode.PRODUCT_NOT_FOUND,
-        message: `Product "${opts.productId}" has no purchasable offer.`,
+        message: `Product "${opts.productId}" has no purchasable offer${
+          opts.androidPlanId ? ` (planId="${opts.androidPlanId}")` : ''
+        }.`,
       });
     }
 
     return new Promise<NativeTransaction>((resolve, reject) => {
       let settled = false;
 
+      const cleanup = (): void => {
+        store.off(handleApproved);
+      };
+
       const handleApproved = (tx: CdvPurchase.Transaction): void => {
         if (settled) return;
         if (!tx.products.some((p) => p.id === opts.productId)) return;
+
+        const token = transactionToken(tx);
+        if (!token) {
+          settled = true;
+          cleanup();
+          reject(
+            new IAPError({
+              code: IAPErrorCode.STORE_ERROR,
+              message: `Approved transaction for "${opts.productId}" has no token; cannot verify.`,
+            }),
+          );
+          return;
+        }
+
         settled = true;
-        const normalized = normalizeTransaction(tx, opts.productType);
-        this.pendingFinish.set(normalized.token, tx);
+        cleanup();
+        const normalized = normalizeTransaction(tx, opts.productType, token);
+        this.pendingFinish.set(token, tx);
         resolve(normalized);
       };
 
@@ -92,13 +121,13 @@ export class CdvNativeAdapter implements NativeAdapter {
           if (settled) return;
           if (!err) return; // success: wait for .approved()
           settled = true;
-          store.off(handleApproved);
+          cleanup();
           reject(mapOrderError(err, opts.productId));
         })
         .catch((cause) => {
           if (settled) return;
           settled = true;
-          store.off(handleApproved);
+          cleanup();
           reject(
             new IAPError({
               code: IAPErrorCode.STORE_ERROR,
@@ -114,13 +143,16 @@ export class CdvNativeAdapter implements NativeAdapter {
     const store = await this.ensureStore();
     await store.restorePurchases();
 
-    return store.localTransactions
-      .filter((tx) => tx.state === getCdv().TransactionState.APPROVED)
-      .map((tx) => {
-        const normalized = normalizeTransaction(tx, inferProductType(tx, this.products));
-        this.pendingFinish.set(normalized.token, tx);
-        return normalized;
-      });
+    const out: NativeTransaction[] = [];
+    for (const tx of store.localTransactions) {
+      if (tx.state !== getCdv().TransactionState.APPROVED) continue;
+      const token = transactionToken(tx);
+      if (!token) continue; // skip transactions we can't ack — log via caller
+      const normalized = normalizeTransaction(tx, inferProductType(tx, this.products), token);
+      this.pendingFinish.set(token, tx);
+      out.push(normalized);
+    }
+    return out;
   }
 
   async acknowledge(transaction: NativeTransaction): Promise<void> {
@@ -151,6 +183,21 @@ export class CdvNativeAdapter implements NativeAdapter {
         message: err.message ?? 'Failed to open subscription management.',
       });
     }
+  }
+
+  async dispose(): Promise<void> {
+    if (this.bootstrapApprovedHandler) {
+      try {
+        const cdv = (globalThis as { CdvPurchase?: { store?: CdvPurchase.Store } }).CdvPurchase;
+        cdv?.store?.off(this.bootstrapApprovedHandler);
+      } catch {
+        // best-effort
+      }
+      this.bootstrapApprovedHandler = null;
+    }
+    this.pendingFinish.clear();
+    this.bootstrapped = false;
+    this.bootstrapping = null;
   }
 
   // ----- internals -----
@@ -187,13 +234,16 @@ export class CdvNativeAdapter implements NativeAdapter {
 
       // Long-lived listener so out-of-band approved transactions
       // (StoreKit replays on launch, etc.) are captured for later acknowledge().
-      cdv.store.when().approved((tx) => {
+      // Stored on `this` so dispose() can remove it.
+      const handler = (tx: CdvPurchase.Transaction): void => {
         const token = transactionToken(tx);
         if (!token) return;
         if (!this.pendingFinish.has(token)) {
           this.pendingFinish.set(token, tx);
         }
-      });
+      };
+      this.bootstrapApprovedHandler = handler;
+      cdv.store.when().approved(handler);
 
       await cdv.store.update();
       this.bootstrapped = true;
@@ -227,9 +277,10 @@ function getCdv(): CdvNamespaceShape {
 
 function currentCdvPlatform(): CdvPurchase.Platform {
   const cdv = getCdv();
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
-  if (/iphone|ipad|ipod/i.test(ua)) return cdv.Platform.APPLE_APPSTORE;
-  return cdv.Platform.GOOGLE_PLAY;
+  const platform = getPlatform();
+  if (platform === 'android') return cdv.Platform.GOOGLE_PLAY;
+  // iOS or web (web shouldn't reach this code, but APPLE_APPSTORE is the safer default).
+  return cdv.Platform.APPLE_APPSTORE;
 }
 
 function mapProductType(type: ProductType): CdvPurchase.ProductType {
@@ -274,10 +325,10 @@ function normalizeProduct(p: CdvPurchase.Product, type: ProductType): Product {
 function normalizeTransaction(
   tx: CdvPurchase.Transaction,
   productType: ProductType,
+  token: string,
 ): NativeTransaction {
   const platform: IAPPlatform = tx.platform === 'ios-appstore' ? 'apple' : 'google';
   const productId = tx.products[0]?.id ?? '';
-  const token = transactionToken(tx) ?? tx.transactionId;
   return {
     platform,
     productId,
@@ -289,7 +340,7 @@ function normalizeTransaction(
 
 function transactionToken(tx: CdvPurchase.Transaction): string | null {
   if (tx.platform === 'ios-appstore') {
-    return tx.transactionId;
+    return tx.transactionId || null;
   }
   // Google: prefer nativePurchase.purchaseToken, fall back to parentReceipt.purchaseToken
   const googleTx = tx as unknown as {

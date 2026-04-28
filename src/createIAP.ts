@@ -15,11 +15,29 @@ import type { ConfiguredProduct } from './types/product.js';
 
 export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   initialize(): Promise<void>;
+  /**
+   * Refresh entitlements from the consumer backend.
+   *
+   * Throws `IAPError(NOT_INITIALIZED)` until Phase 3 lands the backend client.
+   */
   refresh(): Promise<void>;
+  /**
+   * Tear down. Removes event listeners and disposes the native adapter
+   * (which clears its `pendingFinish` map and removes the long-lived
+   * `.approved()` listener on cdv).
+   *
+   * NOTE: persisted entitlement cache is NOT cleared. If you're handling
+   * a logout for a multi-user app, also call your storage adapter's
+   * `clear()` (or the consumer-supplied equivalent) before the next user
+   * logs in, otherwise their first read will see the previous user's
+   * cached entitlements until `refresh()` returns.
+   */
   destroy(): Promise<void>;
 
   hasEntitlement(key: string): boolean;
+  /** Returns a defensive shallow copy. Each entitlement is frozen. */
   getEntitlements(): TEntitlement[];
+  /** Returns a frozen entitlement reference, or null if missing. */
   getEntitlement(key: string): TEntitlement | null;
 
   on<K extends EventName<TEntitlement>>(
@@ -30,7 +48,9 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
 
 interface IAPInternalState<TEntitlement extends EntitlementBase> {
   config: IAPConfig;
-  adapter: NativeAdapter;
+  /** Populated by initialize(); null beforehand. Lazy to avoid loading
+   *  cordova-plugin-purchase on web platforms (PLAN.md §9 / review C4). */
+  adapter: NativeAdapter | null;
   storage: StorageAdapter;
   cache: EntitlementCache<TEntitlement>;
   emitter: TypedEventEmitter<TEntitlement>;
@@ -38,6 +58,7 @@ interface IAPInternalState<TEntitlement extends EntitlementBase> {
   initialized: boolean;
   destroyed: boolean;
   entitlements: TEntitlement[];
+  /** Timestamp of the cache load. TTL evaluation is deferred to Phase 6 (refresh-flow). */
   cachedAt: number | null;
 }
 
@@ -46,7 +67,6 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
 ): IAP<TEntitlement> {
   const config = parseConfig(input);
   const logger = resolveLogger(config.options.logLevel, config.options.logger);
-  const adapter = selectNativeAdapter({ products: config.products });
   const storage = selectStorageAdapter(config.storage);
   const cache = new EntitlementCache<TEntitlement>(storage, logger);
   const emitter = new TypedEventEmitter<TEntitlement>();
@@ -55,7 +75,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
 
   const state: IAPInternalState<TEntitlement> = {
     config,
-    adapter,
+    adapter: null,
     storage,
     cache,
     emitter,
@@ -88,6 +108,10 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         state.logger.debug(`Initializing on platform=${platform}`);
       }
 
+      // Lazy adapter construction — this is the dynamic-import boundary so
+      // web builds don't pull in cordova-plugin-purchase.
+      state.adapter = await selectNativeAdapter({ products: state.config.products });
+
       try {
         await state.adapter.isAvailable();
       } catch (error) {
@@ -96,7 +120,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
 
       const cached = await state.cache.load();
       if (cached) {
-        state.entitlements = cached.entitlements;
+        state.entitlements = freezeAll(cached.entitlements);
         state.cachedAt = cached.cachedAt;
         state.logger.debug(
           `Loaded ${cached.entitlements.length} cached entitlement(s) from ${new Date(cached.cachedAt).toISOString()}.`,
@@ -111,16 +135,31 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
 
     async refresh() {
       requireInitialized(state);
-      // Backend HTTP client lands in Phase 3.
-      state.logger.debug('refresh() called — backend client not yet implemented (Phase 3).');
+      // Backend HTTP client lands in Phase 3. Until then, fail loudly so
+      // a consumer wiring `refreshOnResume` (Phase 6) doesn't silently
+      // get stale entitlements.
+      throw new IAPError({
+        code: IAPErrorCode.NOT_INITIALIZED,
+        message: 'refresh() not yet implemented — backend client lands in Phase 3.',
+      });
     },
 
     async destroy() {
-      state.emitter.removeAll();
+      if (state.destroyed) return;
       state.destroyed = true;
       state.initialized = false;
       state.entitlements = [];
       state.cachedAt = null;
+      state.emitter.removeAll();
+
+      if (state.adapter?.dispose) {
+        try {
+          await state.adapter.dispose();
+        } catch (error) {
+          state.logger.warn('Adapter dispose threw; continuing teardown.', error);
+        }
+      }
+      state.adapter = null;
     },
 
     hasEntitlement(key) {
@@ -139,6 +178,10 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       return state.emitter.on(event, handler);
     },
   };
+}
+
+function freezeAll<T extends object>(items: T[]): T[] {
+  return items.map((item) => Object.freeze({ ...item }));
 }
 
 function parseConfig(input: IAPConfigInput): IAPConfig {

@@ -95,4 +95,49 @@ describe('EntitlementCache', () => {
     expect(await storage.get('entitlements')).toBeNull();
     expect(await cache.load()).toBeNull();
   });
+
+  it('save() throws IAPError(STORAGE_ERROR) when the underlying storage fails', async () => {
+    const failingStorage = {
+      async get() {
+        return null;
+      },
+      async set() {
+        throw new Error('disk full');
+      },
+      async remove() {
+        // ok
+      },
+      async clear() {
+        // ok
+      },
+    };
+    const cache = new (await import('../../src/core/entitlement-cache.js')).EntitlementCache(
+      failingStorage,
+      silentLogger,
+    );
+    try {
+      await cache.save([{ key: 'premium', productId: 'premium_monthly', expiresAt: null }]);
+      throw new Error('should have rejected');
+    } catch (error) {
+      const { IAPError, IAPErrorCode } = await import('../../src/lib/errors.js');
+      expect(error).toBeInstanceOf(IAPError);
+      expect((error as InstanceType<typeof IAPError>).code).toBe(IAPErrorCode.STORAGE_ERROR);
+    }
+  });
+
+  it('load() tolerates a storage.get() failure by returning null', async () => {
+    const failingStorage = {
+      async get() {
+        throw new Error('storage offline');
+      },
+      async set() {},
+      async remove() {},
+      async clear() {},
+    };
+    const cache = new (await import('../../src/core/entitlement-cache.js')).EntitlementCache(
+      failingStorage,
+      silentLogger,
+    );
+    expect(await cache.load()).toBeNull();
+  });
 });

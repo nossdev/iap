@@ -19,8 +19,13 @@ export interface NativeAdapter {
   getProducts(requests: Array<{ id: string; type: ProductType }>): Promise<Product[]>;
 
   /**
-   * Start a native purchase. Resolves to a normalized NativeTransaction.
-   * Adapter MUST set `autoAcknowledgePurchases: false` so finishing is deferred.
+   * Start a native purchase. Resolves to a normalized NativeTransaction
+   * captured in an APPROVED but UNFINISHED state.
+   *
+   * Adapter implementations MUST defer the platform's finish/ack call until
+   * the core flow invokes `acknowledge()` — this is the foundation of the
+   * "never grant entitlement before backend confirms" safety guarantee
+   * (PLAN.md §2.1).
    */
   purchaseProduct(opts: NativePurchaseOptions): Promise<NativeTransaction>;
 
@@ -29,11 +34,18 @@ export interface NativeAdapter {
 
   /**
    * Acknowledge / finish a transaction post-verification.
-   * Translates to `acknowledgePurchase({ purchaseToken })` on v7+ for both platforms.
-   * Web stub is a no-op.
+   * On cdv this calls `tx.finish()`; on the web stub it's a no-op.
+   * Idempotent: a second call against the same token is safe.
    */
   acknowledge(transaction: NativeTransaction): Promise<void>;
 
-  /** Open native subscription management UI. */
+  /** Open the platform's native subscription management UI. */
   manageSubscriptions?(): Promise<void>;
+
+  /**
+   * Tear down any long-lived listeners or timers the adapter owns.
+   * Called from `iap.destroy()`. Idempotent and best-effort — failures
+   * during dispose should not throw.
+   */
+  dispose?(): Promise<void>;
 }

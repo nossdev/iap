@@ -173,4 +173,69 @@ describe('createIAP — entitlement cache', () => {
       }),
     ).toThrowError(IAPError);
   });
+
+  it('cached entitlements are frozen — direct mutation is rejected by runtime', async () => {
+    const backing = new Map<string, string>();
+    const customAdapter = {
+      async get(key: string) {
+        return backing.get(key) ?? null;
+      },
+      async set(key: string, value: string) {
+        backing.set(key, value);
+      },
+      async remove(key: string) {
+        backing.delete(key);
+      },
+      async clear() {
+        backing.clear();
+      },
+    };
+    backing.set(
+      'entitlements',
+      JSON.stringify({
+        cachedAt: Date.now(),
+        entitlements: [{ key: 'premium', productId: 'premium_monthly', expiresAt: null }],
+      }),
+    );
+
+    const iap = createIAP({
+      ...validConfig,
+      storage: { type: 'custom', namespace: 'frozen_test', adapter: customAdapter },
+    });
+    await iap.initialize();
+
+    const ent = iap.getEntitlement('premium');
+    expect(ent).not.toBeNull();
+    expect(Object.isFrozen(ent)).toBe(true);
+    // Mutation in strict mode (which test files are in) throws TypeError.
+    expect(() => {
+      (ent as { key: string }).key = 'hacked';
+    }).toThrow(TypeError);
+  });
+
+  it('refresh() throws explicit IAPError until Phase 3 lands', async () => {
+    const iap = createIAP({
+      ...validConfig,
+      storage: { type: 'memory', namespace: 'refresh_test' },
+    });
+    await iap.initialize();
+    try {
+      await iap.refresh();
+      throw new Error('should have rejected');
+    } catch (error) {
+      expect(error).toBeInstanceOf(IAPError);
+      expect((error as IAPError).message).toMatch(/Phase 3/);
+    }
+  });
+
+  it('destroy() is idempotent', async () => {
+    const iap = createIAP({
+      ...validConfig,
+      storage: { type: 'memory', namespace: 'destroy_test' },
+    });
+    await iap.initialize();
+    await iap.destroy();
+    await iap.destroy(); // second call should not throw
+    expect(iap.getEntitlements()).toEqual([]);
+  });
 });

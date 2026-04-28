@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { entitlementBaseSchema } from './entitlement.js';
 
 export const productTypeSchema = z.enum(['subscription', 'product', 'consumable']);
 
@@ -76,5 +75,3 @@ export type IAPConfigInput = z.input<typeof iapConfigSchema>;
 export type BackendConfig = z.infer<typeof backendConfigSchema>;
 export type StorageConfig = z.infer<typeof storageConfigSchema>;
 export type OptionsConfig = z.infer<typeof optionsConfigSchema>;
-
-export { entitlementBaseSchema };
