@@ -1,0 +1,75 @@
+{
+  "name": "@nossdev/iap",
+  "version": "0.1.0",
+  "description": "Thin Capacitor IAP orchestrator that pairs with Attesto for receipt validation",
+  "license": "MIT",
+  "author": "nossdev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "keywords": [
+    "capacitor",
+    "iap",
+    "in-app-purchase",
+    "storekit",
+    "billing",
+    "attesto"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nossdev/iap.git"
+  },
+  "homepage": "https://github.com/nossdev/iap#readme",
+  "bugs": {
+    "url": "https://github.com/nossdev/iap/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "biome check src tests",
+    "format": "biome format --write src tests",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm run test && npm run build"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^7.0.0 || ^8.0.0",
+    "@capacitor/preferences": "^7.0.0 || ^8.0.0",
+    "@capgo/native-purchases": "^7.0.0 || ^8.0.0"
+  },
+  "dependencies": {
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@capacitor/core": "^7.6.2",
+    "@capacitor/preferences": "^7.0.4",
+    "@capgo/native-purchases": "^7.16.2",
+    "@vitest/coverage-v8": "^1.6.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
