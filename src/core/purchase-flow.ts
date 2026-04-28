@@ -1,7 +1,7 @@
 import type { BackendAdapter, VerifyResponse } from '../adapters/backend/types.js';
 import type { NativeAdapter } from '../adapters/native/types.js';
 import type { TypedEventEmitter } from '../events/emitter.js';
-import { IAPError, IAPErrorCode, isIAPError } from '../lib/errors.js';
+import { IAPError, IAPErrorCode, toIAPError } from '../lib/errors.js';
 import type { Logger } from '../lib/logger.js';
 import type { EntitlementBase } from '../types/entitlement.js';
 import type { ConfiguredProduct, ProductType } from '../types/product.js';
@@ -222,9 +222,15 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     productId: string,
     response: Extract<VerifyResponse<TEntitlement>, { valid: false }>,
   ): PurchaseResult<TEntitlement> {
+    // Compose both the human-readable message and the stable machine code
+    // so consumers can grep for either. PLAN.md §5.8 marks `error` as the
+    // stable identifier — preserve it even when message is present.
+    const detail = response.message
+      ? `${response.message} [${response.error}]`
+      : `Backend rejected the transaction (${response.error}).`;
     const error = new IAPError({
       code: IAPErrorCode.VERIFICATION_REJECTED,
-      message: response.message ?? `Backend rejected the transaction (${response.error}).`,
+      message: detail,
     });
     this.deps.emitter.emit('verification-failed', { productId, error });
     return { status: 'verification_failed', productId, error };
@@ -263,13 +269,4 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     this.deps.emitter.emit('verification-failed', { productId, error: iapError });
     return { status: 'verification_failed', productId, error: iapError };
   }
-}
-
-function toIAPError(error: unknown, fallbackMessage: string, fallbackCode: IAPErrorCode): IAPError {
-  if (isIAPError(error)) return error;
-  return new IAPError({
-    code: fallbackCode,
-    message: fallbackMessage,
-    cause: error,
-  });
 }

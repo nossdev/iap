@@ -7,6 +7,7 @@ import { selectStorageAdapter } from './adapters/storage/index.js';
 import type { StorageAdapter } from './adapters/storage/types.js';
 import { EntitlementCache } from './core/entitlement-cache.js';
 import { PurchaseOrchestrator } from './core/purchase-flow.js';
+import { RestoreOrchestrator } from './core/restore-flow.js';
 import { UnfinishedTransactionsStore } from './core/unfinished-transactions.js';
 import { TypedEventEmitter } from './events/emitter.js';
 import { IAPError, IAPErrorCode } from './lib/errors.js';
@@ -16,7 +17,7 @@ import { type IAPConfig, type IAPConfigInput, iapConfigSchema } from './types/co
 import type { EntitlementBase } from './types/entitlement.js';
 import type { EventName, EventPayload, Unsubscribe } from './types/events.js';
 import type { ConfiguredProduct, Product } from './types/product.js';
-import type { PurchaseResult } from './types/results.js';
+import type { PurchaseResult, RestoreResult } from './types/results.js';
 
 export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   initialize(): Promise<void>;
@@ -62,6 +63,32 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   purchase(productId: string): Promise<PurchaseResult<TEntitlement>>;
 
   /**
+   * Re-verify every owned transaction with the consumer backend and
+   * refresh entitlements from the consolidated response. Wire this to a
+   * "Restore Purchases" button.
+   *
+   * Returns `{ restored, entitlements }` where `restored` is the number
+   * of native transactions submitted (0 on a fresh install with no
+   * purchases). Throws `IAPError` on backend rejection or transport
+   * failure — wrap the call in try/catch in the consumer's button
+   * handler.
+   *
+   * Emits `restore-started`, then on success `restore-completed` +
+   * `entitlements-changed` (the latter only when the entitlements list
+   * actually changed). On failure no completion event fires; the thrown
+   * error is the only signal.
+   *
+   * NOTE on the empty-owned-list case: when the platform store reports
+   * no owned transactions (fresh install, signed-out Apple ID, etc.),
+   * the library short-circuits — it does NOT call the backend and
+   * preserves whatever entitlements were already cached in memory. If
+   * you suspect cache staleness (e.g. user just signed in to a new
+   * Apple ID), call `iap.refresh()` afterward to reconcile against the
+   * backend's view of the user's entitlements.
+   */
+  restorePurchases(): Promise<RestoreResult<TEntitlement>>;
+
+  /**
    * Get product info merged with native pricing. Returns one entry per
    * product the platform store knows about; products configured but not
    * yet ingested by the store are silently skipped (no error).
@@ -93,6 +120,8 @@ interface IAPInternalState<TEntitlement extends EntitlementBase> {
   unfinished: UnfinishedTransactionsStore;
   /** Constructed lazily in initialize() once the native adapter is resolved. */
   orchestrator: PurchaseOrchestrator<TEntitlement> | null;
+  /** Constructed alongside the orchestrator in initialize(). */
+  restorer: RestoreOrchestrator<TEntitlement> | null;
   emitter: TypedEventEmitter<TEntitlement>;
   logger: Logger;
   initialized: boolean;
@@ -123,6 +152,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
     cache,
     unfinished,
     orchestrator: null,
+    restorer: null,
     emitter,
     logger,
     initialized: false,
@@ -157,23 +187,29 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       // web builds don't pull in cordova-plugin-purchase.
       state.adapter = await selectNativeAdapter({ products: state.config.products });
 
-      // Now that the native adapter is resolved, wire the purchase orchestrator.
-      state.orchestrator = new PurchaseOrchestrator<TEntitlement>({
+      // Now that the native adapter is resolved, wire the orchestrators.
+      // Both share the same getter/setter triplet into createIAP's state.
+      const sharedDeps = {
         nativeAdapter: state.adapter,
         backend: state.backend,
         cache: state.cache,
         unfinished: state.unfinished,
         emitter: state.emitter,
         logger: state.logger,
-        products: state.config.products,
         getCurrentEntitlements: () => state.entitlements,
-        setEntitlements: (next) => {
+        setEntitlements: (next: TEntitlement[]) => {
           state.entitlements = freezeAll(next);
         },
-        setCachePersisted: (cachedAt) => {
+        setCachePersisted: (cachedAt: number) => {
           state.cachedAt = cachedAt;
         },
+      };
+
+      state.orchestrator = new PurchaseOrchestrator<TEntitlement>({
+        ...sharedDeps,
+        products: state.config.products,
       });
+      state.restorer = new RestoreOrchestrator<TEntitlement>(sharedDeps);
 
       try {
         await state.adapter.isAvailable();
@@ -235,6 +271,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       }
       state.adapter = null;
       state.orchestrator = null;
+      state.restorer = null;
     },
 
     async purchase(productId) {
@@ -248,6 +285,17 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         });
       }
       return state.orchestrator.purchase(productId);
+    },
+
+    async restorePurchases() {
+      requireInitialized(state);
+      if (!state.restorer) {
+        throw new IAPError({
+          code: IAPErrorCode.NOT_INITIALIZED,
+          message: 'Restore orchestrator not constructed; this is a library bug.',
+        });
+      }
+      return state.restorer.restorePurchases();
     },
 
     async getProducts() {

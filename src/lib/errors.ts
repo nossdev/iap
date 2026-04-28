@@ -65,3 +65,27 @@ export class IAPError extends Error {
 export function isIAPError(error: unknown): error is IAPError {
   return error instanceof IAPError;
 }
+
+/**
+ * Coerce an unknown thrown value into an `IAPError`.
+ *
+ * - If `error` is already an `IAPError`, return it unchanged (preserves
+ *   the original code, recoverable flag, and cause chain).
+ * - Otherwise wrap with the supplied fallback `code` and `message` and
+ *   attach the original as `cause`.
+ *
+ * Used by orchestrators and adapters that catch `unknown` from the JS
+ * runtime and need to surface a typed error without losing context.
+ */
+export function toIAPError(
+  error: unknown,
+  fallbackMessage: string,
+  fallbackCode: IAPErrorCode,
+): IAPError {
+  if (isIAPError(error)) return error;
+  return new IAPError({
+    code: fallbackCode,
+    message: fallbackMessage,
+    cause: error,
+  });
+}

@@ -209,19 +209,6 @@ describe('HttpBackendAdapter — getEntitlements', () => {
 });
 
 describe('HttpBackendAdapter — restore', () => {
-  it('rejects with INVALID_CONFIG on empty transactions array (no HTTP call)', async () => {
-    const fetchStub = vi.fn();
-    const adapter = makeAdapter(fetchStub);
-    try {
-      await adapter.restore({ transactions: [] });
-      throw new Error('should have rejected');
-    } catch (error) {
-      expect(error).toBeInstanceOf(IAPError);
-      expect((error as IAPError).code).toBe(IAPErrorCode.INVALID_CONFIG);
-    }
-    expect(fetchStub).not.toHaveBeenCalled();
-  });
-
   it('POSTs the transactions batch and returns consolidated response', async () => {
     const fetchStub = vi.fn().mockResolvedValue(
       jsonResponse({

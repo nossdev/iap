@@ -11,6 +11,12 @@ import type { EntitlementBase } from '../../src/types/entitlement.js';
 import type { ConfiguredProduct } from '../../src/types/product.js';
 import type { NativeTransaction } from '../../src/types/transaction.js';
 import { makeSilentLogger } from '../mocks/http-helpers.js';
+import {
+  makeAppleTransaction,
+  makeBackend,
+  makeGoogleTransaction,
+  makeNativeAdapter,
+} from '../mocks/orchestrator-builders.js';
 
 const silentLogger = makeSilentLogger();
 
@@ -19,70 +25,6 @@ const products: ConfiguredProduct[] = [
   { id: 'remove_ads', type: 'product' },
   { id: 'coin_pack_100', type: 'consumable' },
 ];
-
-function makeAppleTransaction(productId = 'premium_monthly'): NativeTransaction {
-  return {
-    platform: 'apple',
-    productId,
-    token: `apple-token-${productId}`,
-    productType: 'subscription',
-  };
-}
-
-function makeGoogleTransaction(productId = 'premium_monthly'): NativeTransaction {
-  return {
-    platform: 'google',
-    productId,
-    token: `play-token-${productId}`,
-    packageName: 'com.example.app',
-    productType: 'subscription',
-  };
-}
-
-function makeNativeAdapter(overrides: Partial<NativeAdapter> = {}): NativeAdapter {
-  return {
-    async isAvailable() {
-      return true;
-    },
-    async getProducts() {
-      return [];
-    },
-    async purchaseProduct() {
-      return makeAppleTransaction();
-    },
-    async getOwnedTransactions() {
-      return [];
-    },
-    async acknowledge() {
-      // default: success
-    },
-    ...overrides,
-  };
-}
-
-function makeBackend<T extends EntitlementBase>(
-  overrides: Partial<BackendAdapter<T>> = {},
-): BackendAdapter<T> {
-  return {
-    verifyApple: async () => ({
-      valid: true,
-      entitlements: [],
-      transaction: { id: 'tx1', productId: 'premium_monthly' },
-    }),
-    verifyGoogle: async () => ({
-      valid: true,
-      entitlements: [],
-      transaction: { id: 'tx1', productId: 'premium_monthly' },
-    }),
-    getEntitlements: async () => [],
-    restore: async () => ({
-      valid: true,
-      entitlements: [],
-      transaction: { id: 'tx1', productId: 'premium_monthly' },
-    }),
-    ...overrides,
-  } as BackendAdapter<T>;
-}
 
 function makeOrchestrator<T extends EntitlementBase = EntitlementBase>(opts: {
   nativeAdapter?: NativeAdapter;
@@ -121,7 +63,11 @@ function makeOrchestrator<T extends EntitlementBase = EntitlementBase>(opts: {
   }
 
   const orchestrator = new PurchaseOrchestrator<T>({
-    nativeAdapter: opts.nativeAdapter ?? makeNativeAdapter(),
+    // Default purchaseProduct returns an Apple transaction so tests that do
+    // not override nativeAdapter still get a plausible native result.
+    nativeAdapter:
+      opts.nativeAdapter ??
+      makeNativeAdapter({ purchaseProduct: async () => makeAppleTransaction() }),
     backend: opts.backend ?? makeBackend<T>(),
     cache,
     unfinished,
@@ -322,7 +268,9 @@ describe('PurchaseOrchestrator — failure paths', () => {
     expect(result.status).toBe('verification_failed');
     if (result.status === 'verification_failed') {
       expect(result.error.code).toBe(IAPErrorCode.VERIFICATION_REJECTED);
+      // H3: message preserves both human-readable and stable machine code
       expect(result.error.message).toContain('Apple says no');
+      expect(result.error.message).toContain('TRANSACTION_NOT_FOUND');
     }
     expect(acknowledgeSpy).not.toHaveBeenCalled();
     // CRITICAL: entitlements must NOT update on a backend rejection

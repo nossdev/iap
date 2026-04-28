@@ -1,4 +1,3 @@
-import { IAPError, IAPErrorCode } from '../../lib/errors.js';
 import type { Logger } from '../../lib/logger.js';
 import type { BackendConfig } from '../../types/config.js';
 import type { EntitlementBase } from '../../types/entitlement.js';
@@ -90,12 +89,10 @@ export class HttpBackendAdapter<TEntitlement extends EntitlementBase = Entitleme
   }
 
   async restore(req: RestoreRequest): Promise<VerifyResponse<TEntitlement>> {
-    if (req.transactions.length === 0) {
-      throw new IAPError({
-        code: IAPErrorCode.INVALID_CONFIG,
-        message: 'restore() called with an empty transactions array.',
-      });
-    }
+    // Empty-array guard lives in `RestoreOrchestrator` (transport-agnostic);
+    // see Phase 3 review L7. If a consumer calls this adapter directly with
+    // an empty list, the backend's response is whatever it returns — usually
+    // a 400 the HttpClient surfaces as `BACKEND_BAD_RESPONSE`.
     const result = await this.http.request(
       { method: 'POST', path: this.endpoints.restore, body: req },
       verifyResponseSchema,
