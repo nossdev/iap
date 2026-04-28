@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { selectNativeAdapter } from './adapters/native/index.js';
 import type { NativeAdapter } from './adapters/native/types.js';
+import { selectStorageAdapter } from './adapters/storage/index.js';
+import type { StorageAdapter } from './adapters/storage/types.js';
+import { EntitlementCache } from './core/entitlement-cache.js';
 import { TypedEventEmitter } from './events/emitter.js';
 import { IAPError, IAPErrorCode } from './lib/errors.js';
 import { type LogLevel, type Logger, createDefaultLogger, isLogger } from './lib/logger.js';
@@ -28,11 +31,14 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
 interface IAPInternalState<TEntitlement extends EntitlementBase> {
   config: IAPConfig;
   adapter: NativeAdapter;
+  storage: StorageAdapter;
+  cache: EntitlementCache<TEntitlement>;
   emitter: TypedEventEmitter<TEntitlement>;
   logger: Logger;
   initialized: boolean;
   destroyed: boolean;
   entitlements: TEntitlement[];
+  cachedAt: number | null;
 }
 
 export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase>(
@@ -41,6 +47,8 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
   const config = parseConfig(input);
   const logger = resolveLogger(config.options.logLevel, config.options.logger);
   const adapter = selectNativeAdapter({ products: config.products });
+  const storage = selectStorageAdapter(config.storage);
+  const cache = new EntitlementCache<TEntitlement>(storage, logger);
   const emitter = new TypedEventEmitter<TEntitlement>();
 
   ensureUniqueProductIds(config.products);
@@ -48,11 +56,14 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
   const state: IAPInternalState<TEntitlement> = {
     config,
     adapter,
+    storage,
+    cache,
     emitter,
     logger,
     initialized: false,
     destroyed: false,
     entitlements: [],
+    cachedAt: null,
   };
 
   return {
@@ -77,13 +88,22 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         state.logger.debug(`Initializing on platform=${platform}`);
       }
 
-      // Phase 2 hooks (storage cache load) and Phase 6 hooks (recovery / app-state listener)
-      // are wired in their respective phases. Phase 1 just confirms the adapter is reachable.
       try {
         await state.adapter.isAvailable();
       } catch (error) {
         state.logger.warn('Native adapter availability check threw; continuing.', error);
       }
+
+      const cached = await state.cache.load();
+      if (cached) {
+        state.entitlements = cached.entitlements;
+        state.cachedAt = cached.cachedAt;
+        state.logger.debug(
+          `Loaded ${cached.entitlements.length} cached entitlement(s) from ${new Date(cached.cachedAt).toISOString()}.`,
+        );
+      }
+
+      // Phase 6 will wire recovery + app-state listener here.
 
       state.initialized = true;
       state.emitter.emit('ready', undefined);
@@ -100,6 +120,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       state.destroyed = true;
       state.initialized = false;
       state.entitlements = [];
+      state.cachedAt = null;
     },
 
     hasEntitlement(key) {

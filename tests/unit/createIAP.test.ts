@@ -112,3 +112,65 @@ describe('createIAP — lifecycle', () => {
     expect(iap.getEntitlement('premium')).toBeNull();
   });
 });
+
+describe('createIAP — entitlement cache', () => {
+  it('initialize() loads cached entitlements from a custom storage adapter', async () => {
+    const backing = new Map<string, string>();
+    const customAdapter = {
+      async get(key: string) {
+        return backing.get(key) ?? null;
+      },
+      async set(key: string, value: string) {
+        backing.set(key, value);
+      },
+      async remove(key: string) {
+        backing.delete(key);
+      },
+      async clear() {
+        backing.clear();
+      },
+    };
+
+    // Pre-seed the cache as if a previous session had written it.
+    // Custom adapters receive bare keys (no namespace prefix is applied
+    // by the library — the consumer's adapter owns its own key strategy).
+    backing.set(
+      'entitlements',
+      JSON.stringify({
+        cachedAt: Date.now(),
+        entitlements: [
+          { key: 'premium', productId: 'premium_monthly', expiresAt: '2026-12-01T00:00:00Z' },
+        ],
+      }),
+    );
+
+    const iap = createIAP({
+      ...validConfig,
+      storage: { type: 'custom', namespace: 'cache_test', adapter: customAdapter },
+    });
+
+    expect(iap.hasEntitlement('premium')).toBe(false); // not loaded yet
+    await iap.initialize();
+    expect(iap.hasEntitlement('premium')).toBe(true);
+    expect(iap.getEntitlements()).toHaveLength(1);
+    expect(iap.getEntitlement('premium')?.productId).toBe('premium_monthly');
+  });
+
+  it('initialize() tolerates an empty cache', async () => {
+    const iap = createIAP({
+      ...validConfig,
+      storage: { type: 'memory', namespace: 'fresh' },
+    });
+    await iap.initialize();
+    expect(iap.getEntitlements()).toEqual([]);
+  });
+
+  it('rejects custom storage type without an adapter', () => {
+    expect(() =>
+      createIAP({
+        ...validConfig,
+        storage: { type: 'custom', namespace: 'broken' },
+      }),
+    ).toThrowError(IAPError);
+  });
+});
