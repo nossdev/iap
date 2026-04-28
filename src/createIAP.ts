@@ -40,7 +40,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
 ): IAP<TEntitlement> {
   const config = parseConfig(input);
   const logger = resolveLogger(config.options.logLevel, config.options.logger);
-  const adapter = selectNativeAdapter();
+  const adapter = selectNativeAdapter({ products: config.products });
   const emitter = new TypedEventEmitter<TEntitlement>();
 
   ensureUniqueProductIds(config.products);
