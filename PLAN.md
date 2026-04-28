@@ -6,7 +6,7 @@
 
 ## 1. Project Summary
 
-**`@nossdev/iap`** is a thin, framework-agnostic TypeScript library that orchestrates the in-app purchase flow on the client side. It wraps `@capgo/native-purchases` (the underlying Capacitor plugin that handles native StoreKit / Play Billing) and coordinates with **your client's backend** — which in turn talks to **Attesto** for receipt validation.
+**`@nossdev/iap`** is a thin, framework-agnostic TypeScript library that orchestrates the in-app purchase flow on the client side. It wraps `cordova-plugin-purchase` on Capacitor 5 (the v0.1.0 target; `@capgo/native-purchases` is the planned Cap 7+ successor) and coordinates with **your client's backend** — which in turn talks to **Attesto** for receipt validation.
 
 This is the client-side counterpart to [Attesto](https://attesto.nossdev.com). Attesto answers *"is this transaction real?"* on the server. `@nossdev/iap` answers *"how do we orchestrate the purchase flow and entitlement state cleanly on the client?"*
 
@@ -14,7 +14,7 @@ This is the client-side counterpart to [Attesto](https://attesto.nossdev.com). A
 - **GitHub:** `nossdev/iap`
 - **License:** MIT
 - **Distribution:** public npm + GitHub Packages mirror (`@nossdev` org)
-- **Initial Capacitor target:** **Capacitor 7** (matches Infopathy, the first consumer; explicit support matrix for 8 in roadmap; Cap 5/6 best-effort via additional adapters)
+- **Initial Capacitor target:** **Capacitor 5** (Infopathy production app — bundle id `com.ashnutech.infopathy.app` — is on Cap 5 and the IAP integration is the last blocker for store approval; Cap 6/7/8 support deferred to v1.x via additional adapters)
 
 ### Why it exists
 
@@ -45,7 +45,7 @@ Attesto exposes two split endpoints — `POST /v1/apple/verify` (request: `{ tra
 `@nossdev/iap` is **NOT** RevenueCat-on-the-client. It does **one thing**: orchestrate the purchase + verification + entitlement-caching dance against a backend you control.
 
 **`@nossdev/iap` DOES:**
-- Wrap `@capgo/native-purchases` for purchase + restore flows
+- Wrap `cordova-plugin-purchase` (Cap 5) for purchase + restore flows
 - POST to a configurable backend endpoint for verification
 - Acknowledge / finish transactions only after backend confirms validation (with platform caveats — see §2.1)
 - Cache entitlements locally (via Capacitor Preferences) for fast reads
@@ -70,36 +70,40 @@ Attesto exposes two split endpoints — `POST /v1/apple/verify` (request: `{ tra
 
 ## 2. Critical Constraints
 
-### Capacitor 7 target + plugin version pinning
+### Capacitor 5 target + plugin choice
 
-`@capgo/native-purchases` ties its major version to Capacitor's major version, with one wrinkle: the v7 line was effectively deprecated mid-7.x — versions `7.13.0`–`7.16.2` are the **last that actually work on Capacitor 7**; `7.17.0`+ silently require Capacitor 8 even though they're still tagged `lts-v7`.
+The native plugin for v0.1.0 is **[`cordova-plugin-purchase`](https://github.com/j3k0/cordova-plugin-purchase)** (also published as `iap-2` and accessed as the `CdvPurchase` namespace), pinned to `^13.0.0`. Capacitor 5 supports Cordova plugins natively, so consumers install via `npm install cordova-plugin-purchase` and `npx cap sync`.
 
-v0.1.0 of `@nossdev/iap` therefore pins to `@capgo/native-purchases@7.16.2` for the v7 adapter, and the peer dep range is `^7.0.0 || ^8.0.0` (later v7 plugin releases get a Cap-8 adapter as a future addition).
+The library's peer dep range is `@capacitor/core: ^5.0.0`, `@capacitor/preferences: ^5.0.0`, `cordova-plugin-purchase: ^13.0.0`.
 
-Note: there is **no `@capgo/native-purchases@5.x` on npm at all** — the v5-compatible line is `0.0.x` (last `0.0.72`). Cap 5 support is consequently NOT in v0.1.0; it can be added later if a Cap 5 consumer ever requests it. Infopathy (first consumer) is on Cap 7, so this is moot.
+Why not `@capgo/native-purchases`? The v5-compatible release of that plugin (`0.0.72`, the only release in its `0.0.x` line that targets `@capacitor/core: ^5.0.0`) **lacks `acknowledgePurchase` and the `autoAcknowledgePurchases: false` parameter** — those were introduced in v7.14.0. v0.0.72 auto-finishes every purchase, which breaks the safety guarantee. (See `docs/internal/_future/plugin-v7-api.md` for the v7 plugin's surface — relevant for the future Cap 7 migration.)
+
+Why cordova-plugin-purchase? Free MIT, last release 2026-04-27 (active maintenance), production-proven across thousands of App Store / Play Store apps for 10+ years, and its canonical pattern is `store.when().approved(tx => verifyOnServer(tx).then(() => tx.finish()))` — exactly the deferred-ack flow the library needs. Trade-off: event-driven instead of Promise-based, but the adapter encapsulates that.
 
 Practical consequences:
 
-- **Plugin bug fixes for v7.16.2 will not land upstream** (the line is effectively frozen). If a critical bug surfaces, options: fork-and-patch under `nossdev/capacitor-native-purchases-7`, carry a patch via `patch-package`, or upgrade Infopathy to Cap 8.
-- **The library is built to be Capacitor-version-agnostic via a thin internal adapter** (see §4.1). v8 support is added as `src/adapters/native/v8/` re-implementing only the adapter; the public API and core flows are unchanged.
+- **Cordova-plugin-purchase is the only IAP plugin we install at the native layer.** When the consumer migrates to Capacitor 7+, the library swaps the cdv adapter for the v7 adapter (preserved in git commit `f1d20ed`); the public API doesn't change.
+- **The library is built to be Capacitor-version-agnostic via a thin internal adapter** (see §4.1). Future v6/7/8 adapters re-implement only that contract; the core flows and public API are unchanged.
 - **A support matrix in the README** documents which `@nossdev/iap` version pairs with which Capacitor + plugin version (§11).
 
-### 2.1 v7 plugin behavior the library relies on
+### 2.1 cordova-plugin-purchase behavior the library relies on
 
-Phase 1's first task — captured in `docs/internal/plugin-v7-api.md` — confirmed the actual v7 method surface. Key facts the library depends on:
+Phase 1's first task — captured in `docs/internal/cdv-purchase-api.md` — documents the actual plugin surface. Key facts the library depends on:
 
-- **`autoAcknowledgePurchases: false` works on both iOS and Android** in v7. Setting this on every `purchaseProduct` call defers finishing on both platforms — exactly what the safety guarantee requires.
-- **`acknowledgePurchase({ purchaseToken })` is a single cross-platform method** (since v7.14.0). For iOS, pass the `transactionId` as a string in the `purchaseToken` arg; under the hood it calls `Transaction.finish()`. For Android, pass the actual `purchaseToken`; it calls Google Play's acknowledgement API.
-- **`getPurchases()`** returns the user's owned transactions on both platforms. Used for restore + recovery.
-- **Initialization is implicit** — no `initialize()` method to call.
-- **Event listeners (`transactionUpdated`, `transactionVerificationFailed`) on iOS** notify of out-of-band StoreKit updates (subscription renewal, refund). Useful for keeping entitlements fresh; consumed in Phase 6.
+- **`Transaction.finish()` is called manually**, not automatically. The `.approved()` callback fires when the user completes a purchase; the transaction stays in the `APPROVED` state until the consumer code calls `tx.finish()`. This gives the library full control over when ack happens.
+- **`store.order(offer)`** returns `Promise<IError | undefined>` — `IError` with `code === ErrorCode.PAYMENT_CANCELLED` is the cancellation signal (the `.when()` chain doesn't have a `.cancelled()` callback).
+- **`store.localTransactions`** is the source for restore + recovery; `store.restorePurchases()` triggers a refresh and re-fires `.approved()` for owned items.
+- **`store.register()`** is called once per session with the configured product catalog; `store.initialize([platform])` connects to the native platform; `store.update()` refreshes prices.
+- **`CdvPurchase` is exposed as a global namespace** (the plugin attaches to `window.CdvPurchase` at load time). The adapter accesses it via `globalThis.CdvPurchase` after a side-effect import of `cordova-plugin-purchase`.
 
-**Safety guarantee (full on v7):**
-On both platforms, the library sets `autoAcknowledgePurchases: false`, persists the transaction to `unfinished_transactions`, calls backend verify, and only then calls `acknowledgePurchase`. If the app dies between native success and ack — or if the backend rejects — the transaction stays unacknowledged. On Android, Google auto-refunds after 3 days. On iOS, the transaction stays in the StoreKit queue and is replayed on next app launch via the `transactionUpdated` listener. Recovery on `initialize()` re-attempts verification.
+**Safety guarantee (full on Cap 5):**
+On both iOS and Android, the library captures the cdv `Transaction` object inside the `.approved()` callback **without** calling `tx.finish()`. The transaction is staged in an internal `pendingFinish: Map<token, Transaction>`. Only after backend verification succeeds does the core flow call `nativeAdapter.acknowledge(transaction)`, which looks up the cdv transaction in the map and calls `tx.finish()`.
 
-The "never grant before backend confirms" promise holds end-to-end on v7.
+If the app dies between native success and ack, or if the backend rejects the transaction, the transaction stays unacknowledged: Google auto-refunds Android purchases after 3 days; iOS keeps the transaction in the StoreKit queue, replayed via `.approved()` on the next launch (the long-lived adapter listener captures it). Recovery on `initialize()` re-attempts verification via `unfinished_transactions` storage.
 
-### Platform requirements (inherited from `@capgo/native-purchases`)
+The "never grant before backend confirms" promise holds end-to-end.
+
+### Platform requirements (inherited from `cordova-plugin-purchase`)
 
 - **iOS:** 15.0+ (StoreKit 2 requires iOS 15)
 - **Android:** API 21+ (Android 5.0+), Google Play Billing 7.x
@@ -108,7 +112,7 @@ If a consumer app needs to support iOS < 15, this library is not for them.
 
 ### Web platform
 
-`@capgo/native-purchases` only exists on iOS and Android. On web, the library exposes a **no-op / stub native adapter** so consumer apps can render development UIs without crashing. Storage and entitlement reads still work on web (see §9).
+`cordova-plugin-purchase` only exists on iOS and Android (and other native platforms via Cordova; web is unsupported). On web, the library exposes a **no-op / stub native adapter** so consumer apps can render development UIs without crashing. Storage and entitlement reads still work on web (see §9).
 
 ---
 
@@ -121,7 +125,7 @@ If a consumer app needs to support iOS < 15, this library is not for them.
 | Package format | Dual ESM + CJS with `.d.ts` | Maximum compatibility |
 | Test runner | **vitest** | Fast, modern, Vite-based; works for pure TS libs |
 | Lint / format | **biome** | Faster than eslint+prettier, single tool |
-| Native plugin (peer) | `@capgo/native-purchases` (matched to Capacitor major) | The actual native bridge |
+| Native plugin (peer) | `cordova-plugin-purchase` (^13) on Cap 5; `@capgo/native-purchases` is the planned successor for Cap 7+ | The actual native bridge |
 | Capacitor (peer) | `@capacitor/core`, `@capacitor/preferences` | Storage + platform detection |
 | Validation | **zod 3** | Runtime config validation. zod 4 upgrade tracked as TODO in CHANGELOG. |
 | HTTP | Native `fetch` | Standard, no extra deps |
@@ -131,9 +135,9 @@ If a consumer app needs to support iOS < 15, this library is not for them.
 ```
 @nossdev/iap
 ├── peerDependencies (consumer must install)
-│   ├── @capacitor/core
-│   ├── @capacitor/preferences
-│   └── @capgo/native-purchases
+│   ├── @capacitor/core (^5)
+│   ├── @capacitor/preferences (^5)
+│   └── cordova-plugin-purchase (^13)
 ├── dependencies
 │   └── zod (^3.23.0)
 └── devDependencies
@@ -143,7 +147,7 @@ If a consumer app needs to support iOS < 15, this library is not for them.
     └── ... (tooling)
 ```
 
-`@capgo/native-purchases` is a **peer dependency** so the consumer controls which Capacitor major version they're on. The library has internal adapter code that handles the small API differences between plugin versions.
+`cordova-plugin-purchase` is a **peer dependency** so the consumer controls which version they install (and so that `npx cap sync` picks it up at the native layer). The library has internal adapter code that paper over plugin API differences when Cap 7+ adapters are added later.
 
 ---
 
@@ -176,7 +180,7 @@ If a consumer app needs to support iOS < 15, this library is not for them.
               │                            │
               ▼                            ▼
 ┌─────────────────────────┐    ┌─────────────────────────┐
-│ @capgo/native-purchases │    │ Consumer's backend      │
+│ cordova-plugin-purchase │    │ Consumer's backend      │
 │ (native bridge)         │    │ (HTTP API)              │
 │ → StoreKit 2 / Billing  │    │ → calls Attesto         │
 └─────────────────────────┘    └─────────────────────────┘
@@ -248,10 +252,10 @@ export interface NativeTransaction {
 ```
 
 Adapters live at:
-- `src/adapters/native/v7/native-adapter.ts` — wraps `@capgo/native-purchases@7.16.2`
+- `src/adapters/native/cdv/native-adapter.ts` — wraps `cordova-plugin-purchase@^13`
 - `src/adapters/native/web/web-stub.ts` — no-op for web (purchase calls reject with `PLATFORM_NOT_SUPPORTED`; `getOwnedTransactions` returns `[]`; `acknowledge` is no-op)
 
-Future v6/v7/v8 adapters live alongside `v5/` and are selected at install time by checking the installed plugin's `package.json#version`.
+Future v6/v7/v8 adapters live alongside `cdv/` and are selected at install time by checking the installed plugin's `package.json#version`.
 
 ---
 
@@ -362,7 +366,7 @@ await iap.destroy();
 ```
 
 `initialize()` does the following:
-1. Validate that `@capgo/native-purchases` is available (skip on web)
+1. Validate that `cordova-plugin-purchase` is available (skip on web)
 2. Load cached entitlements from Preferences
 3. Recover unfinished transactions (if enabled)
 4. Emit `ready` event
@@ -411,21 +415,25 @@ if (result.status === 'success') {
 }
 ```
 
-**Internal sequence (Capacitor 7 plugin):**
+**Internal sequence (Capacitor 5 / cordova-plugin-purchase):**
 
 1. Acquire the per-product lock; if already held, reject with `ALREADY_IN_PROGRESS`.
 2. Emit `purchase-started`.
-3. Call `nativeAdapter.purchaseProduct({ productId, androidPlanId, productType })` with `autoAcknowledgePurchases: false` on Android.
-4. On native success, write the transaction to `unfinished_transactions` storage **before** calling backend verify.
-5. POST to consumer backend `/api/iap/verify/apple` or `/api/iap/verify/google` (per platform) with the verified token.
+3. Call `nativeAdapter.purchaseProduct({ productId, productType, ... })`. Internally the adapter:
+   - Looks up the cdv `Product` via `store.get(productId)` and the offer via `product.getOffer()`.
+   - Attaches a `.approved()` listener for that productId.
+   - Calls `offer.order(additionalData?)`. If it returns `IError` with `PAYMENT_CANCELLED` → reject `USER_CANCELLED`; other errors → reject `STORE_ERROR`.
+   - When `.approved(tx)` fires, the cdv `Transaction` is captured into `pendingFinish: Map<token, Transaction>` and the promise resolves with the normalized `NativeTransaction`. **`tx.finish()` is NOT called yet.**
+4. Write the normalized transaction to `unfinished_transactions` storage **before** calling backend verify.
+5. POST to consumer backend `/api/iap/verify/apple` or `/api/iap/verify/google` (per platform) with the token.
 6. **If backend returns `{ valid: true, ... }`:**
-   - Call `nativeAdapter.acknowledge(transaction)` — translates to `acknowledgePurchase({ purchaseToken })` on both platforms.
+   - Call `nativeAdapter.acknowledge(transaction)` — looks up the cdv transaction in `pendingFinish` and calls `tx.finish()`.
    - Update local entitlement cache from the backend response.
    - Remove from `unfinished_transactions`.
    - Emit `purchase-success` then `entitlements-changed`.
    - Release the lock.
 7. **If backend returns `{ valid: false }` or errors transiently:**
-   - **Do NOT acknowledge** on either platform — transaction stays unfinished. Android will auto-refund after 3 days; iOS keeps it in the StoreKit queue (replayed via `transactionUpdated` listener on next launch).
+   - **Do NOT call `acknowledge()`** — the cdv transaction stays in `pendingFinish`, unfinished. On Android, Google auto-refunds after 3 days. On iOS, the transaction stays in the StoreKit queue and `.approved()` re-fires on next launch (the adapter's long-lived listener captures it back into `pendingFinish`).
    - Keep entry in `unfinished_transactions` for retry on next `refresh()` / `initialize()`.
    - Emit `verification-failed`.
    - Release the lock.
@@ -439,7 +447,7 @@ const result = await iap.restorePurchases();
 
 Used when a user reinstalls the app or switches devices. Internal sequence:
 1. Emit `restore-started`
-2. Call `nativeAdapter.getOwnedTransactions()` (delegates to `getPurchases()` on v5)
+2. Call `nativeAdapter.getOwnedTransactions()` (delegates to `store.restorePurchases()` + `store.localTransactions` filter on cdv)
 3. Collect all owned transactions
 4. POST batch to backend `/api/iap/restore`
 5. Backend re-verifies each via Attesto and returns the consolidated entitlements
@@ -631,8 +639,8 @@ iap/
 │   │   ├── native/
 │   │   │   ├── index.ts           # Selects active adapter via Capacitor.getPlatform()
 │   │   │   ├── types.ts           # NativeAdapter interface
-│   │   │   ├── v5/
-│   │   │   │   └── native-adapter.ts  # Wraps @capgo/native-purchases@7.16.2
+│   │   │   ├── cdv/
+│   │   │   │   └── native-adapter.ts  # Wraps cordova-plugin-purchase@^13
 │   │   │   └── web/
 │   │   │       └── web-stub.ts    # No-op for web platform
 │   │   ├── backend/
@@ -667,7 +675,7 @@ iap/
 │   ├── integration/
 │   │   └── full-flow.test.ts      # End-to-end with mocked native + backend
 │   ├── mocks/
-│   │   ├── mock-native.ts         # Fake @capgo/native-purchases
+│   │   ├── mock-cdv-purchase.ts   # Fake cordova-plugin-purchase / CdvPurchase
 │   │   ├── mock-backend.ts        # Fake fetch / backend
 │   │   └── mock-preferences.ts    # In-memory Preferences
 │   └── fixtures/
@@ -729,26 +737,28 @@ iap/
     "prepublishOnly": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "peerDependencies": {
-    "@capacitor/core": "^7.0.0 || ^8.0.0",
-    "@capacitor/preferences": "^7.0.0 || ^8.0.0",
-    "@capgo/native-purchases": "^7.0.0 || ^8.0.0"
+    "@capacitor/core": "^5.0.0",
+    "@capacitor/preferences": "^5.0.0",
+    "cordova-plugin-purchase": "^13.0.0"
   },
   "dependencies": {
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@capacitor/core": "^7.0.0",
-    "@capacitor/preferences": "^7.0.0",
-    "@capgo/native-purchases": "7.16.2",
+    "@capacitor/core": "^5.0.0",
+    "@capacitor/preferences": "^5.0.0",
+    "cordova-plugin-purchase": "^13.15.4",
+    "jsdom": "^25.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0",
+    "@vitest/coverage-v8": "^1.6.0",
     "@biomejs/biome": "^1.7.0"
   }
 }
 ```
 
-The peer dep range covers Capacitor 7 + 8. **Dev deps pin to `@capgo/native-purchases@7.16.2`** — the last release that actually works on Capacitor 7 (later v7 plugin releases require Cap 8 despite being tagged `lts-v7`).
+The peer dep range targets Capacitor 5 only for v0.1.0. **Dev deps pin to `cordova-plugin-purchase@^13.15.4`** (latest stable; the maintainer ships frequent patches). Vitest uses **jsdom** because cordova-plugin-purchase attaches to `window.CdvPurchase` at module load.
 
 ---
 
@@ -919,7 +929,7 @@ This lets developers run their app via `npm run dev` or in a browser test enviro
 - **Native adapter (v5):** mocked plugin calls; verify parameter mapping and acknowledge behavior
 
 ### Integration tests
-- **Full purchase flow:** mock `@capgo/native-purchases` with a fake `purchaseProduct` that returns a fixture; mock backend with a fake fetch; assert end-to-end behavior including event sequence
+- **Full purchase flow:** mock `cordova-plugin-purchase` (`CdvPurchase` global) via `tests/mocks/mock-cdv-purchase.ts`; mock backend with a fake fetch; assert end-to-end behavior including event sequence
 - **Failure recovery:** simulate backend failure, assert transaction lands in unfinished list; on next `initialize()`, simulate backend recovery and assert verification completes
 - **Concurrent purchase attempts:** ensure library prevents two purchases of the same product simultaneously (lock per productId; second rejects with `ALREADY_IN_PROGRESS`)
 
@@ -980,12 +990,12 @@ Initial release: `0.1.0`. Stay below 1.0 until the API has been validated agains
 
 ### Capacitor support matrix (initial)
 
-| `@nossdev/iap` | Capacitor | `@capgo/native-purchases` | Status |
+| `@nossdev/iap` | Capacitor | Plugin | Status |
 |---|---|---|---|
-| 0.x | 7.x | `7.13.0` – `7.16.2` | **v0.1.0 target** — supports Infopathy. Plugin v7 line frozen upstream after 7.16.2; we may carry patches. |
-| 0.x | 8.x | `^8.0.0` | Same `0.x` line — plugin v8 adapter shares the public API. Coming after v0.1 stabilizes on Cap 7. |
-| 1.x | 6.x \| 7.x \| 8.x | matched | Future — adds Cap 6 via plugin `6.0.x`. |
-| 2.x | 5.x – 8.x | matched | Future — adds Cap 5 via plugin `0.0.72` if anyone needs it. |
+| 0.x | 5.x | `cordova-plugin-purchase ^13.x` | **v0.1.0 target** — supports Infopathy production. |
+| 1.x | 7.x | `@capgo/native-purchases 7.16.2` | Future — adds Cap 7 adapter (preserved in commit `f1d20ed`). |
+| 2.x | 8.x | `@capgo/native-purchases ^8.x` | Future. |
+| 3.x | 5–8 | mixed | Future — single binary supports all majors via runtime adapter selection. |
 
 When supporting newer Capacitor versions, the goal is to **preserve the public API** so consumers only need to bump peer deps.
 
@@ -1007,19 +1017,19 @@ Ship in thin slices. Each phase shippable on its own.
 - [ ] Create `CHANGELOG.md` with `## [Unreleased]` heading
 - [ ] `npm init -y` then edit `package.json` per §6 (name, license, peerDeps, scripts, exports, publishConfig)
 - [ ] `npm install --save-exact zod@^3.23.0`
-- [ ] `npm install --save-dev typescript@^5.4 tsup@^8 vitest@^1.6 @biomejs/biome@^1.7 @capacitor/core@^7 @capacitor/preferences@^7 @capgo/native-purchases@7.16.2 @vitest/coverage-v8@^1.6.0`
+- [ ] `npm install --save-dev typescript@^5.4 tsup@^8 vitest@^1.6 @biomejs/biome@^1.7 @capacitor/core@^5 @capacitor/preferences@^5 cordova-plugin-purchase@^13 @vitest/coverage-v8@^1.6.0 jsdom@^25`
 - [ ] Create `tsconfig.json` (`target: "es2022"`, `module: "esnext"`, `moduleResolution: "bundler"`, `strict: true`, `declaration: true`, `outDir: "dist"`)
 - [ ] Create `tsup.config.ts` (`entry: ['src/index.ts']`, `format: ['esm', 'cjs']`, `dts: true`, `sourcemap: true`, `clean: true`, `target: 'es2022'`)
-- [ ] Create `vitest.config.ts` (`globals: true`, `environment: 'node'`)
+- [ ] Create `vitest.config.ts` (`globals: true`, `environment: 'jsdom'` — cordova-plugin-purchase attaches to `window`)
 - [ ] Create `biome.json` (extends recommended, line width 100)
 - [ ] First commit: `chore: scaffold project (TypeScript, tsup, vitest, biome)`
 
-#### 1b. v7 plugin reconnaissance (60 min) — **completed 2026-04-28**
+#### 1b. cordova-plugin-purchase reconnaissance (60 min) — **completed 2026-04-28**
 
-- [x] Read `node_modules/@capgo/native-purchases/dist/esm/definitions.d.ts` and document **actual** v7 method signatures in `docs/internal/plugin-v7-api.md`
-- [x] Confirmed: `purchaseProduct({ ..., autoAcknowledgePurchases: false })`, `acknowledgePurchase({ purchaseToken })` (cross-platform since v7.14.0), `getPurchases()`, `getProducts()`, iOS event listeners — all present
-- [x] Confirmed v7 supports deferred finish on **both iOS and Android** — §2.1 guarantee is full, no platform-specific caveat needed
-- [x] Commit: `docs: document @capgo/native-purchases v7.16.2 API surface`
+- [x] Read `node_modules/cordova-plugin-purchase/www/store.d.ts` and document **actual** plugin method signatures in `docs/internal/cdv-purchase-api.md`
+- [x] Confirmed: `Store.register()`, `Store.initialize()`, `Store.update()`, `Store.order(offer)`, `Store.restorePurchases()`, `store.when().approved()`, `tx.finish()` — all present
+- [x] Confirmed deferred finish via manual `tx.finish()` works on both iOS and Android — §2.1 guarantee is full
+- [x] Commit: `docs: document cordova-plugin-purchase 13.x API surface`
 
 #### 1c. Type definitions (90 min)
 
@@ -1035,11 +1045,11 @@ Ship in thin slices. Each phase shippable on its own.
 #### 1d. Native adapter (90 min)
 
 - [ ] Create `src/adapters/native/types.ts` with `NativeAdapter` interface (per §4.1)
-- [ ] Create `src/adapters/native/v5/native-adapter.ts` wrapping `@capgo/native-purchases@7.16.2` per the doc from 1b
+- [ ] Create `src/adapters/native/cdv/native-adapter.ts` wrapping `cordova-plugin-purchase@^13` per the doc from 1b
 - [ ] Create `src/adapters/native/web/web-stub.ts`
 - [ ] Create `src/adapters/native/index.ts` selecting the right adapter via `Capacitor.getPlatform()`
 - [ ] Create `src/lib/platform.ts` (`getPlatform`, `isNative`)
-- [ ] Add tests in `tests/unit/native-adapter.test.ts` for the web stub (rejects with PLATFORM_NOT_SUPPORTED) and a mocked v7 adapter happy path
+- [ ] Add tests in `tests/unit/native-adapter.test.ts` for the web stub (rejects with PLATFORM_NOT_SUPPORTED) and a mocked cdv adapter happy path
 - [ ] Commit: `feat: native adapter v5 + web stub`
 
 #### 1e. Factory + initialize (60 min)
@@ -1058,7 +1068,7 @@ Ship in thin slices. Each phase shippable on its own.
 - [ ] Push to `nossdev/iap`, verify CI green
 - [ ] Commit: `ci: lint + typecheck + test + build pipeline`
 
-**Exit criterion (Phase 1):** `createIAP({ ... })` works on iOS, Android, and web. Web gracefully no-ops purchase calls; iOS/Android hit the v7 adapter. CI is green on `main`. README has a "Status" badge linking to CI.
+**Exit criterion (Phase 1):** `createIAP({ ... })` works on iOS, Android, and web. Web gracefully no-ops purchase calls; iOS/Android hit the cdv adapter. CI is green on `main`. README has a "Status" badge linking to CI.
 
 ### Phase 2 — Storage + entitlement cache (est. 0.5 day)
 - [ ] Implement `PreferencesAdapter` (real Capacitor Preferences)
@@ -1130,18 +1140,20 @@ Ship in thin slices. Each phase shippable on its own.
 
 ## 13. Known Edge Cases & Gotchas
 
-### Capacitor 7 / `@capgo/native-purchases` 7.16.2
+### Capacitor 5 / `cordova-plugin-purchase` ^13
 
-- **Plugin v7 line is frozen upstream after 7.16.2** (later 7.x releases require Cap 8). If a critical bug surfaces, options are: (a) fork and patch, (b) upgrade Infopathy to Cap 8 (would let us use `8.x`), (c) carry a patch via `patch-package`. Document this in CONTRIBUTING.
-- **Different parameter names across plugin versions** may surface as we extend the support matrix. The `native-adapter.ts` is the single point of translation — never let plugin types leak into the library's public types.
+- **The plugin is a Cordova plugin loaded via Capacitor's Cordova bridge.** Consumers must run `npx cap sync` after installing it for the native iOS/Android projects to pick up the plugin code. Document this in the setup guide (Phase 7).
+- **`CdvPurchase` is exposed as a global namespace** (the plugin attaches to `window.CdvPurchase` at module load). The adapter accesses it via `globalThis.CdvPurchase` after a side-effect import. Vitest needs `environment: 'jsdom'` (not `'node'`) for tests to load the plugin without errors.
+- **The plugin's API is event-driven, not Promise-based.** The adapter wraps `.approved()`, `.failed()`, etc. into Promises; consumers of `@nossdev/iap` see the same Promise-based public API.
 
-### v7 plugin specifics
+### cordova-plugin-purchase specifics
 
-- **`acknowledgePurchase({ purchaseToken })`** is the single cross-platform finish/ack call (since v7.14.0). For Android, pass the `purchaseToken`; for iOS, pass the `transactionId` as a string in the same `purchaseToken` argument.
-- **Google Play 3-day window:** unacknowledged Android purchases auto-refund after 3 days. The library acknowledges immediately on backend success; if the backend is down for >3 days, the user is auto-refunded. This is the correct behavior — the user paid for something they don't have.
-- **`autoAcknowledgePurchases: false`** must be set on every `purchaseProduct` call (defers finish on **both iOS and Android** in v7). The adapter does this; consumers don't need to know.
-- **Plugin `getProducts({ productIdentifiers, productType })`:** the plugin's `productType` is Android-only and only required when the catalog has a mix of `inapp` and `subs` items — the adapter dispatches separate calls per product type when needed.
-- **iOS event listeners (`transactionUpdated`, `transactionVerificationFailed`)** fire on app launch for unfinished transactions and for any out-of-band StoreKit updates afterward. The library subscribes in Phase 6 to keep entitlements fresh without requiring a manual `refresh()`.
+- **No `.cancelled()` callback on `When`** — cancellation surfaces through `IError` returned by `Store.order(offer)` with `code === ErrorCode.PAYMENT_CANCELLED`. The adapter maps this to `IAPError(USER_CANCELLED)`.
+- **Google Play 3-day window:** unacknowledged Android purchases auto-refund after 3 days. The library calls `tx.finish()` immediately on backend success; if the backend is down for >3 days, Google auto-refunds. This is the correct behavior — the user paid for something they don't have.
+- **`tx.finish()` is the single cross-platform finish/ack call** — for Android it acknowledges via Google Play Billing; for iOS it calls StoreKit 2's `Transaction.finish()`. The adapter never calls it before backend verifies.
+- **`store.restorePurchases()` re-fires `.approved()`** for owned transactions on subsequent calls. The adapter's long-lived `.approved()` listener captures these into `pendingFinish`; the per-purchase listener has a `settled` flag to avoid double-resolving the original promise.
+- **`store.update()` has a min-interval** (`store.minTimeBetweenUpdates`, default 60s). Calling rapidly is a no-op. The adapter calls it once during bootstrap; consumers can call `iap.refresh()` to force entitlement refresh independently.
+- **Subscription replacement** is handled via the optional `group` field on registered products. Out of v0.1.0 scope; can be added later with a `groupName` config field.
 
 ### iOS-specific
 
@@ -1197,16 +1209,17 @@ These will be tempting. Push back — they belong elsewhere.
 
 Resolved during planning (2026-04-28):
 
-1. **Capacitor target for v0.1.0:** Capacitor 7 (matches Infopathy, the first consumer; Cap 5 was the original assumption but Infopathy is actually on Cap 7). Plugin pinned to `@capgo/native-purchases@7.16.2`. Cap 8 support comes next; Cap 5/6 only if a future consumer needs it.
-2. **License:** MIT.
-3. **Publish scope:** public npm from v0.1.0; GitHub Packages mirror.
-4. **`getCustomerInfo()`-style API:** No. Always go through the consumer backend.
-5. **Native pricing/title cache:** 24-hour TTL with `PRICE_STALE` warning event when stale data is rendered.
-6. **Optimistic-grant pattern:** No built-in support. Document the pattern in `docs/framework-recipes/optimistic-grant.md` for consumers who want it.
+1. **Capacitor target for v0.1.0:** Capacitor 5 (Infopathy production app — `com.ashnutech.infopathy.app` — is on Cap 5 and IAP integration is the last blocker for App Store / Play Store approval). Cap 7+ deferred to v1.x; the v7 adapter built earlier in this project is preserved in git commit `f1d20ed` for restoration when Infopathy migrates Capacitor.
+2. **Plugin choice:** `cordova-plugin-purchase` (`^13.x`). Reason: only free Cap-5-compatible IAP plugin with deferred-finish support. `@capgo/native-purchases@0.0.72` (the only Cap-5-compatible release in that line) lacks `acknowledgePurchase` and `autoAcknowledgePurchases`, so it cannot defer finishing; cordova-plugin-purchase has the canonical async `tx.finish()` pattern.
+3. **License:** MIT.
+4. **Publish scope:** public npm from v0.1.0; GitHub Packages mirror.
+5. **`getCustomerInfo()`-style API:** No. Always go through the consumer backend.
+6. **Native pricing/title cache:** 24-hour TTL with `PRICE_STALE` warning event when stale data is rendered.
+7. **Optimistic-grant pattern:** No built-in support. Document the pattern in `docs/framework-recipes/optimistic-grant.md` for consumers who want it.
 
 Open and tracked:
 
-7. **First production purchase:** target Infopathy sandbox by end of Phase 4; production by end of Phase 8.
+8. **First production purchase:** target Infopathy sandbox by end of Phase 4; production by end of Phase 8.
 
 ---
 
@@ -1222,7 +1235,7 @@ Open and tracked:
 - **Name:** `@nossdev/iap`
 - **Type:** TypeScript library, NOT a Capacitor plugin
 - **Native bridge:** `@capgo/native-purchases` (peer dep, version-matched to Capacitor)
-- **Initial Capacitor target:** 7 (peer-dep range covers 7/8; pinned plugin: `@capgo/native-purchases@7.16.2`)
+- **Initial Capacitor target:** 5 (peer-dep range: `^5.0.0`; pinned plugin: `cordova-plugin-purchase@^13`)
 - **Architecture:** library → consumer's backend → Attesto (library NEVER calls Attesto directly)
 - **Storage:** Capacitor Preferences (with memory adapter for tests + web)
 - **Build:** tsup, dual ESM/CJS, full TypeScript types
@@ -1254,12 +1267,37 @@ Open and tracked:
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
-| R1 | v7 plugin line frozen at 7.16.2 — no upstream bug fixes | Medium | High | Fork-and-patch policy in CONTRIBUTING; pin via `patch-package`; long-term: add Cap 8 adapter and migrate Infopathy |
-| R2 | Plugin behavior diverges between v7.16.2 and v8.x in subtle ways once we add the v8 adapter | Medium | Medium | Tests against both adapters; integration tests use mocked NativeAdapter so core flows are platform-independent |
+| R1 | cordova-plugin-purchase event-driven API leaks edge cases the adapter must paper over (e.g., `.approved()` re-firing during restore, no `.cancelled()` callback) | Medium | Medium | Comprehensive adapter unit tests + Phase 8 sandbox testing on a real device |
+| R2 | Plugin behavior diverges between cdv (v0.1) and `@capgo/native-purchases` (v1+) once Cap 7 migration happens | Medium | Medium | Core flows depend only on `NativeAdapter` interface; integration tests use mocked NativeAdapter so they're plugin-agnostic |
 | R3 | Consumer backend response shape drift breaks zod validation | Medium | Medium | Library fails loudly; consumer can use `responseTransform`; document upgrade path in CHANGELOG |
 | R4 | Network outage during verify leaves transaction unacknowledged on Android beyond 3-day window | Low | Medium | Recovery on init re-attempts; log + alert if `unfinished_transactions` entries are >24h old |
 | R5 | Apple sandbox testing diverges from production behavior for refund/revocation | Medium | Low | Phase 8 includes a real production purchase + refund roundtrip before tagging 0.1.0 |
 | R6 | `@nossdev/iap` API needs breaking changes after first production usage | High (typical for 0.x) | Low | Stay below 1.0 until validated against ≥3 production apps; document each break in CHANGELOG |
+| R7 | Cap 7 migration cost when Infopathy upgrades — adapter rewrite + plugin swap | Medium | Low | v7 adapter preserved in git commit `f1d20ed`; v7 plugin API surface preserved at `docs/internal/_future/plugin-v7-api.md`. Restoration is copy-paste + peer-dep bump (see §18). |
+
+---
+
+## 18. Future: Capacitor 7 migration
+
+When Infopathy migrates to Capacitor 7+, the library bumps to `1.0.0` and replaces (or adds alongside) the cdv adapter. The work is largely already done — preserved in this repository's history.
+
+**Restoration steps:**
+
+1. **Restore the v7 adapter source:**
+   ```
+   git show f1d20ed:src/adapters/native/v7/native-adapter.ts > src/adapters/native/v7/native-adapter.ts
+   ```
+   The file wraps `@capgo/native-purchases@7.16.2` against the same `NativeAdapter` interface — no core-flow changes needed.
+2. **Restore the v7 plugin API doc:** move `docs/internal/_future/plugin-v7-api.md` back to `docs/internal/plugin-v7-api.md`.
+3. **Update `package.json`:**
+   - peerDependencies: switch `@capacitor/core` and `@capacitor/preferences` to `^7.0.0 || ^8.0.0`; add `@capgo/native-purchases: ^7.0.0 || ^8.0.0`; remove `cordova-plugin-purchase`.
+   - devDependencies: install `@capgo/native-purchases@7.16.2`; remove `cordova-plugin-purchase` and `jsdom` (vitest can return to `'node'`).
+4. **Update `src/adapters/native/index.ts`:** detect Cap 7+ at runtime and pick `V7NativeAdapter`. If you want a single library binary that supports both Cap 5 and Cap 7+, keep both adapters and pick based on `Capacitor.getCapabilities().pluginInstalled('CdvPurchase')` (or similar).
+5. **Bump library version to `1.0.0`** — this is a breaking change for Cap 5 consumers (or keep it as `0.x` if both adapters coexist).
+6. **Update README support matrix** (§11 of this PLAN).
+7. **Update tests:** the v7 adapter has its own tests in commit `f1d20ed` — restore them too if you remove the cdv adapter, or run both test suites side by side.
+
+The public `IAP<TEntitlement>` API does not change. Consumer apps just need to bump peer deps and run `npx cap sync`.
 
 ---
 
