@@ -27,6 +27,21 @@ export function maskToken(token: string | null | undefined): string {
   return token.slice(0, VISIBLE_PREFIX_CHARS) + ELLIPSIS;
 }
 
+/**
+ * Mask a credential (auth header value, cookie, API key). Unlike
+ * {@link maskToken}, this NEVER returns the input unchanged — short
+ * sandbox/test tokens (e.g. `secret12`) must still be redacted. Any
+ * non-empty value collapses to either `prefix…` (for ≥8 chars) or just
+ * `…` (for shorter values). Empty input returns empty.
+ *
+ * Use this for anything that grants access if leaked.
+ */
+function maskCredential(value: string | null | undefined): string {
+  if (!value) return '';
+  if (value.length <= VISIBLE_PREFIX_CHARS) return ELLIPSIS;
+  return value.slice(0, VISIBLE_PREFIX_CHARS) + ELLIPSIS;
+}
+
 const SENSITIVE_HEADER_PATTERNS = [
   /^authorization$/i,
   /^cookie$/i,
@@ -57,10 +72,11 @@ function isSensitiveHeader(name: string): boolean {
 
 function redactHeaderValue(value: string): string {
   // Bearer tokens and API keys: mask the credential portion but keep the scheme.
+  // Use maskCredential (not maskToken) so short sandbox tokens are still hidden.
   const bearerMatch = value.match(/^(Bearer|Basic|Token)\s+(.+)$/i);
   if (bearerMatch) {
     const [, scheme, credential] = bearerMatch;
-    return `${scheme} ${maskToken(credential ?? '')}`;
+    return `${scheme} ${maskCredential(credential ?? '')}`;
   }
-  return maskToken(value);
+  return maskCredential(value);
 }

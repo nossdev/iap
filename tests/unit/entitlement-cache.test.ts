@@ -1,18 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { MemoryAdapter } from '../../src/adapters/storage/memory-adapter.js';
 import { EntitlementCache } from '../../src/core/entitlement-cache.js';
 import type { EntitlementBase } from '../../src/types/entitlement.js';
+import { makeSilentLogger } from '../mocks/http-helpers.js';
 
 interface AppEntitlement extends EntitlementBase {
   tier?: 'basic' | 'pro';
 }
 
-const silentLogger = {
-  error: vi.fn(),
-  warn: vi.fn(),
-  info: vi.fn(),
-  debug: vi.fn(),
-};
+const silentLogger = makeSilentLogger();
 
 function makeCache(): {
   cache: EntitlementCache<AppEntitlement>;

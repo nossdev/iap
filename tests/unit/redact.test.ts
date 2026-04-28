@@ -77,4 +77,21 @@ describe('redactHeaders', () => {
     redactHeaders(input);
     expect(input.Authorization).toBe('Bearer secret-token-12345');
   });
+
+  it('CRITICAL — redacts short credentials too (no length short-circuit)', () => {
+    // Sandbox/test credentials are often ≤8 chars. maskToken would return them
+    // unchanged; the credential path uses maskCredential which always redacts.
+    expect(redactHeaders({ Authorization: 'Bearer short' }).Authorization).toBe('Bearer …');
+    expect(redactHeaders({ Authorization: 'Bearer 8charsxx' }).Authorization).toBe('Bearer …');
+    expect(redactHeaders({ Authorization: 'Bearer s' }).Authorization).toBe('Bearer …');
+    expect(redactHeaders({ Cookie: 'short' }).Cookie).toBe('…');
+    expect(redactHeaders({ 'x-api-key': 'tiny' })['x-api-key']).toBe('…');
+  });
+
+  it('redacts non-bearer auth schemes (e.g. AWS signatures)', () => {
+    const result = redactHeaders({
+      Authorization: 'AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE/20260428',
+    });
+    expect(result.Authorization).toBe('AWS4-HMA…');
+  });
 });

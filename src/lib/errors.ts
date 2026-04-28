@@ -20,6 +20,10 @@ export const IAPErrorCode = {
   BACKEND_UNAVAILABLE: 'BACKEND_UNAVAILABLE',
   BACKEND_TIMEOUT: 'BACKEND_TIMEOUT',
   BACKEND_AUTH_FAILED: 'BACKEND_AUTH_FAILED',
+  /** Backend reachable but the response was rejected (non-transient 4xx other
+   *  than auth, malformed JSON, schema violation, 204 No Content on a JSON
+   *  endpoint). Fix the request shape or the backend; do not retry. */
+  BACKEND_BAD_RESPONSE: 'BACKEND_BAD_RESPONSE',
   VERIFICATION_REJECTED: 'VERIFICATION_REJECTED',
 
   // Storage

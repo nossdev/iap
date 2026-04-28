@@ -20,19 +20,56 @@ export const backendEndpointsSchema = z.object({
   restore: z.string().min(1),
 });
 
-export const backendConfigSchema = z.object({
-  baseUrl: z.string().url(),
-  endpoints: backendEndpointsSchema,
-  getAuthHeaders: z
-    .function()
-    .args()
-    .returns(z.union([z.record(z.string()), z.promise(z.record(z.string()))])),
-  requestTransform: z.function().optional(),
-  responseTransform: z.function().optional(),
-  entitlementSchema: z.unknown().optional(),
-  timeoutMs: z.number().int().positive().default(10_000),
-  retries: z.number().int().min(0).max(5).default(2),
-});
+export const backendConfigSchema = z
+  .object({
+    /**
+     * Custom backend transport. If provided, all HTTP-specific fields below
+     * are ignored and the library uses this object directly for backend
+     * operations. Must implement `BackendAdapter`.
+     */
+    adapter: z.unknown().optional(),
+
+    // ----- HTTP-specific fields (used when `adapter` is not provided) -----
+    baseUrl: z.string().url().optional(),
+    endpoints: backendEndpointsSchema.optional(),
+    getAuthHeaders: z
+      .function()
+      .args()
+      .returns(z.union([z.record(z.string()), z.promise(z.record(z.string()))]))
+      .optional(),
+    requestTransform: z.function().optional(),
+    responseTransform: z.function().optional(),
+    entitlementSchema: z.unknown().optional(),
+
+    // ----- Common (apply to both HTTP and custom adapters where relevant) -----
+    timeoutMs: z.number().int().positive().default(10_000),
+    retries: z.number().int().min(0).max(5).default(2),
+  })
+  .superRefine((data, ctx) => {
+    // When no custom adapter, HTTP fields are required.
+    if (data.adapter !== undefined) return;
+    if (!data.baseUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'backend.baseUrl is required when no custom adapter is provided.',
+        path: ['baseUrl'],
+      });
+    }
+    if (!data.endpoints) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'backend.endpoints is required when no custom adapter is provided.',
+        path: ['endpoints'],
+      });
+    }
+    if (!data.getAuthHeaders) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'backend.getAuthHeaders is required when no custom adapter is provided.',
+        path: ['getAuthHeaders'],
+      });
+    }
+  });
 
 export const storageConfigSchema = z.object({
   type: z.enum(['preferences', 'memory', 'custom']).default('preferences'),

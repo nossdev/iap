@@ -36,3 +36,17 @@ export type {
 } from './types/events.js';
 
 export type { Logger, LogLevel } from './lib/logger.js';
+
+// Backend layer (Phase 3) — consumers building a custom transport implement
+// BackendAdapter and pass it via config.backend.adapter. The default HTTP
+// implementation is also exported for advanced use (e.g. custom test setups).
+export type {
+  BackendAdapter,
+  RestoreRequest,
+  RestoreRequestTransaction,
+  VerifyAppleRequest,
+  VerifyGoogleRequest,
+  VerifyResponse,
+} from './adapters/backend/types.js';
+export { HttpBackendAdapter, HttpClient } from './adapters/backend/index.js';
+export type { HttpRequest } from './adapters/backend/http-client.js';

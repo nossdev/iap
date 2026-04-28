@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { selectBackendAdapter } from './adapters/backend/index.js';
+import type { BackendAdapter } from './adapters/backend/types.js';
 import { selectNativeAdapter } from './adapters/native/index.js';
 import type { NativeAdapter } from './adapters/native/types.js';
 import { selectStorageAdapter } from './adapters/storage/index.js';
@@ -18,7 +20,9 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   /**
    * Refresh entitlements from the consumer backend.
    *
-   * Throws `IAPError(NOT_INITIALIZED)` until Phase 3 lands the backend client.
+   * Fetches via the configured `BackendAdapter` (HTTP default or custom),
+   * freezes results, persists them via the storage adapter, and emits
+   * `entitlements-changed`.
    */
   refresh(): Promise<void>;
   /**
@@ -51,6 +55,9 @@ interface IAPInternalState<TEntitlement extends EntitlementBase> {
   /** Populated by initialize(); null beforehand. Lazy to avoid loading
    *  cordova-plugin-purchase on web platforms (PLAN.md §9 / review C4). */
   adapter: NativeAdapter | null;
+  /** Backend transport. Constructed eagerly in the factory so config errors
+   *  surface immediately; methods are not invoked until Phase 4 / 6. */
+  backend: BackendAdapter<TEntitlement>;
   storage: StorageAdapter;
   cache: EntitlementCache<TEntitlement>;
   emitter: TypedEventEmitter<TEntitlement>;
@@ -69,6 +76,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
   const logger = resolveLogger(config.options.logLevel, config.options.logger);
   const storage = selectStorageAdapter(config.storage);
   const cache = new EntitlementCache<TEntitlement>(storage, logger);
+  const backend = selectBackendAdapter<TEntitlement>({ config: config.backend, logger });
   const emitter = new TypedEventEmitter<TEntitlement>();
 
   ensureUniqueProductIds(config.products);
@@ -76,6 +84,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
   const state: IAPInternalState<TEntitlement> = {
     config,
     adapter: null,
+    backend,
     storage,
     cache,
     emitter,
@@ -135,13 +144,25 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
 
     async refresh() {
       requireInitialized(state);
-      // Backend HTTP client lands in Phase 3. Until then, fail loudly so
-      // a consumer wiring `refreshOnResume` (Phase 6) doesn't silently
-      // get stale entitlements.
-      throw new IAPError({
-        code: IAPErrorCode.NOT_INITIALIZED,
-        message: 'refresh() not yet implemented — backend client lands in Phase 3.',
-      });
+      const previous = state.entitlements;
+      const fetched = await state.backend.getEntitlements();
+      const next = freezeAll(fetched);
+
+      // Persist + replace state in a single transition. If save() fails the
+      // in-memory state still reflects what the backend returned (best-effort
+      // cache; the next session will re-fetch on its own refresh).
+      try {
+        await state.cache.save(next);
+        state.cachedAt = Date.now();
+      } catch (error) {
+        state.logger.warn(
+          'Failed to persist refreshed entitlements; in-memory state still updated.',
+          error,
+        );
+      }
+
+      state.entitlements = next;
+      state.emitter.emit('entitlements-changed', { entitlements: next, previous });
     },
 
     async destroy() {

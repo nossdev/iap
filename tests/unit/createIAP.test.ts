@@ -48,6 +48,36 @@ describe('createIAP — config validation', () => {
     ).toThrowError(IAPError);
   });
 
+  it('rejects backend without HTTP fields and without a custom adapter', () => {
+    expect(() =>
+      createIAP({
+        ...validConfig,
+        backend: { timeoutMs: 1000, retries: 0 } as never,
+      }),
+    ).toThrowError(IAPError);
+  });
+
+  it('accepts a custom backend adapter without HTTP fields', () => {
+    const customAdapter = {
+      verifyApple: async () => ({
+        valid: false as const,
+        error: 'NOT_TESTED',
+      }),
+      verifyGoogle: async () => ({
+        valid: false as const,
+        error: 'NOT_TESTED',
+      }),
+      getEntitlements: async () => [],
+      restore: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+    };
+    expect(() =>
+      createIAP({
+        ...validConfig,
+        backend: { adapter: customAdapter },
+      }),
+    ).not.toThrow();
+  });
+
   it('rejects duplicate product ids', () => {
     expect(() =>
       createIAP({
@@ -213,19 +243,51 @@ describe('createIAP — entitlement cache', () => {
     }).toThrow(TypeError);
   });
 
-  it('refresh() throws explicit IAPError until Phase 3 lands', async () => {
+  it('refresh() before initialize() throws NOT_INITIALIZED', async () => {
     const iap = createIAP({
       ...validConfig,
-      storage: { type: 'memory', namespace: 'refresh_test' },
+      storage: { type: 'memory', namespace: 'refresh_uninit' },
+    });
+    await expect(iap.refresh()).rejects.toBeInstanceOf(IAPError);
+  });
+
+  it('refresh() fetches from backend, freezes, persists, and emits entitlements-changed', async () => {
+    const customAdapter = {
+      verifyApple: async () => {
+        throw new Error('not used here');
+      },
+      verifyGoogle: async () => {
+        throw new Error('not used here');
+      },
+      getEntitlements: async () => [
+        { key: 'premium', productId: 'premium_monthly', expiresAt: '2026-12-01T00:00:00Z' },
+      ],
+      restore: async () => {
+        throw new Error('not used here');
+      },
+    };
+
+    const iap = createIAP({
+      products: validConfig.products,
+      backend: { adapter: customAdapter, timeoutMs: 5000, retries: 0 },
+      storage: { type: 'memory', namespace: 'refresh_ok' },
+    });
+    let changedPayload: { entitlements: unknown[]; previous: unknown[] } | null = null;
+    iap.on('entitlements-changed', (p) => {
+      changedPayload = p;
     });
     await iap.initialize();
-    try {
-      await iap.refresh();
-      throw new Error('should have rejected');
-    } catch (error) {
-      expect(error).toBeInstanceOf(IAPError);
-      expect((error as IAPError).message).toMatch(/Phase 3/);
-    }
+    await iap.refresh();
+
+    expect(iap.getEntitlements()).toHaveLength(1);
+    expect(iap.hasEntitlement('premium')).toBe(true);
+    const ent = iap.getEntitlement('premium');
+    expect(Object.isFrozen(ent)).toBe(true);
+    expect(changedPayload).not.toBeNull();
+    expect(changedPayload).not.toBeNull();
+    const payload = changedPayload as unknown as { entitlements: unknown[]; previous: unknown[] };
+    expect(payload.entitlements).toHaveLength(1);
+    expect(payload.previous).toEqual([]);
   });
 
   it('destroy() is idempotent', async () => {
