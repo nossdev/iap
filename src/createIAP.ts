@@ -6,6 +6,8 @@ import type { NativeAdapter } from './adapters/native/types.js';
 import { selectStorageAdapter } from './adapters/storage/index.js';
 import type { StorageAdapter } from './adapters/storage/types.js';
 import { EntitlementCache } from './core/entitlement-cache.js';
+import { PurchaseOrchestrator } from './core/purchase-flow.js';
+import { UnfinishedTransactionsStore } from './core/unfinished-transactions.js';
 import { TypedEventEmitter } from './events/emitter.js';
 import { IAPError, IAPErrorCode } from './lib/errors.js';
 import { type LogLevel, type Logger, createDefaultLogger, isLogger } from './lib/logger.js';
@@ -13,7 +15,8 @@ import { getPlatform, isNative } from './lib/platform.js';
 import { type IAPConfig, type IAPConfigInput, iapConfigSchema } from './types/config.js';
 import type { EntitlementBase } from './types/entitlement.js';
 import type { EventName, EventPayload, Unsubscribe } from './types/events.js';
-import type { ConfiguredProduct } from './types/product.js';
+import type { ConfiguredProduct, Product } from './types/product.js';
+import type { PurchaseResult } from './types/results.js';
 
 export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   initialize(): Promise<void>;
@@ -30,13 +33,40 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
    * (which clears its `pendingFinish` map and removes the long-lived
    * `.approved()` listener on cdv).
    *
-   * NOTE: persisted entitlement cache is NOT cleared. If you're handling
+   * NOTE 1: persisted entitlement cache is NOT cleared. If you're handling
    * a logout for a multi-user app, also call your storage adapter's
    * `clear()` (or the consumer-supplied equivalent) before the next user
    * logs in, otherwise their first read will see the previous user's
    * cached entitlements until `refresh()` returns.
+   *
+   * NOTE 2: calling `destroy()` while a `purchase()` is in flight may
+   * leave the result in an inconsistent state — the backend may have
+   * recorded the entitlement but the native `acknowledge()` call will
+   * be a no-op (because cdv's `pendingFinish` was cleared mid-flow).
+   * On Android this means Google auto-refunds in 3 days. Avoid by
+   * awaiting the in-flight `purchase()` before calling `destroy()`.
    */
   destroy(): Promise<void>;
+
+  /**
+   * Start a purchase. Throws `IAPError` only on impossible states
+   * (NOT_INITIALIZED, ALREADY_IN_PROGRESS, PRODUCT_NOT_FOUND); all other
+   * outcomes — user cancellation, backend rejection, native errors — are
+   * surfaced via the `PurchaseResult` discriminated union so the caller
+   * can render the right UI without try/catch gymnastics.
+   *
+   * Emits `purchase-started`, then exactly one of: `purchase-success`
+   * (+ `entitlements-changed`), `purchase-cancelled`, `purchase-pending`,
+   * `verification-failed`, or `purchase-failed`.
+   */
+  purchase(productId: string): Promise<PurchaseResult<TEntitlement>>;
+
+  /**
+   * Get product info merged with native pricing. Returns one entry per
+   * product the platform store knows about; products configured but not
+   * yet ingested by the store are silently skipped (no error).
+   */
+  getProducts(): Promise<Product[]>;
 
   hasEntitlement(key: string): boolean;
   /** Returns a defensive shallow copy. Each entitlement is frozen. */
@@ -56,10 +86,13 @@ interface IAPInternalState<TEntitlement extends EntitlementBase> {
    *  cordova-plugin-purchase on web platforms (PLAN.md §9 / review C4). */
   adapter: NativeAdapter | null;
   /** Backend transport. Constructed eagerly in the factory so config errors
-   *  surface immediately; methods are not invoked until Phase 4 / 6. */
+   *  surface immediately; methods are not invoked until refresh()/purchase(). */
   backend: BackendAdapter<TEntitlement>;
   storage: StorageAdapter;
   cache: EntitlementCache<TEntitlement>;
+  unfinished: UnfinishedTransactionsStore;
+  /** Constructed lazily in initialize() once the native adapter is resolved. */
+  orchestrator: PurchaseOrchestrator<TEntitlement> | null;
   emitter: TypedEventEmitter<TEntitlement>;
   logger: Logger;
   initialized: boolean;
@@ -76,6 +109,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
   const logger = resolveLogger(config.options.logLevel, config.options.logger);
   const storage = selectStorageAdapter(config.storage);
   const cache = new EntitlementCache<TEntitlement>(storage, logger);
+  const unfinished = new UnfinishedTransactionsStore(storage, logger);
   const backend = selectBackendAdapter<TEntitlement>({ config: config.backend, logger });
   const emitter = new TypedEventEmitter<TEntitlement>();
 
@@ -87,6 +121,8 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
     backend,
     storage,
     cache,
+    unfinished,
+    orchestrator: null,
     emitter,
     logger,
     initialized: false,
@@ -121,6 +157,24 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       // web builds don't pull in cordova-plugin-purchase.
       state.adapter = await selectNativeAdapter({ products: state.config.products });
 
+      // Now that the native adapter is resolved, wire the purchase orchestrator.
+      state.orchestrator = new PurchaseOrchestrator<TEntitlement>({
+        nativeAdapter: state.adapter,
+        backend: state.backend,
+        cache: state.cache,
+        unfinished: state.unfinished,
+        emitter: state.emitter,
+        logger: state.logger,
+        products: state.config.products,
+        getCurrentEntitlements: () => state.entitlements,
+        setEntitlements: (next) => {
+          state.entitlements = freezeAll(next);
+        },
+        setCachePersisted: (cachedAt) => {
+          state.cachedAt = cachedAt;
+        },
+      });
+
       try {
         await state.adapter.isAvailable();
       } catch (error) {
@@ -152,8 +206,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       // in-memory state still reflects what the backend returned (best-effort
       // cache; the next session will re-fetch on its own refresh).
       try {
-        await state.cache.save(next);
-        state.cachedAt = Date.now();
+        state.cachedAt = await state.cache.save(next);
       } catch (error) {
         state.logger.warn(
           'Failed to persist refreshed entitlements; in-memory state still updated.',
@@ -181,6 +234,35 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         }
       }
       state.adapter = null;
+      state.orchestrator = null;
+    },
+
+    async purchase(productId) {
+      requireInitialized(state);
+      // orchestrator is set in initialize() alongside the native adapter,
+      // so it's always present once initialized=true.
+      if (!state.orchestrator) {
+        throw new IAPError({
+          code: IAPErrorCode.NOT_INITIALIZED,
+          message: 'Purchase orchestrator not constructed; this is a library bug.',
+        });
+      }
+      return state.orchestrator.purchase(productId);
+    },
+
+    async getProducts() {
+      requireInitialized(state);
+      // requireInitialized() guarantees state.adapter is set; the explicit
+      // null-check below matches the same defensive pattern used by purchase().
+      if (!state.adapter) {
+        throw new IAPError({
+          code: IAPErrorCode.NOT_INITIALIZED,
+          message: 'Native adapter not constructed; this is a library bug.',
+        });
+      }
+      return state.adapter.getProducts(
+        state.config.products.map((p) => ({ id: p.id, type: p.type })),
+      );
     },
 
     hasEntitlement(key) {
@@ -207,7 +289,12 @@ function freezeAll<T extends object>(items: T[]): T[] {
 
 function parseConfig(input: IAPConfigInput): IAPConfig {
   try {
-    return iapConfigSchema.parse(input);
+    // Schema's `superRefine` has runtime-validated that the function-typed
+    // fields ARE functions (or that an adapter is provided instead). The
+    // overlay type on IAPConfig narrows them from `unknown` to their proper
+    // contracts. Cast at this boundary, not at every use site.
+    const parsed = iapConfigSchema.parse(input);
+    return parsed as unknown as IAPConfig;
   } catch (error) {
     if (error instanceof z.ZodError) {
       const issues = error.issues

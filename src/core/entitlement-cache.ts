@@ -75,10 +75,13 @@ export class EntitlementCache<TEntitlement extends EntitlementBase> {
     return { entitlements: validated, cachedAt: parsed.cachedAt };
   }
 
-  async save(entitlements: TEntitlement[]): Promise<void> {
+  /** Returns the `cachedAt` timestamp written so callers can keep their
+   *  in-memory copy of the timestamp in sync with disk. */
+  async save(entitlements: TEntitlement[]): Promise<number> {
+    const cachedAt = Date.now();
     const envelope: CacheEnvelope<TEntitlement> = {
       entitlements,
-      cachedAt: Date.now(),
+      cachedAt,
     };
     try {
       await this.storage.set(ENTITLEMENTS_KEY, JSON.stringify(envelope));
@@ -90,6 +93,7 @@ export class EntitlementCache<TEntitlement extends EntitlementBase> {
         recoverable: true,
       });
     }
+    return cachedAt;
   }
 
   async clear(): Promise<void> {

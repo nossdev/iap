@@ -6,6 +6,7 @@ export type {
   IAPConfig,
   IAPConfigInput,
   BackendConfig,
+  BackendConfigInput,
   StorageConfig,
   OptionsConfig,
 } from './types/config.js';

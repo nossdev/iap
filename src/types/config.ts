@@ -1,8 +1,9 @@
 import { z } from 'zod';
+import type { HttpRequest } from '../adapters/backend/http-client.js';
 
 export const productTypeSchema = z.enum(['subscription', 'product', 'consumable']);
 
-export const configuredProductSchema = z
+const configuredProductSchema = z
   .object({
     id: z.string().min(1),
     type: productTypeSchema,
@@ -13,14 +14,14 @@ export const configuredProductSchema = z
     path: ['androidPlanId'],
   });
 
-export const backendEndpointsSchema = z.object({
+const backendEndpointsSchema = z.object({
   verifyApple: z.string().min(1),
   verifyGoogle: z.string().min(1),
   entitlements: z.string().min(1),
   restore: z.string().min(1),
 });
 
-export const backendConfigSchema = z
+const backendConfigSchema = z
   .object({
     /**
      * Custom backend transport. If provided, all HTTP-specific fields below
@@ -32,13 +33,16 @@ export const backendConfigSchema = z
     // ----- HTTP-specific fields (used when `adapter` is not provided) -----
     baseUrl: z.string().url().optional(),
     endpoints: backendEndpointsSchema.optional(),
-    getAuthHeaders: z
-      .function()
-      .args()
-      .returns(z.union([z.record(z.string()), z.promise(z.record(z.string()))]))
-      .optional(),
-    requestTransform: z.function().optional(),
-    responseTransform: z.function().optional(),
+    /**
+     * Returns auth headers to merge into every backend request. Called fresh
+     * per request so token refresh works automatically. Type is checked at
+     * runtime via shape guard, not zod (zod can't validate function contracts).
+     */
+    getAuthHeaders: z.unknown().optional(),
+    /** Pre-send request transform. See {@link BackendConfig} for the typed shape. */
+    requestTransform: z.unknown().optional(),
+    /** Post-receive response transform. See {@link BackendConfig} for the typed shape. */
+    responseTransform: z.unknown().optional(),
     entitlementSchema: z.unknown().optional(),
 
     // ----- Common (apply to both HTTP and custom adapters where relevant) -----
@@ -62,22 +66,23 @@ export const backendConfigSchema = z
         path: ['endpoints'],
       });
     }
-    if (!data.getAuthHeaders) {
+    if (typeof data.getAuthHeaders !== 'function') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'backend.getAuthHeaders is required when no custom adapter is provided.',
+        message:
+          'backend.getAuthHeaders must be a function (() => Record<string, string> | Promise<Record<string, string>>) when no custom adapter is provided.',
         path: ['getAuthHeaders'],
       });
     }
   });
 
-export const storageConfigSchema = z.object({
+const storageConfigSchema = z.object({
   type: z.enum(['preferences', 'memory', 'custom']).default('preferences'),
   namespace: z.string().min(1).default('nossdev_iap'),
   adapter: z.unknown().optional(),
 });
 
-export const optionsConfigSchema = z.object({
+const optionsConfigSchema = z.object({
   refreshOnResume: z.boolean().default(true),
   entitlementCacheTtlMs: z
     .number()
@@ -107,8 +112,44 @@ export const iapConfigSchema = z.object({
   }),
 });
 
-export type IAPConfig = z.infer<typeof iapConfigSchema>;
-export type IAPConfigInput = z.input<typeof iapConfigSchema>;
-export type BackendConfig = z.infer<typeof backendConfigSchema>;
+type RawBackendConfig = z.infer<typeof backendConfigSchema>;
+type RawBackendConfigInput = z.input<typeof backendConfigSchema>;
+
+/**
+ * Replace the schema's `unknown` typings for function-shaped fields with
+ * their precise TS contracts. The schema captures the *structural* shape
+ * and runtime validates "is a function" via `superRefine`; this overlay
+ * gives consumers proper IDE autocomplete and removes the need for
+ * `as never` casts inside the HTTP adapter.
+ *
+ * Zod's `z.function()` would type these as `(...args: unknown[]) => unknown`
+ * which is too wide, and zod can't validate a function *contract* at runtime
+ * anyway — only the existence of a function reference.
+ */
+type FunctionTypedBackendOverlay = {
+  getAuthHeaders?: () => Record<string, string> | Promise<Record<string, string>>;
+  requestTransform?: (req: HttpRequest) => HttpRequest | Promise<HttpRequest>;
+  responseTransform?: (raw: unknown) => unknown | Promise<unknown>;
+};
+
+export type BackendConfig = Omit<
+  RawBackendConfig,
+  'getAuthHeaders' | 'requestTransform' | 'responseTransform'
+> &
+  FunctionTypedBackendOverlay;
+
+export type BackendConfigInput = Omit<
+  RawBackendConfigInput,
+  'getAuthHeaders' | 'requestTransform' | 'responseTransform'
+> &
+  FunctionTypedBackendOverlay;
+
+type RawIAPConfig = z.infer<typeof iapConfigSchema>;
+type RawIAPConfigInput = z.input<typeof iapConfigSchema>;
+
+export type IAPConfig = Omit<RawIAPConfig, 'backend'> & { backend: BackendConfig };
+export type IAPConfigInput = Omit<RawIAPConfigInput, 'backend'> & {
+  backend: BackendConfigInput;
+};
 export type StorageConfig = z.infer<typeof storageConfigSchema>;
 export type OptionsConfig = z.infer<typeof optionsConfigSchema>;

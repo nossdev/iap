@@ -50,9 +50,7 @@ export function selectBackendAdapter<TEntitlement extends EntitlementBase = Enti
   return new HttpBackendAdapter<TEntitlement>({
     baseUrl: config.baseUrl,
     endpoints: config.endpoints,
-    getAuthHeaders: config.getAuthHeaders as () =>
-      | Record<string, string>
-      | Promise<Record<string, string>>,
+    getAuthHeaders: config.getAuthHeaders,
     requestTransform: config.requestTransform,
     responseTransform: config.responseTransform,
     timeoutMs: config.timeoutMs,

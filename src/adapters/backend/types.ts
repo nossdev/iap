@@ -59,13 +59,13 @@ const verifiedTransactionSchema = z
   })
   .passthrough();
 
-export const verifySuccessSchema = z.object({
+const verifySuccessSchema = z.object({
   valid: z.literal(true),
   entitlements: z.array(passthroughEntitlementSchema),
   transaction: verifiedTransactionSchema,
 });
 
-export const verifyFailureSchema = z.object({
+const verifyFailureSchema = z.object({
   valid: z.literal(false),
   /** Stable machine-readable code, e.g. "TRANSACTION_NOT_FOUND". */
   error: z.string(),

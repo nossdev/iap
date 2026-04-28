@@ -329,13 +329,25 @@ function normalizeTransaction(
 ): NativeTransaction {
   const platform: IAPPlatform = tx.platform === 'ios-appstore' ? 'apple' : 'google';
   const productId = tx.products[0]?.id ?? '';
-  return {
+  const result: NativeTransaction = {
     platform,
     productId,
     token,
     productType,
     raw: tx,
   };
+  if (platform === 'google') {
+    const packageName = googlePackageName(tx);
+    if (packageName) result.packageName = packageName;
+  }
+  return result;
+}
+
+function googlePackageName(tx: CdvPurchase.Transaction): string | undefined {
+  // GooglePlay.Transaction.nativePurchase is a Bridge.Purchase which carries
+  // the app's package name, required by the verifyGoogle request body.
+  const googleTx = tx as unknown as { nativePurchase?: { packageName?: string } };
+  return googleTx.nativePurchase?.packageName;
 }
 
 function transactionToken(tx: CdvPurchase.Transaction): string | null {

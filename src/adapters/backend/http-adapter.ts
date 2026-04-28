@@ -58,8 +58,8 @@ export class HttpBackendAdapter<TEntitlement extends EntitlementBase = Entitleme
       timeoutMs: opts.timeoutMs,
       retries: opts.retries,
       logger: opts.logger,
-      ...(opts.requestTransform ? { requestTransform: opts.requestTransform as never } : {}),
-      ...(opts.responseTransform ? { responseTransform: opts.responseTransform as never } : {}),
+      ...(opts.requestTransform ? { requestTransform: opts.requestTransform } : {}),
+      ...(opts.responseTransform ? { responseTransform: opts.responseTransform } : {}),
       ...(opts.fetch ? { fetch: opts.fetch } : {}),
     };
     this.http = new HttpClient(httpClientOpts);
