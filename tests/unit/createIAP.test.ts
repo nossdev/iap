@@ -416,3 +416,107 @@ describe('createIAP — Phase 6 init wiring', () => {
     expect(iap.hasEntitlement('fresh')).toBe(true);
   });
 });
+
+describe('createIAP — web platform skip paths (L7)', () => {
+  // The test runtime defaults to platform='web' via jsdom (no native bindings).
+  // These tests assert that recovery and resume listener are correctly
+  // gated behind isNative() and skipped on web.
+
+  it('recovery is NOT run on web even when recoverUnfinishedTransactions: true', async () => {
+    const verifyApple = vi.fn(async () => ({
+      valid: true as const,
+      entitlements: [] as Array<{ key: string; productId: string; expiresAt: string | null }>,
+      transaction: { id: 'tx', productId: 'premium_monthly' },
+    }));
+    const customAdapter = {
+      verifyApple,
+      verifyGoogle: async () => ({ valid: false as const, error: 'NOT_USED' }),
+      getEntitlements: async () => [],
+      restore: async () => ({ valid: false as const, error: 'NOT_USED' }),
+    };
+    // Pre-seed an entry into Preferences-backed memory storage by routing
+    // through a custom adapter we can pre-populate.
+    const backing = new Map<string, string>();
+    backing.set(
+      'unfinished_transactions',
+      JSON.stringify([
+        {
+          platform: 'apple',
+          productId: 'premium_monthly',
+          token: '2000000111',
+          productType: 'subscription',
+          recordedAt: new Date().toISOString(),
+        },
+      ]),
+    );
+    const customStorage = {
+      async get(key: string) {
+        return backing.get(key) ?? null;
+      },
+      async set(key: string, value: string) {
+        backing.set(key, value);
+      },
+      async remove(key: string) {
+        backing.delete(key);
+      },
+      async clear() {
+        backing.clear();
+      },
+    };
+
+    const iap = createIAP({
+      ...validConfig,
+      backend: { adapter: customAdapter, timeoutMs: 5000, retries: 0 },
+      storage: { type: 'custom', namespace: 'web_skip_recovery', adapter: customStorage },
+      options: {
+        refreshOnResume: false,
+        entitlementCacheTtlMs: 60 * 60 * 1000,
+        recoverUnfinishedTransactions: true, // explicitly enabled, but web should skip
+        recoveryMaxBatch: 50,
+        productPriceCacheTtlMs: 24 * 60 * 60 * 1000,
+        logLevel: 'silent',
+      },
+    });
+
+    await iap.initialize();
+
+    // CRITICAL: even though recovery is enabled, web platform skips it →
+    // backend.verifyApple should never have been called.
+    expect(verifyApple).not.toHaveBeenCalled();
+    // The pre-seeded unfinished entry remains untouched in storage
+    expect(JSON.parse(backing.get('unfinished_transactions') ?? '[]')).toHaveLength(1);
+  });
+
+  it('resume listener is NOT attached on web even when refreshOnResume: true', async () => {
+    const getEntitlements = vi.fn(async () => []);
+    const customAdapter = {
+      verifyApple: async () => ({ valid: false as const, error: 'NOT_USED' }),
+      verifyGoogle: async () => ({ valid: false as const, error: 'NOT_USED' }),
+      getEntitlements,
+      restore: async () => ({ valid: false as const, error: 'NOT_USED' }),
+    };
+
+    const iap = createIAP({
+      ...validConfig,
+      backend: { adapter: customAdapter, timeoutMs: 5000, retries: 0 },
+      storage: { type: 'memory', namespace: 'web_skip_resume' },
+      options: {
+        refreshOnResume: true, // explicitly enabled, but web should skip listener
+        entitlementCacheTtlMs: 60 * 60 * 1000,
+        recoverUnfinishedTransactions: false,
+        recoveryMaxBatch: 50,
+        productPriceCacheTtlMs: 24 * 60 * 60 * 1000,
+        logLevel: 'silent',
+      },
+    });
+
+    await iap.initialize();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // No resume listener was attached → no refresh fired automatically.
+    expect(getEntitlements).not.toHaveBeenCalled();
+    // Manual refresh still works
+    await iap.refresh();
+    expect(getEntitlements).toHaveBeenCalledTimes(1);
+  });
+});

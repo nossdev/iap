@@ -52,6 +52,7 @@ function makeRecovery<T extends EntitlementBase = EntitlementBase>(opts: {
     setCachePersisted: (ts) => {
       state.cachedAt = ts;
     },
+    maxBatch: 50,
   });
 
   return { recoverer, state, events, unfinished, storage };
@@ -338,6 +339,138 @@ describe('RecoveryOrchestrator — multi-entry batch', () => {
   });
 });
 
+describe('RecoveryOrchestrator — parallelism (L1)', () => {
+  it('verifies entries in parallel — concurrency observable via shared timing', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const verifyApple = async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 10));
+      inFlight -= 1;
+      return {
+        valid: true as const,
+        entitlements: [
+          { key: 'premium', productId: 'premium_monthly', expiresAt: null } as EntitlementBase,
+        ],
+        transaction: { id: 'tx', productId: 'premium_monthly' },
+      };
+    };
+    const acknowledgeSpy = vi.fn(async () => {});
+    const { recoverer, unfinished, state } = makeRecovery({
+      nativeAdapter: makeNativeAdapter({ acknowledge: acknowledgeSpy }),
+      backend: makeBackend({ verifyApple }),
+    });
+    await unfinished.add({ ...sampleAppleTx, token: 'tok-1' });
+    await unfinished.add({ ...sampleAppleTx, token: 'tok-2' });
+    await unfinished.add({ ...sampleAppleTx, token: 'tok-3' });
+
+    const result = await recoverer.recoverUnfinishedTransactions();
+
+    expect(result.recovered).toBe(3);
+    expect(acknowledgeSpy).toHaveBeenCalledTimes(3);
+    expect(state.entitlements).toHaveLength(1);
+    // Parallel execution: at least 2 verifies should overlap. (Sequential
+    // execution would have maxInFlight === 1 throughout.)
+    expect(maxInFlight).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('RecoveryOrchestrator — batch cap (L2)', () => {
+  it('inspects at most maxBatch entries; remainder stays for next launch', async () => {
+    const verifySpy = vi.fn(async () => ({
+      valid: true as const,
+      entitlements: [
+        { key: 'premium', productId: 'premium_monthly', expiresAt: null } as EntitlementBase,
+      ],
+      transaction: { id: 'tx', productId: 'premium_monthly' },
+    }));
+    const { recoverer, unfinished } = makeRecovery({
+      backend: makeBackend({ verifyApple: verifySpy }),
+    });
+    // Pre-seed 100 entries
+    for (let i = 0; i < 100; i++) {
+      await unfinished.add({ ...sampleAppleTx, token: `tok-${i.toString().padStart(3, '0')}` });
+    }
+
+    const result = await recoverer.recoverUnfinishedTransactions();
+
+    // makeRecovery defaults maxBatch to 50
+    expect(result.inspected).toBe(50);
+    expect(result.recovered).toBe(50);
+    expect(verifySpy).toHaveBeenCalledTimes(50);
+    // 50 entries remain in the unfinished list for next launch
+    expect((await unfinished.list()).length).toBe(50);
+  });
+
+  it('does not log the cap warning when entries are within the cap', async () => {
+    const verifySpy = vi.fn(async () => ({
+      valid: true as const,
+      entitlements: [],
+      transaction: { id: 'tx', productId: 'premium_monthly' },
+    }));
+    const infoSpy = vi.spyOn(silentLogger, 'info');
+    const { recoverer, unfinished } = makeRecovery({
+      backend: makeBackend({ verifyApple: verifySpy }),
+    });
+    await unfinished.add(sampleAppleTx);
+
+    await recoverer.recoverUnfinishedTransactions();
+
+    // No "X/Y" cap warning since 1 < 50
+    const capCalls = infoSpy.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && c[0].includes('subsequent launches'),
+    );
+    expect(capCalls).toHaveLength(0);
+    infoSpy.mockRestore();
+  });
+});
+
+describe('RecoveryOrchestrator — emit dedup (L3)', () => {
+  it('does NOT emit entitlements-changed when content is unchanged', async () => {
+    const initial: EntitlementBase[] = [
+      { key: 'premium', productId: 'premium_monthly', expiresAt: null },
+    ];
+    const verifyApple = async () => ({
+      valid: true as const,
+      entitlements: initial,
+      transaction: { id: 'tx', productId: 'premium_monthly' },
+    });
+    const { recoverer, events, unfinished } = makeRecovery({
+      backend: makeBackend({ verifyApple }),
+      initialEntitlements: initial,
+    });
+    await unfinished.add(sampleAppleTx);
+
+    const result = await recoverer.recoverUnfinishedTransactions();
+    expect(result.recovered).toBe(1);
+    // No entitlements-changed because content is identical
+    expect(events.filter((e) => e.name === 'entitlements-changed')).toHaveLength(0);
+  });
+
+  it('emits entitlements-changed when content actually changed', async () => {
+    const initial: EntitlementBase[] = [
+      { key: 'premium', productId: 'premium_monthly', expiresAt: '2026-01-01T00:00:00Z' },
+    ];
+    const verifyApple = async () => ({
+      valid: true as const,
+      entitlements: [
+        // Same key but new expiresAt → content changed
+        { key: 'premium', productId: 'premium_monthly', expiresAt: '2026-12-01T00:00:00Z' },
+      ] as EntitlementBase[],
+      transaction: { id: 'tx', productId: 'premium_monthly' },
+    });
+    const { recoverer, events, unfinished } = makeRecovery({
+      backend: makeBackend({ verifyApple }),
+      initialEntitlements: initial,
+    });
+    await unfinished.add(sampleAppleTx);
+
+    await recoverer.recoverUnfinishedTransactions();
+    expect(events.filter((e) => e.name === 'entitlements-changed')).toHaveLength(1);
+  });
+});
+
 describe('RecoveryOrchestrator — defensive paths', () => {
   it('cache.save failure leaves in-memory state updated', async () => {
     const failingStorage = {
@@ -382,6 +515,7 @@ describe('RecoveryOrchestrator — defensive paths', () => {
       setCachePersisted: (ts) => {
         state.cachedAt = ts;
       },
+      maxBatch: 50,
     });
 
     const result = await recoverer.recoverUnfinishedTransactions();

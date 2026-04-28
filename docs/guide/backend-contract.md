@@ -1,0 +1,283 @@
+# Backend contract
+
+Your backend implements four endpoints. The library calls them; they call [Attesto](https://attesto.nossdev.com). This page documents the exact request/response shapes the library expects.
+
+::: tip Implementing a custom transport?
+If your backend isn't HTTP/JSON (GraphQL, Firebase, Supabase, gRPC-web), implement a [`BackendAdapter`](/api/backend-adapter) instead. The shapes below still apply at the domain level — only the wire encoding changes.
+:::
+
+## Overview
+
+| Endpoint                | Method | Purpose                                              |
+|-------------------------|--------|------------------------------------------------------|
+| `verifyApple`           | POST   | Validate one Apple StoreKit transaction              |
+| `verifyGoogle`          | POST   | Validate one Google Play Billing transaction         |
+| `entitlements`          | GET    | Return the user's current entitlements               |
+| `restore`               | POST   | Validate a batch of platform receipts (re-link user) |
+
+Paths are configured via `config.backend.endpoints`. The defaults shown in [Configuration](/guide/configuration) — `/api/iap/verify/apple` etc. — are convention, not required.
+
+## Authentication
+
+The library calls `config.backend.getAuthHeaders()` **before every request** and merges the returned headers into the outgoing call. Your backend authenticates the user from those headers (typically `Authorization: Bearer <jwt>`).
+
+If your backend returns 401/403, the library throws `IAPError(BACKEND_AUTH_FAILED)` and does not retry — that's a fatal client-side problem, not a transient one.
+
+## `verifyApple`
+
+```http
+POST <baseUrl><endpoints.verifyApple>
+Content-Type: application/json
+Authorization: Bearer <user token>
+
+{
+  "platform": "apple",
+  "token": "2000000123456789",
+  "productId": "premium_monthly",
+  "productType": "subscription"
+}
+```
+
+- `token` — StoreKit 2 `transactionId`. The numeric string the plugin gives us.
+- `productType` — `'subscription' | 'product' | 'consumable'`. Helps your backend decide expiry semantics.
+
+### Successful response
+
+```json
+{
+  "valid": true,
+  "transaction": {
+    "id": "2000000123456789",
+    "productId": "premium_monthly",
+    "expiresAt": "2026-04-30T12:00:00Z",
+    "verifiedAt": "2026-03-30T12:00:00Z"
+  },
+  "entitlements": [
+    {
+      "key": "premium",
+      "productId": "premium_monthly",
+      "expiresAt": "2026-04-30T12:00:00Z",
+      "tier": "pro"
+    }
+  ]
+}
+```
+
+- `expiresAt` — ISO-8601 string or `null` for one-time non-consumables.
+- `entitlements` — the user's **full** entitlement set after this verification (not a delta). The library replaces the cache with this list.
+- Custom fields on entitlement objects (e.g. `tier`) ride through unvalidated. Type them via `createIAP<MyEntitlement>` so consumer code stays typed.
+
+### Rejected response
+
+```json
+{
+  "valid": false,
+  "reason": "receipt_invalid"
+}
+```
+
+When `valid: false`, the library throws `IAPError(VERIFICATION_REJECTED)`. The transaction stays in the unfinished queue; you can use `iap.refresh()` to re-attempt later, but the library does NOT auto-retry rejections (transient backend errors are retried; explicit rejections are not).
+
+### Internal flow
+
+```
+client → your /verify/apple → Attesto POST /v1/apple/verify
+       ←                    ←   { valid, expiresAt, ... }
+```
+
+Your backend translates Attesto's verdict into your entitlement model (look up the user, decide tier from product, set/update DB row, return your entitlement shape).
+
+## `verifyGoogle`
+
+Identical to `verifyApple` except for two extra Android-specific fields:
+
+```json
+{
+  "platform": "google",
+  "token": "ojnbalfgmieckdfgjnpekoam.AO-J1OyeQ8R...",
+  "productId": "premium_monthly",
+  "productType": "subscription",
+  "packageName": "com.example.myapp",
+  "androidPlanId": "monthly-plan"
+}
+```
+
+- `token` — Play Billing `purchaseToken`. Long opaque string.
+- `packageName` — required by Attesto's `/v1/google/verify` (Google Play's `purchases.subscriptions.get` is keyed on the package).
+- `androidPlanId` — base plan id, when the product is a subscription with multiple plans.
+
+Response shape is identical to `verifyApple`.
+
+## `entitlements`
+
+```http
+GET <baseUrl><endpoints.entitlements>
+Authorization: Bearer <user token>
+```
+
+### Response
+
+```json
+{
+  "entitlements": [
+    {
+      "key": "premium",
+      "productId": "premium_monthly",
+      "expiresAt": "2026-04-30T12:00:00Z",
+      "tier": "pro"
+    }
+  ]
+}
+```
+
+This is the canonical refresh path. Called by:
+
+- `iap.refresh()` (manual)
+- App resume (when `refreshOnResume: true`)
+- Cache TTL expiry (background refresh after `initialize()` emits `ready`)
+
+The response replaces the entire local cache. Always return the full set, not a delta.
+
+::: warning Empty list is meaningful
+`{ "entitlements": [] }` means the user currently has **no** entitlements. The library will clear its cache and emit `entitlements-changed` with `entitlements: []`. Consumers should handle the empty case explicitly (lock premium UI, show paywall).
+:::
+
+## `restore`
+
+```http
+POST <baseUrl><endpoints.restore>
+Content-Type: application/json
+Authorization: Bearer <user token>
+
+{
+  "transactions": [
+    {
+      "platform": "apple",
+      "token": "2000000123456789",
+      "productId": "premium_monthly",
+      "productType": "subscription"
+    },
+    {
+      "platform": "apple",
+      "token": "2000000987654321",
+      "productId": "remove_ads",
+      "productType": "product"
+    }
+  ]
+}
+```
+
+The library calls this when the consumer invokes `iap.restorePurchases()` — typically wired to a "Restore Purchases" button. The library:
+
+1. Asks the native plugin for all owned transactions (`getOwnedTransactions()`).
+2. Sends them in one request to `/restore`.
+3. Updates the entitlement cache from the consolidated response.
+
+### Response
+
+```json
+{
+  "restored": 2,
+  "entitlements": [
+    {
+      "key": "premium",
+      "productId": "premium_monthly",
+      "expiresAt": "2026-04-30T12:00:00Z"
+    },
+    {
+      "key": "remove_ads",
+      "productId": "remove_ads",
+      "expiresAt": null
+    }
+  ]
+}
+```
+
+- `restored` — count of receipts your backend successfully validated. Surface this in your UI ("Restored 2 purchases").
+- `entitlements` — full entitlement set after restore (replaces cache).
+
+If a single receipt in the batch is invalid, your backend should still validate the rest and return the consolidated state — the library doesn't have per-receipt failure handling for restore (it's an idempotent re-link, not a paid purchase).
+
+## Response transforms
+
+If your backend wraps responses in an envelope (`{ data: ..., meta: ... }`), use the optional `responseTransform`:
+
+```typescript
+backend: {
+  // ...
+  responseTransform: (raw) => raw.data,
+};
+```
+
+Runs on the parsed JSON before the library's zod validation. See [Configuration → backend](/guide/configuration#backend).
+
+## Error responses
+
+The library distinguishes four error categories — all observable as `IAPErrorCode` values:
+
+| HTTP / condition                      | Code                       | Retried? |
+|---------------------------------------|----------------------------|----------|
+| Network failure, DNS, connection drop | `BACKEND_UNAVAILABLE`      | yes      |
+| Timeout (`timeoutMs` exceeded)        | `BACKEND_TIMEOUT`          | yes      |
+| 5xx                                   | `BACKEND_UNAVAILABLE`      | yes      |
+| 408, 429                              | `BACKEND_UNAVAILABLE`      | yes      |
+| 401, 403                              | `BACKEND_AUTH_FAILED`      | no       |
+| Other 4xx, malformed JSON, schema fail | `BACKEND_BAD_RESPONSE`    | no       |
+| `{ valid: false }` from verify        | `VERIFICATION_REJECTED`    | no       |
+
+Retry count comes from `config.backend.retries` (default 2, max 5). Backoff is exponential with jitter.
+
+## Reference implementation sketch
+
+A minimal Express handler — not production code, just the shape:
+
+```typescript
+import express from 'express';
+import { Attesto } from '@nossdev/attesto-server';
+
+const app = express();
+const attesto = new Attesto({ apiKey: process.env.ATTESTO_KEY });
+
+app.post('/api/iap/verify/apple', requireAuth, async (req, res) => {
+  const { token, productId, productType } = req.body;
+  const userId = req.user.id;
+
+  const verdict = await attesto.verifyApple({
+    transactionId: token,
+    productId,
+  });
+
+  if (!verdict.valid) {
+    return res.json({ valid: false, reason: verdict.reason });
+  }
+
+  await db.entitlements.upsert({
+    userId,
+    key: keyForProduct(productId),
+    productId,
+    expiresAt: verdict.expiresAt,
+    tier: tierForProduct(productId),
+  });
+
+  const entitlements = await db.entitlements.findActive(userId);
+
+  res.json({
+    valid: true,
+    transaction: {
+      id: token,
+      productId,
+      expiresAt: verdict.expiresAt,
+      verifiedAt: new Date().toISOString(),
+    },
+    entitlements,
+  });
+});
+```
+
+The same pattern repeats for `/verify/google`, `/entitlements`, `/restore`. See the Attesto docs for the full server SDK reference.
+
+## Next
+
+- [Configuration](/guide/configuration) — how to point the library at your endpoints
+- [Error handling](/guide/error-handling) — what your UI does with each error code
+- [`BackendAdapter`](/api/backend-adapter) — for non-HTTP transports

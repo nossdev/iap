@@ -11,7 +11,7 @@ import type { Logger } from '../lib/logger.js';
 import type { EntitlementBase } from '../types/entitlement.js';
 import type { RestoreResult } from '../types/results.js';
 import type { NativeTransaction } from '../types/transaction.js';
-import type { EntitlementCache } from './entitlement-cache.js';
+import { type EntitlementCache, entitlementsEqual } from './entitlement-cache.js';
 import type { UnfinishedTransactionsStore } from './unfinished-transactions.js';
 
 interface RestoreOrchestratorDeps<TEntitlement extends EntitlementBase> {
@@ -139,7 +139,12 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
 
     const next = this.deps.getCurrentEntitlements();
     emitter.emit('restore-completed', { restored: owned.length, entitlements: next });
-    emitter.emit('entitlements-changed', { entitlements: next, previous });
+
+    // L3: skip the emit when content is unchanged (avoids spurious re-renders
+    // in reactive consumer stores that subscribe to entitlements-changed).
+    if (!entitlementsEqual(previous, next)) {
+      emitter.emit('entitlements-changed', { entitlements: next, previous });
+    }
 
     return { restored: owned.length, entitlements: next };
   }

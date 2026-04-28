@@ -9,7 +9,7 @@ import {
   type AppResumeListenerHandle,
   attachAppResumeListener,
 } from './core/app-resume-listener.js';
-import { EntitlementCache } from './core/entitlement-cache.js';
+import { EntitlementCache, entitlementsEqual } from './core/entitlement-cache.js';
 import { PurchaseOrchestrator } from './core/purchase-flow.js';
 import { RecoveryOrchestrator } from './core/recovery-flow.js';
 import { RestoreOrchestrator } from './core/restore-flow.js';
@@ -222,7 +222,10 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         products: state.config.products,
       });
       state.restorer = new RestoreOrchestrator<TEntitlement>(sharedDeps);
-      state.recoverer = new RecoveryOrchestrator<TEntitlement>(sharedDeps);
+      state.recoverer = new RecoveryOrchestrator<TEntitlement>({
+        ...sharedDeps,
+        maxBatch: state.config.options.recoveryMaxBatch,
+      });
 
       try {
         await state.adapter.isAvailable();
@@ -318,7 +321,10 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       }
 
       state.entitlements = next;
-      state.emitter.emit('entitlements-changed', { entitlements: next, previous });
+      // L3: skip the emit when content is unchanged.
+      if (!entitlementsEqual(previous, next)) {
+        state.emitter.emit('entitlements-changed', { entitlements: next, previous });
+      }
     },
 
     async destroy() {

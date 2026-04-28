@@ -62,11 +62,3 @@ export function selectBackendAdapter<TEntitlement extends EntitlementBase = Enti
 
 export { HttpBackendAdapter } from './http-adapter.js';
 export { HttpClient } from './http-client.js';
-export type {
-  BackendAdapter,
-  RestoreRequest,
-  RestoreRequestTransaction,
-  VerifyAppleRequest,
-  VerifyGoogleRequest,
-  VerifyResponse,
-} from './types.js';

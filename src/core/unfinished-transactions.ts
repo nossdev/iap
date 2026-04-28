@@ -36,6 +36,15 @@ export type UnfinishedTransaction = z.infer<typeof unfinishedEntrySchema>;
  * silently and reported as an empty list rather than crashing initialize.
  */
 export class UnfinishedTransactionsStore {
+  /**
+   * Serializes mutating operations (`add` / `remove`) so concurrent callers
+   * don't race the read-modify-write on the storage key. Phase 6's
+   * parallel recovery exposed this — multiple `remove()` calls in flight
+   * could each `list()` the same snapshot and overwrite each other's
+   * `persist()`.
+   */
+  private mutationLock: Promise<void> = Promise.resolve();
+
   constructor(
     private readonly storage: StorageAdapter,
     private readonly logger: Logger,
@@ -76,30 +85,54 @@ export class UnfinishedTransactionsStore {
    * purchase race for the same StoreKit replay).
    */
   async add(tx: NativeTransaction): Promise<void> {
-    const current = await this.list();
-    if (current.some((e) => e.token === tx.token)) return;
-    const entry: UnfinishedTransaction = {
-      platform: tx.platform,
-      productId: tx.productId,
-      token: tx.token,
-      productType: tx.productType,
-      ...(tx.packageName ? { packageName: tx.packageName } : {}),
-      recordedAt: new Date().toISOString(),
-    };
-    await this.persist([...current, entry]);
+    return this.runExclusive(async () => {
+      const current = await this.list();
+      if (current.some((e) => e.token === tx.token)) return;
+      const entry: UnfinishedTransaction = {
+        platform: tx.platform,
+        productId: tx.productId,
+        token: tx.token,
+        productType: tx.productType,
+        ...(tx.packageName ? { packageName: tx.packageName } : {}),
+        recordedAt: new Date().toISOString(),
+      };
+      await this.persist([...current, entry]);
+    });
   }
 
   /** Remove the entry with the given token. No-op if not present. */
   async remove(token: string): Promise<void> {
-    const current = await this.list();
-    const next = current.filter((e) => e.token !== token);
-    if (next.length === current.length) return;
-    await this.persist(next);
+    return this.runExclusive(async () => {
+      const current = await this.list();
+      const next = current.filter((e) => e.token !== token);
+      if (next.length === current.length) return;
+      await this.persist(next);
+    });
   }
 
   /** Clear every unfinished entry. */
   async clear(): Promise<void> {
-    await this.safeClear();
+    return this.runExclusive(() => this.safeClear());
+  }
+
+  /**
+   * Run `fn` with exclusive access to the storage key. Implements a simple
+   * promise chain — every mutation awaits the previous one's completion.
+   * Reads (`list()`) are NOT serialized because they're tolerant of stale
+   * snapshots (callers either compose or accept the read-once semantic).
+   */
+  private async runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = this.mutationLock;
+    let release!: () => void;
+    this.mutationLock = new Promise((resolve) => {
+      release = resolve;
+    });
+    try {
+      await prev;
+      return await fn();
+    } finally {
+      release();
+    }
   }
 
   private async persist(entries: UnfinishedTransaction[]): Promise<void> {

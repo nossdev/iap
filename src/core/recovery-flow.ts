@@ -5,7 +5,7 @@ import type { Logger } from '../lib/logger.js';
 import { maskToken } from '../lib/redact.js';
 import type { EntitlementBase } from '../types/entitlement.js';
 import type { NativeTransaction } from '../types/transaction.js';
-import type { EntitlementCache } from './entitlement-cache.js';
+import { type EntitlementCache, entitlementsEqual } from './entitlement-cache.js';
 import type {
   UnfinishedTransaction,
   UnfinishedTransactionsStore,
@@ -22,6 +22,8 @@ interface RecoveryOrchestratorDeps<TEntitlement extends EntitlementBase> {
   getCurrentEntitlements: () => TEntitlement[];
   setEntitlements: (next: TEntitlement[]) => void;
   setCachePersisted: (cachedAt: number) => void;
+  /** Cap on entries inspected per launch (config.options.recoveryMaxBatch). */
+  maxBatch: number;
 }
 
 interface RecoveryResult {
@@ -63,23 +65,49 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
   constructor(private readonly deps: RecoveryOrchestratorDeps<TEntitlement>) {}
 
   async recoverUnfinishedTransactions(): Promise<RecoveryResult> {
-    const { unfinished, logger } = this.deps;
-    const entries = await unfinished.list();
-    if (entries.length === 0) {
+    const { unfinished, logger, maxBatch } = this.deps;
+    const allEntries = await unfinished.list();
+    if (allEntries.length === 0) {
       return { recovered: 0, failures: 0, inspected: 0 };
     }
 
-    logger.debug(`Recovery: inspecting ${entries.length} unfinished transaction(s).`);
+    // L2: cap inspected entries per launch. Excess entries stay in storage
+    // and are processed on subsequent launches.
+    const entries = allEntries.slice(0, maxBatch);
+    if (allEntries.length > maxBatch) {
+      logger.info(
+        `Recovery: inspecting ${entries.length}/${allEntries.length} entries; remaining ${allEntries.length - entries.length} will be processed on subsequent launches.`,
+      );
+    } else {
+      logger.debug(`Recovery: inspecting ${entries.length} unfinished transaction(s).`);
+    }
+
+    // L1: parallelize per-entry verify→ack→remove via Promise.allSettled.
+    // Within an entry the steps are sequential (the orchestrator's safety
+    // invariants rely on it); across entries they're independent.
+    const settled = await Promise.allSettled(entries.map((entry) => this.processEntry(entry)));
 
     let recovered = 0;
     let failures = 0;
     let latestEntitlements: TEntitlement[] | null = null;
 
-    for (const entry of entries) {
-      const outcome = await this.processEntry(entry);
-      if (outcome.kind === 'recovered') {
+    // Iterate in input order so latestEntitlements is the LAST successful
+    // entry's response (deterministic last-write-wins). NOTE: parallel
+    // verifies for the same user are expected to return the same consolidated
+    // list — replicas that drift mid-rollout could yield different lists; in
+    // that case the input-order tiebreak is arbitrary but stable. If your
+    // backend cannot guarantee read-after-write across replicas, prefer a
+    // single iap.refresh() over multi-entry recovery.
+    for (const result of settled) {
+      if (result.status === 'rejected') {
+        // processEntry catches its own throws; this branch only fires on a
+        // truly unexpected runtime error (e.g. logger threw). Count as failure.
+        failures += 1;
+        continue;
+      }
+      if (result.value.kind === 'recovered') {
         recovered += 1;
-        latestEntitlements = outcome.entitlements;
+        latestEntitlements = result.value.entitlements;
       } else {
         failures += 1;
       }
@@ -151,6 +179,10 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
     const { cache, emitter, logger } = this.deps;
     const previous = this.deps.getCurrentEntitlements();
 
+    // L3: structural-compare BEFORE write so a future setter that normalizes
+    // the array (sort, dedupe, freeze) can't make the equality check lie.
+    const unchanged = entitlementsEqual(previous, entitlements);
+
     try {
       const cachedAt = await cache.save(entitlements);
       this.deps.setCachePersisted(cachedAt);
@@ -158,6 +190,8 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
       logger.warn('Recovery: cache.save failed; in-memory state still updated.', error);
     }
     this.deps.setEntitlements(entitlements);
+
+    if (unchanged) return;
 
     emitter.emit('entitlements-changed', {
       entitlements: this.deps.getCurrentEntitlements(),

@@ -28,5 +28,4 @@ export async function selectNativeAdapter(options: NativeAdapterOptions): Promis
   return new WebStubAdapter();
 }
 
-export { WebStubAdapter };
 export type { NativeAdapter, NativePurchaseOptions } from './types.js';

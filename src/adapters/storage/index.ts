@@ -39,5 +39,4 @@ function isStorageAdapter(value: unknown): value is StorageAdapter {
   );
 }
 
-export { MemoryAdapter, PreferencesAdapter };
 export type { StorageAdapter } from './types.js';

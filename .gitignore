@@ -21,3 +21,7 @@ yarn-error.log*
 
 .cache/
 .turbo/
+
+# VitePress build output
+docs/.vitepress/cache/
+docs/.vitepress/dist/

@@ -1,5 +1,5 @@
 export { createIAP, type IAP } from './createIAP.js';
-export { IAPError, IAPErrorCode, isIAPError } from './lib/errors.js';
+export { IAPError, IAPErrorCode, errorHint, isIAPError } from './lib/errors.js';
 export { VERSION } from './version.js';
 
 export type {

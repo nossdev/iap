@@ -90,6 +90,13 @@ const optionsConfigSchema = z.object({
     .positive()
     .default(60 * 60 * 1000),
   recoverUnfinishedTransactions: z.boolean().default(true),
+  /**
+   * Cap on how many unfinished transactions recovery inspects per launch.
+   * Defends against pathological growth if the consumer's backend has been
+   * down for an extended period and the unfinished list keeps growing.
+   * Excess entries stay in storage and are processed on subsequent launches.
+   */
+  recoveryMaxBatch: z.number().int().positive().default(50),
   productPriceCacheTtlMs: z
     .number()
     .int()
@@ -107,6 +114,7 @@ export const iapConfigSchema = z.object({
     refreshOnResume: true,
     entitlementCacheTtlMs: 60 * 60 * 1000,
     recoverUnfinishedTransactions: true,
+    recoveryMaxBatch: 50,
     productPriceCacheTtlMs: 24 * 60 * 60 * 1000,
     logLevel: 'info',
   }),

@@ -1,30 +1,81 @@
 # @nossdev/iap
 
-> Thin Capacitor IAP orchestrator that pairs with [Attesto](https://attesto.nossdev.com) for receipt validation.
+> Thin Capacitor IAP orchestrator. Server-side validation via [Attesto](https://attesto.nossdev.com).
 
-**Status: pre-alpha — do not use in production.**
+**Status: pre-alpha — API stabilizing as we ship the first production purchase.**
 
-`@nossdev/iap` is a framework-agnostic TypeScript library that orchestrates the in-app purchase flow on the client side of a Capacitor app. It wraps [`cordova-plugin-purchase`](https://github.com/j3k0/cordova-plugin-purchase) (on Capacitor 5) and coordinates with your backend, which in turn calls Attesto for receipt validation.
+```bash
+npm install @nossdev/iap cordova-plugin-purchase
+npx cap sync
+```
 
-The library handles: native purchase calls, backend verification, deferred acknowledgement (`tx.finish()` only after the backend confirms), entitlement caching (via Capacitor Preferences), restore flow, recovery of unfinished transactions, and reactive events for UI updates. It does not replace your state management, ship paywall UI, or talk to Attesto directly.
+```typescript
+import { createIAP } from '@nossdev/iap';
+
+const iap = createIAP({
+  products: [
+    { id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly-plan' },
+  ],
+  backend: {
+    baseUrl: 'https://api.your-app.com',
+    endpoints: {
+      verifyApple: '/api/iap/verify/apple',
+      verifyGoogle: '/api/iap/verify/google',
+      entitlements: '/api/iap/entitlements',
+      restore: '/api/iap/restore',
+    },
+    getAuthHeaders: async () => ({
+      Authorization: `Bearer ${await getAuthToken()}`,
+    }),
+  },
+});
+
+await iap.initialize();
+
+const result = await iap.purchase('premium_monthly');
+if (result.status === 'success') {
+  // backend has validated; entitlements are cached
+}
+```
+
+## Documentation
+
+**📘 [iap.nossdev.com](https://iap.nossdev.com)** — installation, configuration, framework recipes, API reference.
+
+- [Getting started](https://iap.nossdev.com/guide/getting-started) — first purchase in 30 minutes
+- [Backend contract](https://iap.nossdev.com/guide/backend-contract) — four endpoints your backend implements
+- [Architecture](https://iap.nossdev.com/guide/architecture) — three-tier model
+- [Vue + Quasar recipe](https://iap.nossdev.com/recipes/vue-quasar) / [React recipe](https://iap.nossdev.com/recipes/react)
+
+## Why this library
+
+`@nossdev/iap` does **one thing**: orchestrate the purchase flow on the client. It
+
+- wraps `cordova-plugin-purchase` for native purchase + restore,
+- POSTs to **your** backend (which calls Attesto) for receipt validation,
+- acknowledges native transactions only **after** the backend confirms (no phantom grants),
+- caches entitlements locally for instant, reactive UI reads,
+- recovers unfinished transactions across app launches.
+
+It does **not**: talk to Attesto directly, define entitlement business logic, manage user auth, or ship paywall UI. Those belong to your app and your backend.
 
 ## Capacitor support matrix
 
 | `@nossdev/iap` | Capacitor | Plugin | Status |
 |---|---|---|---|
-| 0.x | 5.x | `cordova-plugin-purchase ^13.x` | **v0.1.0 target** — Infopathy production. |
-| 1.x | 7.x | `@capgo/native-purchases 7.16.2` | Future — Cap 7 adapter is preserved in git history (commit `f1d20ed`). |
-| 2.x | 8.x | `@capgo/native-purchases ^8.x` | Future. |
+| 0.x | 5.x | `cordova-plugin-purchase ^13.x` | **Current** |
+| 1.x | 7.x | TBD (Capacitor-native plugin) | Roadmap |
 
-## Known limitations (v0.1.0)
+## Optional peer dependency
 
-- **Capacitor 5 only.** Cap 6/7/8 support is tracked for v1.x. The v7 adapter is preserved in git history; restoration is a peer-dep bump + adapter swap (see `PLAN.md` §18).
-- **Web platform is no-op for purchases.** `iap.purchase()` rejects with `PLATFORM_NOT_SUPPORTED` on web; entitlement reads still work against the local cache.
-- **Pre-alpha API.** Expect breaking changes until a real production purchase has gone end-to-end.
+If you want auto-refresh on app resume (default behavior):
 
-## Quickstart
+```bash
+npm install @capacitor/app
+npx cap sync
+```
 
-(Coming after Phase 1 wraps up. See `PLAN.md` for the full design.)
+Or disable the listener with `options.refreshOnResume: false`. See [installation guide](https://iap.nossdev.com/guide/installation#optional-app-resume-listener).
 
 ## Development
 
@@ -35,6 +86,7 @@ npm run typecheck   # tsc --noEmit
 npm run lint        # biome check
 npm test            # vitest run
 npm run build       # tsup → dist/index.{js,cjs,d.ts}
+npm run docs:dev    # vitepress dev (http://localhost:5173)
 ```
 
 ## License

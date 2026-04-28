@@ -108,3 +108,28 @@ export class EntitlementCache<TEntitlement extends EntitlementBase> {
     }
   }
 }
+
+/**
+ * Shallow-equal comparator on the {@link EntitlementBase} fields.
+ * Used by the orchestrators to skip emitting `entitlements-changed` when
+ * a refresh / recovery / restore returns content-identical lists — avoids
+ * spurious re-renders in reactive consumer stores.
+ *
+ * "Content-identical" means: same length, same `(key, productId, expiresAt)`
+ * triples in the same order. Consumer-defined fields are NOT compared
+ * because the library doesn't know their shape — if you need finer-grained
+ * change detection, subscribe and run your own equality check on payload.
+ */
+export function entitlementsEqual(a: EntitlementBase[], b: EntitlementBase[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (!x || !y) return false;
+    if (x.key !== y.key || x.productId !== y.productId || x.expiresAt !== y.expiresAt) {
+      return false;
+    }
+  }
+  return true;
+}
