@@ -5,8 +5,13 @@ import { selectNativeAdapter } from './adapters/native/index.js';
 import type { NativeAdapter } from './adapters/native/types.js';
 import { selectStorageAdapter } from './adapters/storage/index.js';
 import type { StorageAdapter } from './adapters/storage/types.js';
+import {
+  type AppResumeListenerHandle,
+  attachAppResumeListener,
+} from './core/app-resume-listener.js';
 import { EntitlementCache } from './core/entitlement-cache.js';
 import { PurchaseOrchestrator } from './core/purchase-flow.js';
+import { RecoveryOrchestrator } from './core/recovery-flow.js';
 import { RestoreOrchestrator } from './core/restore-flow.js';
 import { UnfinishedTransactionsStore } from './core/unfinished-transactions.js';
 import { TypedEventEmitter } from './events/emitter.js';
@@ -122,12 +127,17 @@ interface IAPInternalState<TEntitlement extends EntitlementBase> {
   orchestrator: PurchaseOrchestrator<TEntitlement> | null;
   /** Constructed alongside the orchestrator in initialize(). */
   restorer: RestoreOrchestrator<TEntitlement> | null;
+  /** Constructed alongside the orchestrator; recovery runs once at init. */
+  recoverer: RecoveryOrchestrator<TEntitlement> | null;
+  /** App resume listener handle; null when refreshOnResume is disabled, on
+   *  web, or when @capacitor/app isn't installed. */
+  resumeListener: AppResumeListenerHandle | null;
   emitter: TypedEventEmitter<TEntitlement>;
   logger: Logger;
   initialized: boolean;
   destroyed: boolean;
   entitlements: TEntitlement[];
-  /** Timestamp of the cache load. TTL evaluation is deferred to Phase 6 (refresh-flow). */
+  /** Timestamp of the last cache write, used for TTL-based background refresh. */
   cachedAt: number | null;
 }
 
@@ -153,6 +163,8 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
     unfinished,
     orchestrator: null,
     restorer: null,
+    recoverer: null,
+    resumeListener: null,
     emitter,
     logger,
     initialized: false,
@@ -210,6 +222,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         products: state.config.products,
       });
       state.restorer = new RestoreOrchestrator<TEntitlement>(sharedDeps);
+      state.recoverer = new RecoveryOrchestrator<TEntitlement>(sharedDeps);
 
       try {
         await state.adapter.isAvailable();
@@ -226,7 +239,61 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         );
       }
 
-      // Phase 6 will wire recovery + app-state listener here.
+      // Run recovery for unfinished transactions. Best-effort, never throws.
+      // Successful recoveries update entitlements before `ready` fires so
+      // the consumer's first read sees the latest state.
+      if (state.config.options.recoverUnfinishedTransactions && isNative()) {
+        try {
+          const result = await state.recoverer.recoverUnfinishedTransactions();
+          if (result.inspected > 0) {
+            state.logger.info(
+              `Recovery inspected ${result.inspected} unfinished transaction(s): ${result.recovered} recovered, ${result.failures} retained.`,
+            );
+          }
+        } catch (error) {
+          // Recovery should swallow internally; this catches the
+          // unexpected case where it didn't.
+          state.logger.warn('Recovery threw unexpectedly; continuing initialize.', error);
+        }
+      }
+
+      // Wire the app-resume listener. Lazy-imports @capacitor/app so consumers
+      // who disable refreshOnResume aren't forced to install it.
+      if (state.config.options.refreshOnResume && isNative()) {
+        state.resumeListener = await attachAppResumeListener({
+          logger: state.logger,
+          onResume: async () => {
+            // Best-effort: warn-and-swallow so a transient backend hiccup
+            // doesn't poison subsequent foreground events.
+            try {
+              await this.refresh();
+            } catch (error) {
+              state.logger.warn('refreshOnResume: refresh() failed.', error);
+            }
+          },
+        });
+      }
+
+      // TTL-based stale-cache check: if we loaded cached entitlements that
+      // are older than the configured TTL, schedule a background refresh
+      // to fire after `ready`. Reads still return the cached value
+      // immediately — PLAN.md §7 "still returns the cached value but the
+      // library schedules a refresh".
+      if (
+        state.cachedAt !== null &&
+        Date.now() - state.cachedAt > state.config.options.entitlementCacheTtlMs
+      ) {
+        state.logger.debug('Cache exceeds TTL; scheduling background refresh.');
+        queueMicrotask(() => {
+          // Guard against destroy()-during-init: if the consumer tore down
+          // before the microtask drained, refresh() would throw NOT_INITIALIZED
+          // and emit a confusing warn. Quietly skip instead.
+          if (!state.initialized || state.destroyed) return;
+          this.refresh().catch((error) => {
+            state.logger.warn('TTL background refresh failed.', error);
+          });
+        });
+      }
 
       state.initialized = true;
       state.emitter.emit('ready', undefined);
@@ -262,6 +329,15 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       state.cachedAt = null;
       state.emitter.removeAll();
 
+      if (state.resumeListener) {
+        try {
+          await state.resumeListener.remove();
+        } catch (error) {
+          state.logger.warn('Resume listener remove threw; continuing teardown.', error);
+        }
+        state.resumeListener = null;
+      }
+
       if (state.adapter?.dispose) {
         try {
           await state.adapter.dispose();
@@ -272,6 +348,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       state.adapter = null;
       state.orchestrator = null;
       state.restorer = null;
+      state.recoverer = null;
     },
 
     async purchase(productId) {

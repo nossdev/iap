@@ -4,11 +4,12 @@ import type { TypedEventEmitter } from '../events/emitter.js';
 import { IAPError, IAPErrorCode, toIAPError } from '../lib/errors.js';
 import type { Logger } from '../lib/logger.js';
 import type { EntitlementBase } from '../types/entitlement.js';
-import type { ConfiguredProduct, ProductType } from '../types/product.js';
+import type { ConfiguredProduct } from '../types/product.js';
 import type { PurchaseResult } from '../types/results.js';
 import type { NativeTransaction, VerifiedTransaction } from '../types/transaction.js';
 import type { EntitlementCache } from './entitlement-cache.js';
 import type { UnfinishedTransactionsStore } from './unfinished-transactions.js';
+import { verifyNativeTransaction } from './verify-helpers.js';
 
 interface PurchaseOrchestratorDeps<TEntitlement extends EntitlementBase> {
   /** Native adapter (cdv on iOS/Android, web stub on web). Always non-null
@@ -125,7 +126,7 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     // ----- 3. Backend verification -----
     let verifyResult: VerifyResponse<TEntitlement>;
     try {
-      verifyResult = await this.runVerify(nativeTx, product.type);
+      verifyResult = await verifyNativeTransaction(this.deps.backend, nativeTx);
     } catch (error) {
       return this.handleVerifyError(product.id, error);
     }
@@ -137,31 +138,6 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
 
     // ----- 5. Backend says valid: ack natively + update cache + emit -----
     return this.finalizeSuccess(product.id, nativeTx, verifyResult);
-  }
-
-  private async runVerify(
-    tx: NativeTransaction,
-    productType: ProductType,
-  ): Promise<VerifyResponse<TEntitlement>> {
-    if (tx.platform === 'apple') {
-      return this.deps.backend.verifyApple({
-        productId: tx.productId,
-        transactionId: tx.token,
-        type: productType,
-      });
-    }
-    if (!tx.packageName) {
-      throw new IAPError({
-        code: IAPErrorCode.STORE_ERROR,
-        message: `Google transaction for "${tx.productId}" has no packageName; cannot verify.`,
-      });
-    }
-    return this.deps.backend.verifyGoogle({
-      productId: tx.productId,
-      purchaseToken: tx.token,
-      packageName: tx.packageName,
-      type: productType,
-    });
   }
 
   private async finalizeSuccess(

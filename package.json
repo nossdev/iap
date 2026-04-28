@@ -54,15 +54,22 @@
     "prepublishOnly": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "peerDependencies": {
+    "@capacitor/app": "^5.0.0",
     "@capacitor/core": "^5.0.0",
     "@capacitor/preferences": "^5.0.0",
     "cordova-plugin-purchase": "^13.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@capacitor/app": {
+      "optional": true
+    }
   },
   "dependencies": {
     "zod": "3.25.76"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@capacitor/app": "^5.0.8",
     "@capacitor/core": "^5.7.8",
     "@capacitor/preferences": "^5.0.8",
     "@vitest/coverage-v8": "^1.6.1",

@@ -301,3 +301,118 @@ describe('createIAP — entitlement cache', () => {
     expect(iap.getEntitlements()).toEqual([]);
   });
 });
+
+describe('createIAP — Phase 6 init wiring', () => {
+  it('schedules a background refresh when cached entitlements exceed TTL', async () => {
+    const backing = new Map<string, string>();
+    const customAdapter = {
+      verifyApple: async () => ({
+        valid: false as const,
+        error: 'NOT_USED',
+      }),
+      verifyGoogle: async () => ({
+        valid: false as const,
+        error: 'NOT_USED',
+      }),
+      getEntitlements: vi.fn(async () => [
+        { key: 'fresh', productId: 'remove_ads', expiresAt: null },
+      ]),
+      restore: async () => ({ valid: false as const, error: 'NOT_USED' }),
+    };
+
+    // Pre-seed cache with a very old cachedAt
+    const stale = {
+      cachedAt: Date.now() - 24 * 60 * 60 * 1000, // 24h ago
+      entitlements: [{ key: 'stale', productId: 'remove_ads', expiresAt: null }],
+    };
+    const customStorage = {
+      async get(key: string) {
+        return backing.get(key) ?? null;
+      },
+      async set(key: string, value: string) {
+        backing.set(key, value);
+      },
+      async remove(key: string) {
+        backing.delete(key);
+      },
+      async clear() {
+        backing.clear();
+      },
+    };
+    backing.set('entitlements', JSON.stringify(stale));
+
+    const iap = createIAP({
+      ...validConfig,
+      backend: { adapter: customAdapter, timeoutMs: 5_000, retries: 0 },
+      storage: { type: 'custom', namespace: 'ttl_test', adapter: customStorage },
+      options: {
+        refreshOnResume: false, // don't wire @capacitor/app
+        entitlementCacheTtlMs: 60 * 60 * 1000, // 1h — well below 24h
+        recoverUnfinishedTransactions: false, // skip recovery
+        productPriceCacheTtlMs: 24 * 60 * 60 * 1000,
+        logLevel: 'silent',
+      },
+    });
+
+    await iap.initialize();
+
+    // Stale cache should still be served synchronously
+    expect(iap.hasEntitlement('stale')).toBe(true);
+    // Background refresh fires via queueMicrotask after init
+    await new Promise((r) => setTimeout(r, 30));
+    expect(customAdapter.getEntitlements).toHaveBeenCalledTimes(1);
+    // After background refresh, fresh entitlements replaced stale
+    expect(iap.hasEntitlement('fresh')).toBe(true);
+    expect(iap.hasEntitlement('stale')).toBe(false);
+  });
+
+  it('does NOT schedule background refresh when cache is within TTL', async () => {
+    const backing = new Map<string, string>();
+    const customAdapter = {
+      verifyApple: async () => ({ valid: false as const, error: 'NOT_USED' }),
+      verifyGoogle: async () => ({ valid: false as const, error: 'NOT_USED' }),
+      getEntitlements: vi.fn(async () => []),
+      restore: async () => ({ valid: false as const, error: 'NOT_USED' }),
+    };
+
+    backing.set(
+      'entitlements',
+      JSON.stringify({
+        cachedAt: Date.now() - 60_000, // 1 minute ago
+        entitlements: [{ key: 'fresh', productId: 'remove_ads', expiresAt: null }],
+      }),
+    );
+    const customStorage = {
+      async get(key: string) {
+        return backing.get(key) ?? null;
+      },
+      async set(key: string, value: string) {
+        backing.set(key, value);
+      },
+      async remove(key: string) {
+        backing.delete(key);
+      },
+      async clear() {
+        backing.clear();
+      },
+    };
+
+    const iap = createIAP({
+      ...validConfig,
+      backend: { adapter: customAdapter, timeoutMs: 5_000, retries: 0 },
+      storage: { type: 'custom', namespace: 'ttl_fresh', adapter: customStorage },
+      options: {
+        refreshOnResume: false,
+        entitlementCacheTtlMs: 60 * 60 * 1000, // 1h
+        recoverUnfinishedTransactions: false,
+        productPriceCacheTtlMs: 24 * 60 * 60 * 1000,
+        logLevel: 'silent',
+      },
+    });
+
+    await iap.initialize();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(customAdapter.getEntitlements).not.toHaveBeenCalled();
+    expect(iap.hasEntitlement('fresh')).toBe(true);
+  });
+});
