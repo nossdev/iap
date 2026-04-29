@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+
+      - name: Verify tag matches package.json version
+        if: github.event_name == 'push'
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [[ "$TAG_VERSION" != "$PKG_VERSION" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME implies version $TAG_VERSION but package.json declares $PKG_VERSION."
+            exit 1
+          fi
+          echo "Tag and package.json agree on version $PKG_VERSION"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *-* ]]; then
+            DIST_TAG=next
+          else
+            DIST_TAG=latest
+          fi
+          echo "Publishing $VERSION on dist-tag $DIST_TAG"
+          npm publish --provenance --access public --tag "$DIST_TAG"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

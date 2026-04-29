@@ -2,7 +2,7 @@
 
 > Thin Capacitor IAP orchestrator. Server-side validation via [Attesto](https://attesto.nossdev.com).
 
-**Status: pre-alpha — API stabilizing as we ship the first production purchase.**
+**Status: 0.1.0 — published.** API may have breaking changes through the 0.x line as it's exercised in production apps. Pin the minor version (`^0.1.0`) and watch the [CHANGELOG](./CHANGELOG.md).
 
 ```bash
 npm install @nossdev/iap cordova-plugin-purchase

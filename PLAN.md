@@ -1128,13 +1128,19 @@ Ship in thin slices. Each phase shippable on its own.
 
 **Exit:** A consumer with no prior context can install, configure, and complete their first purchase in <30 minutes following the README.
 
-### Phase 8 — Field testing (est. ongoing)
-- [ ] Migrate Infopathy from any pre-existing IAP code to `@nossdev/iap`
-- [ ] Test against real Apple sandbox + Google test track
-- [ ] Iterate on the API based on real usage
-- [ ] Tag `0.1.0` after first successful production purchase
+### Phase 8 — Publish + field testing (ongoing)
 
-**Exit:** Successful end-to-end purchase in a real app on real devices.
+**Pivot (2026-04-29):** previously this phase gated `0.1.0` on a successful first production purchase. That bar was over-cautious for a 0.x library — patch releases are cheap to ship, and 0.x is itself the "expect breaking changes" signal. New approach: publish `0.1.0` once everything works (CI green + sandbox round-trip clean) and ship fixes via patch releases as production usage surfaces issues.
+
+- [x] Configure release workflow (`.github/workflows/release.yml`, `NPM_TOKEN` secret, `--provenance`)
+- [ ] Tag `v0.1.0` and publish to npm (workflow handles publish)
+- [ ] Migrate Infopathy from any pre-existing IAP code to `@nossdev/iap@^0.1.0`
+- [ ] Test against real Apple sandbox + Google test track; ship fixes as `0.1.x` patches
+- [ ] Iterate on API based on production feedback
+- [ ] Bump to `1.0.0` after API stabilizes across 2+ production apps (no breaking changes for 4 consecutive patches)
+- [ ] Migrate `NPM_TOKEN` → npm OIDC trusted publishers (follow-up after first publish exists)
+
+**Exit:** Library is on npm. CHANGELOG tracks `0.1.x` patch releases as production feedback comes in. API has stabilized across multiple production apps before any `1.0.0` bump.
 
 ---
 
@@ -1219,7 +1225,7 @@ Resolved during planning (2026-04-28):
 
 Open and tracked:
 
-8. **First production purchase:** target Infopathy sandbox by end of Phase 4; production by end of Phase 8.
+8. **First production purchase:** target Infopathy sandbox during Phase 8. Not a publish gate — `0.1.0` ships when CI is green + sandbox round-trip is clean; production validation happens against shipped `0.1.x` releases, with fixes shipped as patch versions.
 
 ---
 
