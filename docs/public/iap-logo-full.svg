@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  @nossdev/iap full lockup: mark on the left + "iap" wordmark on the right.
+
+  Both mark and wordmark fill from indigo→violet gradients so the lockup
+  reads as one continuous color story. SVG loaded via <img src="..."> does
+  not inherit currentColor (it's an isolated document), so the wordmark
+  uses an explicit gradient fill — guarantees identical rendering across
+  light and dark modes.
+
+  The wordmark intentionally drops the "@nossdev/" prefix: at 280×72 the
+  full namespace would crowd the lockup. Surrounding context (page title,
+  GitHub link) supplies the namespace.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="72" viewBox="0 0 280 72" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="72" y2="72" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366f1" />
+      <stop offset="1" stop-color="#a855f7" />
+    </linearGradient>
+    <linearGradient id="gw" x1="92" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366f1" />
+      <stop offset="1" stop-color="#a855f7" />
+    </linearGradient>
+  </defs>
+  <!-- Mark — concentric rotated squares -->
+  <g transform="rotate(45 36 36)">
+    <rect x="12" y="12" width="48" height="48" rx="6" fill="url(#g)" opacity=".18" />
+    <rect x="19" y="19" width="34" height="34" rx="5" fill="url(#g)" opacity=".42" />
+    <rect x="26" y="26" width="20" height="20" rx="4" fill="url(#g)" />
+    <rect x="32" y="32" width="8" height="8" rx="1.5" fill="white" />
+  </g>
+  <!-- Wordmark — indigo→violet, readable on light and dark backgrounds -->
+  <text
+    x="92"
+    y="52"
+    fill="url(#gw)"
+    font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+    font-size="44"
+    font-weight="700"
+    letter-spacing="-1.5"
+  >iap</text>
+</svg>

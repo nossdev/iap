@@ -6,8 +6,8 @@ hero:
   text: "In-app purchases for Capacitor 5"
   tagline: "Thin orchestrator. Server-side validation via Attesto."
   image:
-    src: /logo.svg
-    alt: "@nossdev/iap logo"
+    src: /iap-logo.svg
+    alt: "@nossdev/iap"
   actions:
     - theme: brand
       text: Get Started

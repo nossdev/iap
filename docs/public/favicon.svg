@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" fill="none">
+  <!-- @nossdev/iap mark — concentric rotated squares, indigo→violet gradient -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="72" y2="72" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366f1" />
+      <stop offset="1" stop-color="#a855f7" />
+    </linearGradient>
+  </defs>
+  <g transform="rotate(45 36 36)">
+    <rect x="12" y="12" width="48" height="48" rx="6" fill="url(#g)" opacity=".18" />
+    <rect x="19" y="19" width="34" height="34" rx="5" fill="url(#g)" opacity=".42" />
+    <rect x="26" y="26" width="20" height="20" rx="4" fill="url(#g)" />
+    <rect x="32" y="32" width="8" height="8" rx="1.5" fill="white" />
+  </g>
+</svg>
