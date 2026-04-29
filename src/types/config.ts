@@ -14,11 +14,23 @@ const configuredProductSchema = z
     path: ['androidPlanId'],
   });
 
+/**
+ * Array form. Reused by `productManifestResponseSchema` (HTTP) and by the
+ * runtime guard in `createIAP.initialize()` for backend-supplied manifests.
+ */
+export const configuredProductsArraySchema = z.array(configuredProductSchema).min(1);
+
 const backendEndpointsSchema = z.object({
   verifyApple: z.string().min(1),
   verifyGoogle: z.string().min(1),
   entitlements: z.string().min(1),
   restore: z.string().min(1),
+  /**
+   * Optional. When set, the library fetches the SKU manifest from this
+   * endpoint during `initialize()` if `products` is omitted from config.
+   * See `docs/guide/backend-contract.md` for the response shape.
+   */
+  products: z.string().min(1).optional(),
 });
 
 const backendConfigSchema = z
@@ -106,19 +118,44 @@ const optionsConfigSchema = z.object({
   logger: z.unknown().optional(),
 });
 
-export const iapConfigSchema = z.object({
-  products: z.array(configuredProductSchema).min(1),
-  backend: backendConfigSchema,
-  storage: storageConfigSchema.default({ type: 'preferences', namespace: 'nossdev_iap' }),
-  options: optionsConfigSchema.default({
-    refreshOnResume: true,
-    entitlementCacheTtlMs: 60 * 60 * 1000,
-    recoverUnfinishedTransactions: true,
-    recoveryMaxBatch: 50,
-    productPriceCacheTtlMs: 24 * 60 * 60 * 1000,
-    logLevel: 'info',
-  }),
-});
+export const iapConfigSchema = z
+  .object({
+    /**
+     * Static SKU manifest. Optional: when omitted, the library calls
+     * `backend.adapter.listProducts()` (custom adapter) or GETs
+     * `backend.endpoints.products` (HTTP) during `initialize()`. Configs
+     * without either path throw `INVALID_CONFIG` at parse time.
+     */
+    products: z.array(configuredProductSchema).min(1).optional(),
+    backend: backendConfigSchema,
+    storage: storageConfigSchema.default({ type: 'preferences', namespace: 'nossdev_iap' }),
+    options: optionsConfigSchema.default({
+      refreshOnResume: true,
+      entitlementCacheTtlMs: 60 * 60 * 1000,
+      recoverUnfinishedTransactions: true,
+      recoveryMaxBatch: 50,
+      productPriceCacheTtlMs: 24 * 60 * 60 * 1000,
+      logLevel: 'info',
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.products !== undefined) return;
+    // No static products → the backend must be able to supply them.
+    // Adapter takes precedence: if `adapter` is provided, the HTTP fields are
+    // ignored everywhere else, so we ignore them here too. The HTTP path is
+    // only consulted when no custom adapter is set.
+    const adapter = data.backend.adapter as { listProducts?: unknown } | undefined;
+    const adapterCanList = adapter && typeof adapter.listProducts === 'function';
+    const httpCanList = !data.backend.adapter && data.backend.endpoints?.products;
+    if (!adapterCanList && !httpCanList) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'products is required unless the backend can supply it: set backend.endpoints.products (HTTP) or implement listProducts() on a custom adapter.',
+        path: ['products'],
+      });
+    }
+  });
 
 type RawBackendConfig = z.infer<typeof backendConfigSchema>;
 type RawBackendConfigInput = z.input<typeof backendConfigSchema>;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createIAP } from '../../src/createIAP.js';
 import { IAPError, IAPErrorCode } from '../../src/lib/errors.js';
 import type { IAPConfigInput } from '../../src/types/config.js';
@@ -518,5 +518,153 @@ describe('createIAP — web platform skip paths (L7)', () => {
     // Manual refresh still works
     await iap.refresh();
     expect(getEntitlements).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('createIAP — backend-driven product manifest', () => {
+  function makeListProducts(products: unknown) {
+    return vi.fn().mockResolvedValue(products);
+  }
+
+  it('fetches the manifest from a custom adapter when products is omitted', async () => {
+    const listProducts = makeListProducts([
+      { id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly-plan' },
+      { id: 'remove_ads', type: 'product' },
+    ]);
+    const customAdapter = {
+      verifyApple: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      verifyGoogle: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      getEntitlements: async () => [],
+      restore: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      listProducts,
+    };
+
+    const iap = createIAP({
+      backend: { adapter: customAdapter },
+    } as IAPConfigInput);
+
+    await iap.initialize();
+    expect(listProducts).toHaveBeenCalledTimes(1);
+    expect(iap.hasEntitlement('anything')).toBe(false);
+  });
+
+  it('rejects at parse time when products is omitted and the backend cannot supply it', () => {
+    const customAdapter = {
+      verifyApple: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      verifyGoogle: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      getEntitlements: async () => [],
+      restore: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+    };
+    expect(() =>
+      createIAP({
+        backend: { adapter: customAdapter },
+      } as IAPConfigInput),
+    ).toThrowError(IAPError);
+  });
+
+  it('rejects at parse time when HTTP backend lacks endpoints.products and config has no products', () => {
+    expect(() =>
+      createIAP({
+        backend: {
+          baseUrl: 'https://api.example.com',
+          endpoints: {
+            verifyApple: '/api/iap/verify/apple',
+            verifyGoogle: '/api/iap/verify/google',
+            entitlements: '/api/iap/entitlements',
+            restore: '/api/iap/restore',
+          },
+          getAuthHeaders: async () => ({}),
+        },
+      } as IAPConfigInput),
+    ).toThrowError(IAPError);
+  });
+
+  it('accepts HTTP config with endpoints.products and no static products', () => {
+    expect(() =>
+      createIAP({
+        backend: {
+          baseUrl: 'https://api.example.com',
+          endpoints: {
+            verifyApple: '/api/iap/verify/apple',
+            verifyGoogle: '/api/iap/verify/google',
+            entitlements: '/api/iap/entitlements',
+            restore: '/api/iap/restore',
+            products: '/api/iap/products',
+          },
+          getAuthHeaders: async () => ({}),
+        },
+      } as IAPConfigInput),
+    ).not.toThrow();
+  });
+
+  it('throws BACKEND_BAD_RESPONSE when listProducts() returns malformed entries', async () => {
+    const customAdapter = {
+      verifyApple: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      verifyGoogle: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      getEntitlements: async () => [],
+      restore: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      // missing `type` — invalid
+      listProducts: async () => [{ id: 'oops' }] as never,
+    };
+
+    const iap = createIAP({
+      backend: { adapter: customAdapter },
+    } as IAPConfigInput);
+
+    await expect(iap.initialize()).rejects.toMatchObject({
+      code: IAPErrorCode.BACKEND_BAD_RESPONSE,
+    });
+  });
+
+  it('propagates IAPError from listProducts() unchanged through initialize()', async () => {
+    const customAdapter = {
+      verifyApple: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      verifyGoogle: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      getEntitlements: async () => [],
+      restore: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      listProducts: async () => {
+        throw new IAPError({
+          code: IAPErrorCode.BACKEND_UNAVAILABLE,
+          message: 'simulated network failure',
+          recoverable: true,
+        });
+      },
+    };
+    const iap = createIAP({
+      backend: { adapter: customAdapter },
+    } as IAPConfigInput);
+
+    await expect(iap.initialize()).rejects.toMatchObject({
+      code: IAPErrorCode.BACKEND_UNAVAILABLE,
+    });
+    // Confirm the original message survives (errorHint may append a hint).
+    try {
+      const i = createIAP({ backend: { adapter: customAdapter } } as IAPConfigInput);
+      await i.initialize();
+      throw new Error('should have thrown');
+    } catch (error) {
+      expect((error as IAPError).message).toContain('simulated network failure');
+    }
+  });
+
+  it('throws INVALID_CONFIG when backend manifest contains duplicate product ids', async () => {
+    const customAdapter = {
+      verifyApple: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      verifyGoogle: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      getEntitlements: async () => [],
+      restore: async () => ({ valid: false as const, error: 'NOT_TESTED' }),
+      listProducts: async () => [
+        { id: 'premium', type: 'subscription' as const, androidPlanId: 'monthly' },
+        { id: 'premium', type: 'subscription' as const, androidPlanId: 'yearly' },
+      ],
+    };
+
+    const iap = createIAP({
+      backend: { adapter: customAdapter },
+    } as IAPConfigInput);
+
+    await expect(iap.initialize()).rejects.toMatchObject({
+      code: IAPErrorCode.INVALID_CONFIG,
+    });
   });
 });

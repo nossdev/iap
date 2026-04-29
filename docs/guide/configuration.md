@@ -61,7 +61,7 @@ const iap = createIAP<MyEntitlement>(config);
 
 ## `products`
 
-Required. At least one product must be configured.
+Optional. Either pass a static array, or omit it and let the backend supply the manifest at `initialize()` time. Configs that supply *neither* throw `IAPError(INVALID_CONFIG)` at parse time.
 
 ```typescript
 type ConfiguredProduct = {
@@ -81,6 +81,35 @@ type ConfiguredProduct = {
 If you have one subscription product with multiple base plans (e.g. monthly and yearly), register each plan as a separate `ConfiguredProduct` entry with the same `id` but different `androidPlanId`. The orchestrator routes the purchase to the right plan via `androidPlanId`.
 :::
 
+### Static vs backend-driven manifest
+
+| Static `products: [...]`                          | Backend-driven (`endpoints.products` or `listProducts()`)   |
+|---------------------------------------------------|-------------------------------------------------------------|
+| Small, stable catalog                             | Catalog evolves between releases                            |
+| Works offline on first launch                     | Requires backend reachable during `initialize()`            |
+| Simpler config; fewer failure surfaces            | Toggle SKUs by region, cohort, feature flag                 |
+
+To use the backend-driven path, omit `products` and either set `backend.endpoints.products` (HTTP) or implement `listProducts()` on a custom adapter:
+
+```typescript
+const iap = createIAP({
+  // products field omitted ─ library calls backend during initialize()
+  backend: {
+    baseUrl: 'https://api.your-app.com',
+    endpoints: {
+      verifyApple: '/api/iap/verify/apple',
+      verifyGoogle: '/api/iap/verify/google',
+      entitlements: '/api/iap/entitlements',
+      restore: '/api/iap/restore',
+      products: '/api/iap/products',  // ← new
+    },
+    getAuthHeaders: async () => ({ Authorization: `Bearer ${await getToken()}` }),
+  },
+});
+```
+
+Response shape and the App-Store-Connect-pre-registration caveat are documented in [Backend contract → `products`](/guide/backend-contract#products-optional).
+
 ## `backend`
 
 Required. Configures how the library talks to your server.
@@ -95,6 +124,7 @@ type BackendConfig = {
     verifyGoogle: string;                           // POST — Google purchase validation
     entitlements: string;                           // GET — current entitlements
     restore: string;                                // POST — batch re-verify
+    products?: string;                              // GET — optional SKU manifest
   };
   getAuthHeaders: () =>
     | Record<string, string>

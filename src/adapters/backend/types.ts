@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { configuredProductsArraySchema } from '../../types/config.js';
 import type { EntitlementBase } from '../../types/entitlement.js';
 import { entitlementBaseSchema } from '../../types/entitlement.js';
-import type { ProductType } from '../../types/product.js';
+import type { ConfiguredProduct, ProductType } from '../../types/product.js';
 
 // ----- Request types (constructed by the library; static TS types are sufficient) -----
 
@@ -82,6 +83,16 @@ export const entitlementsResponseSchema = z.object({
   entitlements: z.array(passthroughEntitlementSchema),
 });
 
+/**
+ * Backend product-manifest response. Mirrors the entitlements envelope
+ * shape (`{ entitlements: [...] }`) for API consistency. The inner array
+ * is validated against the same `configuredProductSchema` used at config
+ * parse time, so a backend that drifts from the schema fails loudly.
+ */
+export const productManifestResponseSchema = z.object({
+  products: configuredProductsArraySchema,
+});
+
 // ----- Inferred response types (use these for typing; cast TEntitlement at adapter boundary) -----
 
 type ZodVerifySuccess = z.infer<typeof verifySuccessSchema>;
@@ -113,6 +124,17 @@ export interface BackendAdapter<TEntitlement extends EntitlementBase = Entitleme
   getEntitlements(): Promise<TEntitlement[]>;
   /** Batch re-verify. Backend returns consolidated entitlements. */
   restore(req: RestoreRequest): Promise<VerifyResponse<TEntitlement>>;
+  /**
+   * Optional: return the SKU manifest the app should register.
+   *
+   * When implemented, the library calls this during `initialize()` if the
+   * consumer omitted `products` from `createIAP()` config — letting the
+   * backend curate which SKUs are surfaced (feature flags, A/B mixes,
+   * regional catalogs). Returned ids MUST still be pre-registered in App
+   * Store Connect / Google Play Console; the manifest is a curated subset,
+   * not a registration.
+   */
+  listProducts?(): Promise<ConfiguredProduct[]>;
 }
 
 /** Type guard; consumers passing a custom adapter via config get a runtime check. */

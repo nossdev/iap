@@ -17,11 +17,8 @@ export interface AppEntitlement extends EntitlementBase {
 }
 
 export const iap = createIAP<AppEntitlement>({
-  products: [
-    { id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly-plan' },
-    { id: 'premium_yearly', type: 'subscription', androidPlanId: 'yearly-plan' },
-    { id: 'remove_ads', type: 'product' },
-  ],
+  // No `products` field — the manifest comes from the backend.
+  // See docs/guide/backend-contract#products-optional for the response shape.
   backend: {
     baseUrl: import.meta.env.VITE_API_URL,
     endpoints: {
@@ -29,6 +26,7 @@ export const iap = createIAP<AppEntitlement>({
       verifyGoogle: '/api/iap/verify/google',
       entitlements: '/api/iap/entitlements',
       restore: '/api/iap/restore',
+      products: '/api/iap/products',
     },
     getAuthHeaders: async () => {
       const { getToken } = useAuth();   // your auth composable
@@ -37,6 +35,10 @@ export const iap = createIAP<AppEntitlement>({
   },
 });
 ```
+
+::: tip Backend-driven manifest
+The backend returns the SKU list during `initialize()` — feature-flag SKUs, A/B-test plans, region-specific catalogs without an app release. Every id MUST still be pre-registered in App Store Connect / Google Play Console. If you'd rather hardcode the manifest, pass `products: [...]` instead — see [Configuration → products](/guide/configuration#products).
+:::
 
 ## 2. Pinia store
 

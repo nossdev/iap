@@ -18,7 +18,12 @@ import { TypedEventEmitter } from './events/emitter.js';
 import { IAPError, IAPErrorCode } from './lib/errors.js';
 import { type LogLevel, type Logger, createDefaultLogger, isLogger } from './lib/logger.js';
 import { getPlatform, isNative } from './lib/platform.js';
-import { type IAPConfig, type IAPConfigInput, iapConfigSchema } from './types/config.js';
+import {
+  type IAPConfig,
+  type IAPConfigInput,
+  configuredProductsArraySchema,
+  iapConfigSchema,
+} from './types/config.js';
 import type { EntitlementBase } from './types/entitlement.js';
 import type { EventName, EventPayload, Unsubscribe } from './types/events.js';
 import type { ConfiguredProduct, Product } from './types/product.js';
@@ -139,6 +144,12 @@ interface IAPInternalState<TEntitlement extends EntitlementBase> {
   entitlements: TEntitlement[];
   /** Timestamp of the last cache write, used for TTL-based background refresh. */
   cachedAt: number | null;
+  /**
+   * Resolved SKU manifest. Populated in `initialize()` from either the
+   * static `config.products` or `backend.listProducts()`. Read by
+   * `getProducts()`, `purchase()`, and the orchestrators.
+   */
+  products: ConfiguredProduct[];
 }
 
 export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase>(
@@ -152,7 +163,12 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
   const backend = selectBackendAdapter<TEntitlement>({ config: config.backend, logger });
   const emitter = new TypedEventEmitter<TEntitlement>();
 
-  ensureUniqueProductIds(config.products);
+  // Validate the static manifest eagerly so config typos surface synchronously.
+  // The dynamic-manifest path validates inside initialize() once the backend
+  // returns the response.
+  if (config.products) {
+    ensureUniqueProductIds(config.products);
+  }
 
   const state: IAPInternalState<TEntitlement> = {
     config,
@@ -171,6 +187,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
     destroyed: false,
     entitlements: [],
     cachedAt: null,
+    products: Object.freeze([...(config.products ?? [])]) as ConfiguredProduct[],
   };
 
   return {
@@ -195,9 +212,42 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         state.logger.debug(`Initializing on platform=${platform}`);
       }
 
+      // Resolve the SKU manifest. If the consumer omitted `products` from
+      // config, the schema's superRefine has already guaranteed that the
+      // backend can supply one — call listProducts() and validate the
+      // response against the same schema config-time `products` would have
+      // gone through. Failures throw verbatim (the adapter is responsible
+      // for mapping transport errors to IAPError).
+      if (!state.config.products) {
+        if (typeof state.backend.listProducts !== 'function') {
+          throw new IAPError({
+            code: IAPErrorCode.INVALID_CONFIG,
+            message:
+              'config.products is omitted but backend adapter does not implement listProducts(). This is a library bug; the schema should have caught it.',
+          });
+        }
+        const fetched = await state.backend.listProducts();
+        // Redundant validation on the HTTP path (HttpBackendAdapter already
+        // parses with productManifestResponseSchema), but the only validation
+        // gate for custom adapters that don't go through HttpClient.
+        const validated = configuredProductsArraySchema.safeParse(fetched);
+        if (!validated.success) {
+          throw new IAPError({
+            code: IAPErrorCode.BACKEND_BAD_RESPONSE,
+            message: `backend.listProducts() returned an invalid manifest: ${validated.error.issues
+              .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+              .join('; ')}`,
+            cause: validated.error,
+          });
+        }
+        ensureUniqueProductIds(validated.data);
+        state.products = Object.freeze([...validated.data]) as ConfiguredProduct[];
+        state.logger.debug(`Resolved ${validated.data.length} product(s) from backend manifest.`);
+      }
+
       // Lazy adapter construction — this is the dynamic-import boundary so
       // web builds don't pull in cordova-plugin-purchase.
-      state.adapter = await selectNativeAdapter({ products: state.config.products });
+      state.adapter = await selectNativeAdapter({ products: state.products });
 
       // Now that the native adapter is resolved, wire the orchestrators.
       // Both share the same getter/setter triplet into createIAP's state.
@@ -219,7 +269,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
 
       state.orchestrator = new PurchaseOrchestrator<TEntitlement>({
         ...sharedDeps,
-        products: state.config.products,
+        products: state.products,
       });
       state.restorer = new RestoreOrchestrator<TEntitlement>(sharedDeps);
       state.recoverer = new RecoveryOrchestrator<TEntitlement>({
@@ -391,9 +441,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
           message: 'Native adapter not constructed; this is a library bug.',
         });
       }
-      return state.adapter.getProducts(
-        state.config.products.map((p) => ({ id: p.id, type: p.type })),
-      );
+      return state.adapter.getProducts(state.products.map((p) => ({ id: p.id, type: p.type })));
     },
 
     hasEntitlement(key) {
@@ -447,7 +495,7 @@ function ensureUniqueProductIds(products: ConfiguredProduct[]): void {
     if (seen.has(product.id)) {
       throw new IAPError({
         code: IAPErrorCode.INVALID_CONFIG,
-        message: `Duplicate product id "${product.id}" in config.products.`,
+        message: `Duplicate product id "${product.id}" in product manifest.`,
       });
     }
     seen.add(product.id);

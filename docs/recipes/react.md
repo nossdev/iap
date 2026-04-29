@@ -17,10 +17,8 @@ export interface AppEntitlement extends EntitlementBase {
 }
 
 export const iap = createIAP<AppEntitlement>({
-  products: [
-    { id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly-plan' },
-    { id: 'remove_ads', type: 'product' },
-  ],
+  // SKU manifest fetched from the backend during initialize().
+  // See docs/guide/backend-contract#products-optional for the response shape.
   backend: {
     baseUrl: import.meta.env.VITE_API_URL,
     endpoints: {
@@ -28,6 +26,7 @@ export const iap = createIAP<AppEntitlement>({
       verifyGoogle: '/api/iap/verify/google',
       entitlements: '/api/iap/entitlements',
       restore: '/api/iap/restore',
+      products: '/api/iap/products',
     },
     getAuthHeaders: async () => ({
       Authorization: `Bearer ${await getAuthToken()}`,
@@ -35,6 +34,10 @@ export const iap = createIAP<AppEntitlement>({
   },
 });
 ```
+
+::: tip Backend-driven manifest
+The backend returns the SKU list during `initialize()` so you can feature-flag, A/B-test, or region-gate SKUs without an app release. Every id MUST still be pre-registered in App Store Connect / Google Play Console. Prefer a static array? Pass `products: [...]` — see [Configuration → products](/guide/configuration#products).
+:::
 
 ## 2. `useEntitlements` hook
 

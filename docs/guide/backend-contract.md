@@ -1,6 +1,6 @@
 # Backend contract
 
-Your backend implements four endpoints. The library calls them; they call [Attesto](https://attesto.nossdev.com). This page documents the exact request/response shapes the library expects.
+Your backend implements four required endpoints (plus one optional). The library calls them; they call [Attesto](https://attesto.nossdev.com). This page documents the exact request/response shapes the library expects.
 
 ::: tip Implementing a custom transport?
 If your backend isn't HTTP/JSON (GraphQL, Firebase, Supabase, gRPC-web), implement a [`BackendAdapter`](/api/backend-adapter) instead. The shapes below still apply at the domain level — only the wire encoding changes.
@@ -8,12 +8,13 @@ If your backend isn't HTTP/JSON (GraphQL, Firebase, Supabase, gRPC-web), impleme
 
 ## Overview
 
-| Endpoint                | Method | Purpose                                              |
-|-------------------------|--------|------------------------------------------------------|
-| `verifyApple`           | POST   | Validate one Apple StoreKit transaction              |
-| `verifyGoogle`          | POST   | Validate one Google Play Billing transaction         |
-| `entitlements`          | GET    | Return the user's current entitlements               |
-| `restore`               | POST   | Validate a batch of platform receipts (re-link user) |
+| Endpoint                | Method | Purpose                                              | Required? |
+|-------------------------|--------|------------------------------------------------------|-----------|
+| `verifyApple`           | POST   | Validate one Apple StoreKit transaction              | yes       |
+| `verifyGoogle`          | POST   | Validate one Google Play Billing transaction         | yes       |
+| `entitlements`          | GET    | Return the user's current entitlements               | yes       |
+| `restore`               | POST   | Validate a batch of platform receipts (re-link user) | yes       |
+| `products`              | GET    | Return the SKU manifest the app should register      | optional  |
 
 Paths are configured via `config.backend.endpoints`. The defaults shown in [Configuration](/guide/configuration) — `/api/iap/verify/apple` etc. — are convention, not required.
 
@@ -197,6 +198,44 @@ The library calls this when the consumer invokes `iap.restorePurchases()` — ty
 - `entitlements` — full entitlement set after restore (replaces cache).
 
 If a single receipt in the batch is invalid, your backend should still validate the rest and return the consolidated state — the library doesn't have per-receipt failure handling for restore (it's an idempotent re-link, not a paid purchase).
+
+## `products` (optional)
+
+Return the SKU manifest the app should register. The library calls this during `initialize()` **only when** `config.products` is omitted — letting the backend curate which SKUs to surface (feature flags, A/B mixes, regional catalogs, evolving catalogs between app releases).
+
+```http
+GET <baseUrl><endpoints.products>
+Authorization: Bearer <user token>
+```
+
+### Response
+
+```json
+{
+  "products": [
+    { "id": "premium_monthly", "type": "subscription", "androidPlanId": "monthly-plan" },
+    { "id": "premium_yearly",  "type": "subscription", "androidPlanId": "yearly-plan" },
+    { "id": "remove_ads",      "type": "product" }
+  ]
+}
+```
+
+- `id` — must match the product id in App Store Connect / Google Play Console.
+- `type` — `'subscription' | 'product' | 'consumable'`.
+- `androidPlanId` — required when `type: 'subscription'`. Maps to the Play Console base plan id.
+
+::: warning Pre-registration is non-negotiable
+Every id you return MUST already be registered in App Store Connect AND Google Play Console for the platforms you ship on. The backend manifest is a **curated subset** of pre-registered SKUs, not a registration. A new id surfaced only by the backend will fail at the platform store with no usable error.
+:::
+
+When to use this vs static `products: [...]`:
+
+| Static `products: [...]`                          | Backend `endpoints.products`                                |
+|---------------------------------------------------|-------------------------------------------------------------|
+| Small, stable catalog                             | Catalog evolves between releases                            |
+| Ships with the app — always available offline     | Requires backend to be reachable on first launch            |
+| Simpler config; one less failure surface          | Lets you toggle SKUs by region, cohort, feature flag        |
+| Ideal for tutorials, tests, prototypes            | Production realism for apps that A/B price points or plans  |
 
 ## Response transforms
 

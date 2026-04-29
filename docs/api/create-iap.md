@@ -88,6 +88,29 @@ const iap = createIAP({
 
 See [`BackendAdapter`](/api/backend-adapter) for the interface.
 
+### Backend-driven product manifest
+
+Omit `products` to have the library fetch the SKU manifest from your backend during `initialize()`:
+
+```typescript
+const iap = createIAP({
+  // No `products` field
+  backend: {
+    baseUrl: 'https://api.example.com',
+    endpoints: {
+      verifyApple: '/api/iap/verify/apple',
+      verifyGoogle: '/api/iap/verify/google',
+      entitlements: '/api/iap/entitlements',
+      restore: '/api/iap/restore',
+      products: '/api/iap/products', // ← new
+    },
+    getAuthHeaders: async () => ({ Authorization: `Bearer ${await getToken()}` }),
+  },
+});
+```
+
+Configs that supply neither `products` nor a way for the backend to provide them throw `IAPError(INVALID_CONFIG)` at parse time. See [Backend contract → `products`](/guide/backend-contract#products-optional) for the response shape and the App-Store-Connect-pre-registration caveat.
+
 ### Typed entitlements + custom logger
 
 ```typescript

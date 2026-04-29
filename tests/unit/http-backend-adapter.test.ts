@@ -208,6 +208,80 @@ describe('HttpBackendAdapter — getEntitlements', () => {
   });
 });
 
+describe('HttpBackendAdapter — listProducts', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('GETs the configured endpoint and unwraps the products array', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(
+      jsonResponse({
+        products: [
+          { id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly-plan' },
+          { id: 'premium_yearly', type: 'subscription', androidPlanId: 'yearly-plan' },
+          { id: 'remove_ads', type: 'product' },
+        ],
+      }),
+    );
+    const adapter = makeAdapter(fetchStub, {
+      endpoints: { ...endpoints, products: '/api/iap/products' },
+    });
+
+    const products = await adapter.listProducts();
+    expect(products).toHaveLength(3);
+    expect(products[0]).toEqual({
+      id: 'premium_monthly',
+      type: 'subscription',
+      androidPlanId: 'monthly-plan',
+    });
+    const call = fetchStub.mock.calls[0];
+    if (!call) throw new Error('fetch was not called');
+    const [url, init] = call;
+    expect(url).toBe('https://api.example.com/api/iap/products');
+    expect((init as RequestInit).method).toBe('GET');
+    const headers = (init as RequestInit).headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer test');
+  });
+
+  it('throws BACKEND_BAD_RESPONSE when manifest entries are malformed', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(
+      jsonResponse({
+        products: [{ id: 'premium_monthly' }],
+      }),
+    );
+    const adapter = makeAdapter(fetchStub, {
+      endpoints: { ...endpoints, products: '/api/iap/products' },
+    });
+
+    await expect(adapter.listProducts()).rejects.toMatchObject({
+      code: IAPErrorCode.BACKEND_BAD_RESPONSE,
+    });
+  });
+
+  it('throws BACKEND_BAD_RESPONSE when subscription is missing androidPlanId', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(
+      jsonResponse({
+        products: [{ id: 'premium_monthly', type: 'subscription' }],
+      }),
+    );
+    const adapter = makeAdapter(fetchStub, {
+      endpoints: { ...endpoints, products: '/api/iap/products' },
+    });
+
+    await expect(adapter.listProducts()).rejects.toBeInstanceOf(IAPError);
+  });
+
+  it('throws INVALID_CONFIG when the endpoint is not configured', async () => {
+    const fetchStub = vi.fn();
+    const adapter = makeAdapter(fetchStub);
+
+    await expect(adapter.listProducts()).rejects.toMatchObject({
+      code: IAPErrorCode.INVALID_CONFIG,
+    });
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+});
+
 describe('HttpBackendAdapter — restore', () => {
   it('POSTs the transactions batch and returns consolidated response', async () => {
     const fetchStub = vi.fn().mockResolvedValue(

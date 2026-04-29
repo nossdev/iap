@@ -10,6 +10,8 @@ interface BackendAdapter<TEntitlement extends EntitlementBase = EntitlementBase>
   verifyGoogle(req: VerifyGoogleRequest): Promise<VerifyResponse<TEntitlement>>;
   getEntitlements():                      Promise<TEntitlement[]>;
   restore(req: RestoreRequest):           Promise<VerifyResponse<TEntitlement>>;
+  /** Optional: return the SKU manifest the app should register. */
+  listProducts?():                        Promise<ConfiguredProduct[]>;
 }
 ```
 
@@ -70,6 +72,30 @@ type VerifyResponse<T extends EntitlementBase = EntitlementBase> =
 ```
 
 Return shape is identical across all four methods (`getEntitlements` returns the entitlement array directly, since there's no per-transaction verdict).
+
+### `listProducts()` (optional)
+
+When implemented, the library calls this during `initialize()` if the consumer omitted `products` from `createIAP()` config. Lets the backend curate the SKU manifest at runtime.
+
+```typescript
+listProducts?(): Promise<ConfiguredProduct[]>;
+```
+
+Returned shape per entry:
+
+```typescript
+type ConfiguredProduct = {
+  id: string;                                       // store identifier
+  type: 'subscription' | 'product' | 'consumable';
+  androidPlanId?: string;                           // required for subscriptions
+};
+```
+
+The library validates the response against the same schema used at config-parse time. Malformed entries throw `IAPError(BACKEND_BAD_RESPONSE)` and `initialize()` rejects.
+
+::: warning Pre-registration is non-negotiable
+Every `id` MUST already be registered in App Store Connect AND Google Play Console for the platforms you ship on. The backend manifest is a curated subset of pre-registered SKUs, not a registration.
+:::
 
 ## Error semantics
 

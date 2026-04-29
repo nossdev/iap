@@ -69,7 +69,7 @@ interface ConfiguredProduct {
 }
 ```
 
-What you pass into `createIAP({ products: [...] })`.
+The shape of a single SKU manifest entry. Consumers either pass an array of these to `createIAP({ products: [...] })`, or have their backend return them via [`BackendAdapter.listProducts()`](/api/backend-adapter#listproducts-optional) — see [Backend contract → `products`](/guide/backend-contract#products-optional).
 
 ## `NativeTransaction`
 

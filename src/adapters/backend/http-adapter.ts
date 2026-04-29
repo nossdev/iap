@@ -1,6 +1,8 @@
+import { IAPError, IAPErrorCode } from '../../lib/errors.js';
 import type { Logger } from '../../lib/logger.js';
 import type { BackendConfig } from '../../types/config.js';
 import type { EntitlementBase } from '../../types/entitlement.js';
+import type { ConfiguredProduct } from '../../types/product.js';
 import { HttpClient } from './http-client.js';
 import {
   type BackendAdapter,
@@ -9,6 +11,7 @@ import {
   type VerifyGoogleRequest,
   type VerifyResponse,
   entitlementsResponseSchema,
+  productManifestResponseSchema,
   verifyResponseSchema,
 } from './types.js';
 
@@ -19,6 +22,7 @@ export interface HttpBackendAdapterOptions {
     verifyGoogle: string;
     entitlements: string;
     restore: string;
+    products?: string;
   };
   getAuthHeaders: () => Record<string, string> | Promise<Record<string, string>>;
   requestTransform?: BackendConfig['requestTransform'];
@@ -98,5 +102,22 @@ export class HttpBackendAdapter<TEntitlement extends EntitlementBase = Entitleme
       verifyResponseSchema,
     );
     return result as VerifyResponse<TEntitlement>;
+  }
+
+  async listProducts(): Promise<ConfiguredProduct[]> {
+    if (!this.endpoints.products) {
+      // Defensive: createIAP only calls listProducts() when this is set, but
+      // a consumer who reaches into the adapter directly gets a clear error.
+      throw new IAPError({
+        code: IAPErrorCode.INVALID_CONFIG,
+        message:
+          'HttpBackendAdapter.listProducts() requires backend.endpoints.products to be configured.',
+      });
+    }
+    const result = await this.http.request(
+      { method: 'GET', path: this.endpoints.products },
+      productManifestResponseSchema,
+    );
+    return result.products;
   }
 }
