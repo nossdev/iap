@@ -24,16 +24,23 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: npm
 
+      - name: Determine version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Resolved version: $VERSION"
+
       - name: Verify tag matches package.json version
         if: github.event_name == 'push'
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if [[ "$TAG_VERSION" != "$PKG_VERSION" ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME implies version $TAG_VERSION but package.json declares $PKG_VERSION."
+          if [[ "$TAG_VERSION" != "$VERSION" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME implies version $TAG_VERSION but package.json declares $VERSION."
             exit 1
           fi
-          echo "Tag and package.json agree on version $PKG_VERSION"
+          echo "Tag and package.json agree on version $VERSION"
 
       - name: Install dependencies
         run: npm ci
@@ -53,7 +60,6 @@ jobs:
       - name: Check if version is already on npm
         id: published_check
         run: |
-          VERSION=$(node -p "require('./package.json').version")
           if npm view "@nossdev/iap@$VERSION" version >/dev/null 2>&1; then
             echo "::warning::@nossdev/iap@$VERSION is already published — skipping publish step."
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -64,7 +70,6 @@ jobs:
       - name: Publish to npm via OIDC trusted publishing
         if: steps.published_check.outputs.skip != 'true'
         run: |
-          VERSION=$(node -p "require('./package.json').version")
           if [[ "$VERSION" == *-* ]]; then
             DIST_TAG=next
           else
@@ -72,3 +77,51 @@ jobs:
           fi
           echo "Publishing $VERSION on dist-tag $DIST_TAG"
           npm publish --access public --tag "$DIST_TAG"
+
+      # ─── Notification: published successfully ──────────────────────────
+      - name: Discord — published
+        if: success() && steps.published_check.outputs.skip != 'true'
+        uses: ./.github/actions/discord-notify
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+          status: success
+          title: "Published @nossdev/iap@${{ env.VERSION }}"
+          description: |
+            Released to npm with provenance. Install with:
+            ```
+            npm install @nossdev/iap@${{ env.VERSION }}
+            ```
+          version: v${{ env.VERSION }}
+          extra_fields: |
+            [
+              { "name": "npm",     "value": "[@nossdev/iap on npmjs.com](https://www.npmjs.com/package/@nossdev/iap/v/${{ env.VERSION }})", "inline": true },
+              { "name": "Release", "value": "[GitHub release](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ env.VERSION }})", "inline": true }
+            ]
+
+      # ─── Notification: idempotent re-run (already on registry) ────────
+      - name: Discord — already published
+        if: success() && steps.published_check.outputs.skip == 'true'
+        uses: ./.github/actions/discord-notify
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+          status: info
+          title: "Workflow re-ran for @nossdev/iap@${{ env.VERSION }}"
+          description: |
+            Version is already on npm. Idempotency guard fired — no re-publish.
+          version: v${{ env.VERSION }}
+          extra_fields: |
+            [
+              { "name": "npm", "value": "[@nossdev/iap on npmjs.com](https://www.npmjs.com/package/@nossdev/iap/v/${{ env.VERSION }})", "inline": true }
+            ]
+
+      # ─── Notification: failure (any step) ──────────────────────────────
+      - name: Discord — failed
+        if: failure()
+        uses: ./.github/actions/discord-notify
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+          status: failure
+          title: "Release FAILED for @nossdev/iap@${{ env.VERSION }}"
+          description: |
+            ⚠️  Release of `@nossdev/iap@${{ env.VERSION }}` did not complete. Check the workflow logs for the failing step.
+          version: v${{ env.VERSION }}
