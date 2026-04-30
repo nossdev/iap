@@ -1,6 +1,6 @@
 [tools]
 node = "22.22.2"
-npm = "10.9.2"
+npm = "11.13.0"
 
 [tasks.publish]
 description = "Bump package.json version, commit, tag, and push to trigger the release workflow"
