@@ -24,6 +24,9 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: npm
 
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@^11
+
       - name: Verify tag matches package.json version
         if: github.event_name == 'push'
         run: |
@@ -50,7 +53,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Publish to npm
+      - name: Publish to npm via OIDC trusted publishing
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if [[ "$VERSION" == *-* ]]; then
@@ -59,6 +62,4 @@ jobs:
             DIST_TAG=latest
           fi
           echo "Publishing $VERSION on dist-tag $DIST_TAG"
-          npm publish --provenance --access public --tag "$DIST_TAG"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm publish --access public --tag "$DIST_TAG"
