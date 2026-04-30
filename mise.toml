@@ -1,3 +1,65 @@
 [tools]
 node = "22.22.2"
 npm = "10.9.2"
+
+[tasks.publish]
+description = "Bump package.json version, commit, tag, and push to trigger the release workflow"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo 'Usage: mise run publish <version>     (e.g., mise run publish 0.1.0 or 0.1.0-rc.1)' >&2
+  exit 64
+fi
+
+# Allow either "0.1.0" or "v0.1.0"; canonicalize to bare SemVer.
+VERSION="${1#v}"
+
+if [[ ! "$VERSION" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+  echo "Error: '$VERSION' is not a valid SemVer (expected MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-prerelease)." >&2
+  exit 65
+fi
+
+# Hard-fail on a dirty tree — npm version + git commit would either no-op or capture unrelated changes.
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo 'Error: working tree is dirty. Commit or stash before publishing.' >&2
+  git status --short
+  exit 1
+fi
+
+# Hard-fail off main — releases should always cut from main so the tag matches what CI validated.
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "$BRANCH" != 'main' ]]; then
+  echo "Error: currently on '$BRANCH'. Publish from 'main'." >&2
+  exit 1
+fi
+
+# Hard-fail if the tag already exists locally or on the remote — re-tagging is rarely what you want.
+if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+  echo "Error: tag v$VERSION already exists locally." >&2
+  exit 1
+fi
+if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+  echo "Error: tag v$VERSION already exists on origin." >&2
+  exit 1
+fi
+
+echo "→ Bumping package.json to $VERSION"
+npm version "$VERSION" --no-git-tag-version --allow-same-version >/dev/null
+
+echo '→ Committing version bump'
+git add package.json package-lock.json
+git commit -m "chore(release): v$VERSION"
+
+echo "→ Tagging v$VERSION"
+git tag -a "v$VERSION" -m "Release $VERSION"
+
+echo '→ Pushing main + tag to origin'
+git push origin main
+git push origin "v$VERSION"
+
+echo ''
+echo "✓ Pushed v$VERSION. The release workflow will build, test, and publish to npm."
+echo '  Watch: https://github.com/nossdev/iap/actions/workflows/release.yml'
+"""
