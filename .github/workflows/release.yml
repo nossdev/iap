@@ -53,7 +53,19 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check if version is already on npm
+        id: published_check
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "@nossdev/iap@$VERSION" version >/dev/null 2>&1; then
+            echo "::warning::@nossdev/iap@$VERSION is already published — skipping publish step."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to npm via OIDC trusted publishing
+        if: steps.published_check.outputs.skip != 'true'
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if [[ "$VERSION" == *-* ]]; then
