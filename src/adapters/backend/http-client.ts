@@ -5,7 +5,11 @@ import { redactHeaders } from '../../lib/redact.js';
 
 export interface HttpRequest {
   method: 'GET' | 'POST';
-  /** Path appended to baseUrl. Should start with `/`. */
+  /**
+   * Path appended to baseUrl. Leading slash is optional — both `'/foo'` and
+   * `'foo'` are normalized at request time, and any trailing slash on `baseUrl`
+   * is stripped, so all four corner cases produce the same joined URL.
+   */
   path: string;
   /** JSON-serializable body (for POST). */
   body?: unknown;
@@ -71,7 +75,9 @@ export class HttpClient {
   async request<T>(req: HttpRequest, schema: z.ZodType<T>): Promise<T> {
     const transformed = this.opts.requestTransform ? await this.opts.requestTransform(req) : req;
 
-    const url = `${this.opts.baseUrl.replace(/\/$/, '')}${transformed.path}`;
+    const base = this.opts.baseUrl.replace(/\/+$/, '');
+    const path = transformed.path.startsWith('/') ? transformed.path : `/${transformed.path}`;
+    const url = `${base}${path}`;
     const auth = await this.opts.getAuthHeaders();
     const headers: Record<string, string> = {
       'content-type': 'application/json',

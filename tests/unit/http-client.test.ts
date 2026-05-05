@@ -55,6 +55,34 @@ describe('HttpClient — happy path', () => {
     expect(fetchStub.mock.calls[0]?.[0]).toBe('https://api.example.com/x');
   });
 
+  it('adds missing leading slash on path (no trailing slash on baseUrl)', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    const client = makeClient({ fetch: fetchStub, baseUrl: 'https://api.example.com' });
+    await client.request({ method: 'GET', path: 'iap/entitlements' }, okSchema);
+    expect(fetchStub.mock.calls[0]?.[0]).toBe('https://api.example.com/iap/entitlements');
+  });
+
+  it('joins correctly when baseUrl has trailing slash and path has no leading slash', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    const client = makeClient({ fetch: fetchStub, baseUrl: 'https://api.example.com/' });
+    await client.request({ method: 'GET', path: 'iap/entitlements' }, okSchema);
+    expect(fetchStub.mock.calls[0]?.[0]).toBe('https://api.example.com/iap/entitlements');
+  });
+
+  it('strips multiple trailing slashes from baseUrl', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    const client = makeClient({ fetch: fetchStub, baseUrl: 'https://api.example.com//' });
+    await client.request({ method: 'GET', path: 'iap/entitlements' }, okSchema);
+    expect(fetchStub.mock.calls[0]?.[0]).toBe('https://api.example.com/iap/entitlements');
+  });
+
+  it('joins correctly with double trailing slash and leading slash on path', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    const client = makeClient({ fetch: fetchStub, baseUrl: 'https://api.example.com//' });
+    await client.request({ method: 'GET', path: '/iap/entitlements' }, okSchema);
+    expect(fetchStub.mock.calls[0]?.[0]).toBe('https://api.example.com/iap/entitlements');
+  });
+
   it('serializes the body for POST', async () => {
     const fetchStub = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
     const client = makeClient({ fetch: fetchStub });

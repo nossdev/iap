@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed
+
+- **HTTP client URL normalization** — `HttpClient` now forgives mismatched slashes between `backend.baseUrl` and `backend.endpoints.*`. Previously, only a trailing slash on `baseUrl` was stripped; an endpoint path without a leading slash silently produced a malformed URL (`https://api.example.comiap/verify`). Both sides are now normalized: `baseUrl` trailing slashes (including `//`) are stripped and a leading `/` is added to the endpoint path if missing. No behavior change for correctly-configured consumers.
+
 ## [0.1.0] — 2026-04-29
 
 First public release. Capacitor 5 IAP orchestrator that defers acknowledgement to a backend you control.
