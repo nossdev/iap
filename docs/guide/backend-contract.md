@@ -1,6 +1,6 @@
 # Backend contract
 
-Your backend implements four required endpoints (plus one optional). The library calls them; they call [Attesto](https://attesto.nossdev.com). This page documents the exact request/response shapes the library expects.
+Your backend implements two-to-four required endpoints (plus one optional). The library calls them; they call [Attesto](https://attesto.nossdev.com). This page documents the exact request/response shapes the library expects.
 
 ::: tip Implementing a custom transport?
 If your backend isn't HTTP/JSON (GraphQL, Firebase, Supabase, gRPC-web), implement a [`BackendAdapter`](/api/backend-adapter) instead. The shapes below still apply at the domain level — only the wire encoding changes.
@@ -8,13 +8,15 @@ If your backend isn't HTTP/JSON (GraphQL, Firebase, Supabase, gRPC-web), impleme
 
 ## Overview
 
-| Endpoint                | Method | Purpose                                              | Required? |
-|-------------------------|--------|------------------------------------------------------|-----------|
-| `verifyApple`           | POST   | Validate one Apple StoreKit transaction              | yes       |
-| `verifyGoogle`          | POST   | Validate one Google Play Billing transaction         | yes       |
-| `entitlements`          | GET    | Return the user's current entitlements               | yes       |
-| `restore`               | POST   | Validate a batch of platform receipts (re-link user) | yes       |
-| `products`              | GET    | Return the SKU manifest the app should register      | optional  |
+| Endpoint                | Method | Purpose                                              | Required?                                  |
+|-------------------------|--------|------------------------------------------------------|--------------------------------------------|
+| `verifyApple`           | POST   | Validate one Apple StoreKit transaction              | iOS-supporting builds only †               |
+| `verifyGoogle`          | POST   | Validate one Google Play Billing transaction         | Android-supporting builds only †           |
+| `entitlements`          | GET    | Return the user's current entitlements               | yes                                        |
+| `restore`               | POST   | Validate a batch of platform receipts (re-link user) | yes                                        |
+| `products`              | GET    | Return the SKU manifest the app should register      | optional                                   |
+
+† At least one of `verifyApple` / `verifyGoogle` must be set. iOS-only consumers can omit `verifyGoogle` and vice versa — the library throws `IAPError(INVALID_CONFIG)` with a clear message if the runtime ever dispatches to a missing endpoint.
 
 Paths are configured via `config.backend.endpoints`. The defaults shown in [Configuration](/guide/configuration) — `/api/iap/verify/apple` etc. — are convention, not required.
 

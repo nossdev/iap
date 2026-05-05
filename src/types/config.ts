@@ -3,16 +3,21 @@ import type { HttpRequest } from '../adapters/backend/http-client.js';
 
 export const productTypeSchema = z.enum(['subscription', 'product', 'consumable']);
 
-const configuredProductSchema = z
-  .object({
-    id: z.string().min(1),
-    type: productTypeSchema,
-    androidPlanId: z.string().min(1).optional(),
-  })
-  .refine((p) => p.type !== 'subscription' || !!p.androidPlanId, {
-    message: 'androidPlanId is required for subscription products (used by Android Play Billing).',
-    path: ['androidPlanId'],
-  });
+const configuredProductSchema = z.object({
+  id: z.string().min(1),
+  type: productTypeSchema,
+  /**
+   * Optional. Used only by the Android native adapter to disambiguate which
+   * base plan to purchase for multi-plan subscription products (Google Play
+   * Billing). iOS ignores it. When omitted on Android, the native adapter
+   * falls back to `native.getOffer()` (the default offer) — fine for
+   * single-plan subscriptions and for non-subscription products.
+   *
+   * Recommended to set explicitly when a single subscription product has
+   * multiple base plans (e.g. monthly + yearly under one product id).
+   */
+  androidPlanId: z.string().min(1).optional(),
+});
 
 /**
  * Array form. Reused by `productManifestResponseSchema` (HTTP) and by the
@@ -20,18 +25,47 @@ const configuredProductSchema = z
  */
 export const configuredProductsArraySchema = z.array(configuredProductSchema).min(1);
 
-const backendEndpointsSchema = z.object({
-  verifyApple: z.string().min(1),
-  verifyGoogle: z.string().min(1),
-  entitlements: z.string().min(1),
-  restore: z.string().min(1),
-  /**
-   * Optional. When set, the library fetches the SKU manifest from this
-   * endpoint during `initialize()` if `products` is omitted from config.
-   * See `docs/guide/backend-contract.md` for the response shape.
-   */
-  products: z.string().min(1).optional(),
-});
+const backendEndpointsSchema = z
+  .object({
+    /**
+     * Optional. Set when the consumer supports iOS purchases. iOS-less
+     * (e.g. Android-only) configs may omit it; the HTTP adapter will throw
+     * `INVALID_CONFIG` at runtime if `verifyApple()` is invoked without this
+     * endpoint configured. At least one of `verifyApple` or `verifyGoogle`
+     * must be set.
+     */
+    verifyApple: z.string().min(1).optional(),
+    /**
+     * Optional. Set when the consumer supports Android purchases.
+     * Android-less (e.g. iOS-only) configs may omit it; the HTTP adapter will
+     * throw `INVALID_CONFIG` at runtime if `verifyGoogle()` is invoked
+     * without this endpoint configured. At least one of `verifyApple` or
+     * `verifyGoogle` must be set.
+     */
+    verifyGoogle: z.string().min(1).optional(),
+    entitlements: z.string().min(1),
+    restore: z.string().min(1),
+    /**
+     * Optional. When set, the library fetches the SKU manifest from this
+     * endpoint during `initialize()` if `products` is omitted from config.
+     * See `docs/guide/backend-contract.md` for the response shape.
+     */
+    products: z.string().min(1).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.verifyApple && !data.verifyGoogle) {
+      // Attach to the object root rather than one of the two fields — the
+      // constraint is cross-field, so naming a single path is misleading
+      // (a developer reading "verifyApple: ..." may add only that and miss
+      // that verifyGoogle would also satisfy the constraint).
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'At least one of backend.endpoints.verifyApple or backend.endpoints.verifyGoogle must be set.',
+        path: [],
+      });
+    }
+  });
 
 const backendConfigSchema = z
   .object({

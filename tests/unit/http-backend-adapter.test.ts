@@ -258,7 +258,12 @@ describe('HttpBackendAdapter — listProducts', () => {
     });
   });
 
-  it('throws BACKEND_BAD_RESPONSE when subscription is missing androidPlanId', async () => {
+  it('accepts manifest entries for subscriptions without androidPlanId', async () => {
+    // androidPlanId is optional in the manifest contract — required only at
+    // runtime by the Android native adapter when disambiguating multi-plan
+    // subscriptions. iOS-only consumers and single-plan Android subs don't
+    // need it. (See src/types/config.ts and createIAP.test.ts for the matching
+    // schema-side guarantee.)
     const fetchStub = vi.fn().mockResolvedValue(
       jsonResponse({
         products: [{ id: 'premium_monthly', type: 'subscription' }],
@@ -268,7 +273,9 @@ describe('HttpBackendAdapter — listProducts', () => {
       endpoints: { ...endpoints, products: '/api/iap/products' },
     });
 
-    await expect(adapter.listProducts()).rejects.toBeInstanceOf(IAPError);
+    await expect(adapter.listProducts()).resolves.toEqual([
+      { id: 'premium_monthly', type: 'subscription' },
+    ]);
   });
 
   it('throws INVALID_CONFIG when the endpoint is not configured', async () => {
@@ -306,5 +313,48 @@ describe('HttpBackendAdapter — restore', () => {
     });
     expect(result.valid).toBe(true);
     expect(fetchStub).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('HttpBackendAdapter — platform-specific endpoint optionality', () => {
+  it('throws INVALID_CONFIG when verifyApple is called without endpoints.verifyApple', async () => {
+    const fetchStub = vi.fn();
+    const adapter = makeAdapter(fetchStub, {
+      endpoints: {
+        verifyGoogle: '/api/iap/verify/google',
+        entitlements: '/api/iap/entitlements',
+        restore: '/api/iap/restore',
+      },
+    });
+
+    await expect(
+      adapter.verifyApple({
+        productId: 'premium_monthly',
+        transactionId: '2000000123',
+        type: 'subscription',
+      }),
+    ).rejects.toMatchObject({ code: IAPErrorCode.INVALID_CONFIG });
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it('throws INVALID_CONFIG when verifyGoogle is called without endpoints.verifyGoogle', async () => {
+    const fetchStub = vi.fn();
+    const adapter = makeAdapter(fetchStub, {
+      endpoints: {
+        verifyApple: '/api/iap/verify/apple',
+        entitlements: '/api/iap/entitlements',
+        restore: '/api/iap/restore',
+      },
+    });
+
+    await expect(
+      adapter.verifyGoogle({
+        productId: 'premium_monthly',
+        purchaseToken: 'play-tok',
+        packageName: 'com.example.app',
+        type: 'subscription',
+      }),
+    ).rejects.toMatchObject({ code: IAPErrorCode.INVALID_CONFIG });
+    expect(fetchStub).not.toHaveBeenCalled();
   });
 });

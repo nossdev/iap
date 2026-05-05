@@ -67,15 +67,15 @@ Optional. Either pass a static array, or omit it and let the backend supply the 
 type ConfiguredProduct = {
   id: string;                                       // store identifier
   type: 'subscription' | 'product' | 'consumable';
-  androidPlanId?: string;                           // required for subscriptions
+  androidPlanId?: string;                           // optional; see below
 };
 ```
 
 - `id` matches the productId in App Store Connect / Play Console.
-- `type: 'subscription'` — auto-renewable subscription. Requires `androidPlanId`.
+- `type: 'subscription'` — auto-renewable subscription.
 - `type: 'product'` — non-consumable one-time purchase (e.g. "Remove Ads").
 - `type: 'consumable'` — consumable one-time purchase (e.g. coin packs).
-- `androidPlanId` matches the **base plan** identifier in Google Play Console. Required when `type: 'subscription'`. iOS ignores it.
+- `androidPlanId` matches the **base plan** identifier in Google Play Console. **Optional**: set it when an Android subscription product has multiple base plans and you need to disambiguate which one to purchase. iOS ignores it. Single-plan Android subscriptions and iOS-only configs don't need it — the native adapter falls back to the default offer.
 
 ::: warning Multiple plans per subscription product
 If you have one subscription product with multiple base plans (e.g. monthly and yearly), register each plan as a separate `ConfiguredProduct` entry with the same `id` but different `androidPlanId`. The orchestrator routes the purchase to the right plan via `androidPlanId`.
@@ -120,8 +120,8 @@ Required. Configures how the library talks to your server.
 type BackendConfig = {
   baseUrl: string;                                  // your backend root
   endpoints: {
-    verifyApple: string;                            // POST — Apple receipt validation
-    verifyGoogle: string;                           // POST — Google purchase validation
+    verifyApple?: string;                           // POST — Apple receipt validation (omit for Android-only)
+    verifyGoogle?: string;                          // POST — Google purchase validation (omit for iOS-only)
     entitlements: string;                           // GET — current entitlements
     restore: string;                                // POST — batch re-verify
     products?: string;                              // GET — optional SKU manifest
@@ -141,6 +141,10 @@ type BackendConfig = {
 - `retries` controls how many additional attempts on transient errors (5xx, 408, 429, network). 4xx auth/bad-response errors never retry.
 - `requestTransform` rewrites the path/body/headers before send. Useful when your backend already has a different convention.
 - `responseTransform` runs on the parsed JSON before zod validation. Useful when your backend wraps responses in an envelope.
+
+::: tip Single-platform builds
+`verifyApple` and `verifyGoogle` are individually optional, but at least one must be set. iOS-only consumers can omit `verifyGoogle`; Android-only consumers can omit `verifyApple`. If the runtime ever invokes the missing path, the HTTP adapter throws `IAPError(INVALID_CONFIG)` with a clear message — but in practice the orchestrator only dispatches to the platform of the active native transaction.
+:::
 
 See [Backend contract](/guide/backend-contract) for the request/response shapes the library expects.
 
@@ -225,7 +229,7 @@ Invalid configs throw `IAPError(INVALID_CONFIG)` synchronously from `createIAP()
 ```
 IAPError: Invalid IAP configuration:
   - backend.baseUrl: Invalid url
-  - products.0.androidPlanId: androidPlanId is required for subscription products
+  - products.0.id: String must contain at least 1 character(s)
 
 Hint: Check the field paths reported above against the IAPConfig schema (see /api/types).
 ```

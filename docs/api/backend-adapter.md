@@ -87,7 +87,7 @@ Returned shape per entry:
 type ConfiguredProduct = {
   id: string;                                       // store identifier
   type: 'subscription' | 'product' | 'consumable';
-  androidPlanId?: string;                           // required for subscriptions
+  androidPlanId?: string;                           // optional; Android multi-plan only
 };
 ```
 

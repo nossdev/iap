@@ -30,11 +30,62 @@ describe('createIAP — config validation', () => {
     expect(() => createIAP({ ...validConfig, products: [] })).toThrowError(IAPError);
   });
 
-  it('rejects subscription product without androidPlanId', () => {
+  it('accepts subscription product without androidPlanId (iOS-only or single-plan Android)', () => {
+    // androidPlanId is only required when an Android multi-plan subscription
+    // needs disambiguation. iOS-only consumers and single-plan Android
+    // subscriptions don't need it; the native adapter falls back to the
+    // default offer (`native.getOffer()`).
     expect(() =>
       createIAP({
         ...validConfig,
         products: [{ id: 'premium_monthly', type: 'subscription' }],
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts an iOS-only config (verifyGoogle omitted)', () => {
+    expect(() =>
+      createIAP({
+        ...validConfig,
+        backend: {
+          ...validConfig.backend,
+          endpoints: {
+            verifyApple: '/api/iap/verify/apple',
+            entitlements: '/api/iap/entitlements',
+            restore: '/api/iap/restore',
+          },
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts an Android-only config (verifyApple omitted)', () => {
+    expect(() =>
+      createIAP({
+        ...validConfig,
+        backend: {
+          ...validConfig.backend,
+          endpoints: {
+            verifyGoogle: '/api/iap/verify/google',
+            entitlements: '/api/iap/entitlements',
+            restore: '/api/iap/restore',
+          },
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects a config with neither verifyApple nor verifyGoogle', () => {
+    expect(() =>
+      createIAP({
+        ...validConfig,
+        backend: {
+          ...validConfig.backend,
+          endpoints: {
+            entitlements: '/api/iap/entitlements',
+            restore: '/api/iap/restore',
+          },
+        },
       }),
     ).toThrowError(IAPError);
   });

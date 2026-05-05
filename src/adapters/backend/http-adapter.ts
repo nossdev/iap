@@ -18,8 +18,22 @@ import {
 export interface HttpBackendAdapterOptions {
   baseUrl: string;
   endpoints: {
-    verifyApple: string;
-    verifyGoogle: string;
+    /**
+     * Optional. Required only when the consumer's app actually invokes
+     * `verifyApple` (iOS purchases). Android-only configs may omit it; the
+     * adapter throws `INVALID_CONFIG` if `verifyApple()` is called without
+     * this set. At least one of `verifyApple` or `verifyGoogle` must be set
+     * for any usable config.
+     */
+    verifyApple?: string;
+    /**
+     * Optional. Required only when the consumer's app actually invokes
+     * `verifyGoogle` (Android purchases). iOS-only configs may omit it; the
+     * adapter throws `INVALID_CONFIG` if `verifyGoogle()` is called without
+     * this set. At least one of `verifyApple` or `verifyGoogle` must be set
+     * for any usable config.
+     */
+    verifyGoogle?: string;
     entitlements: string;
     restore: string;
     products?: string;
@@ -69,6 +83,13 @@ export class HttpBackendAdapter<TEntitlement extends EntitlementBase = Entitleme
   }
 
   async verifyApple(req: VerifyAppleRequest): Promise<VerifyResponse<TEntitlement>> {
+    if (!this.endpoints.verifyApple) {
+      throw new IAPError({
+        code: IAPErrorCode.INVALID_CONFIG,
+        message:
+          'HttpBackendAdapter.verifyApple() requires backend.endpoints.verifyApple to be configured. Set it on iOS-supporting builds, or skip Apple purchases on this build.',
+      });
+    }
     const result = await this.http.request(
       { method: 'POST', path: this.endpoints.verifyApple, body: req },
       verifyResponseSchema,
@@ -77,6 +98,13 @@ export class HttpBackendAdapter<TEntitlement extends EntitlementBase = Entitleme
   }
 
   async verifyGoogle(req: VerifyGoogleRequest): Promise<VerifyResponse<TEntitlement>> {
+    if (!this.endpoints.verifyGoogle) {
+      throw new IAPError({
+        code: IAPErrorCode.INVALID_CONFIG,
+        message:
+          'HttpBackendAdapter.verifyGoogle() requires backend.endpoints.verifyGoogle to be configured. Set it on Android-supporting builds, or skip Google purchases on this build.',
+      });
+    }
     const result = await this.http.request(
       { method: 'POST', path: this.endpoints.verifyGoogle, body: req },
       verifyResponseSchema,

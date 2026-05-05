@@ -64,7 +64,11 @@ Returned by `iap.getProducts()`. The combination of `priceMicros` + `currency` g
 interface ConfiguredProduct {
   id: string;
   type: ProductType;
-  /** Required for Android subscriptions; ignored on iOS / non-subs. */
+  /**
+   * Optional. Set for Android multi-plan subscriptions to disambiguate which
+   * base plan to purchase. iOS ignores it. Single-plan Android subscriptions
+   * and iOS-only configs may omit it.
+   */
   androidPlanId?: string;
 }
 ```

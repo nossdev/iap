@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **`androidPlanId` no longer required for subscription products** — the schema previously enforced `androidPlanId` cross-platform via a `.refine()` on `configuredProductSchema`, blocking iOS-only consumers and single-plan Android subscriptions from validating their config or backend manifest. The field is now consistently optional. The Android native adapter already falls back to `native.getOffer()` (the default offer) when it's missing, so the runtime is unaffected. Set `androidPlanId` explicitly only when an Android subscription has multiple base plans and you need to disambiguate. iOS ignores it.
+- **`verifyApple` / `verifyGoogle` are individually optional** — previously both were required at the schema level even for single-platform builds. Now at least one of them must be set; the other can be omitted. iOS-only consumers can drop `verifyGoogle`, Android-only consumers can drop `verifyApple`. The HTTP adapter throws `IAPError(INVALID_CONFIG)` with a clear message if the runtime ever dispatches to a missing endpoint — but in practice the orchestrator only calls the endpoint matching the active native transaction's platform.
+
+## [0.1.1] — 2026-05-05
+
+### Fixed
+
 - **HTTP client URL normalization** — `HttpClient` now forgives mismatched slashes between `backend.baseUrl` and `backend.endpoints.*`. Previously, only a trailing slash on `baseUrl` was stripped; an endpoint path without a leading slash silently produced a malformed URL (`https://api.example.comiap/verify`). Both sides are now normalized: `baseUrl` trailing slashes (including `//`) are stripped and a leading `/` is added to the endpoint path if missing. No behavior change for correctly-configured consumers.
 
 ## [0.1.0] — 2026-04-29
