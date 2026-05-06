@@ -38,7 +38,7 @@ For each product in your `createIAP({ products })` config:
 ### 4. Test the flow
 
 ```typescript
-const result = await iap.purchase('premium_monthly');
+const result = await iap.purchase({ productId: 'premium_monthly' });
 console.log(result);
 ```
 

@@ -8,7 +8,7 @@ Every error the library throws is an `IAPError` — a typed `Error` subclass wit
 import { IAPError, IAPErrorCode, isIAPError, errorHint } from '@nossdev/iap';
 
 try {
-  await iap.purchase('premium_monthly');
+  await iap.purchase({ productId: 'premium_monthly' });
 } catch (error) {
   if (isIAPError(error)) {
     error.code;         // IAPErrorCode — stable enum, safe to switch on
@@ -37,7 +37,7 @@ The `error.code` field is a stable string enum. **Switch on it** rather than par
 import { IAPErrorCode, isIAPError } from '@nossdev/iap';
 
 try {
-  await iap.purchase('premium_monthly');
+  await iap.purchase({ productId: 'premium_monthly' });
 } catch (error) {
   if (!isIAPError(error)) throw error;
 
@@ -87,6 +87,8 @@ For the purchase flow specifically, the discriminated union from `iap.purchase()
 | `BACKEND_BAD_RESPONSE` | no | 4xx / malformed JSON / schema mismatch | Backend doesn't match [contract](/guide/backend-contract) |
 | `VERIFICATION_REJECTED` | no | Backend returned `{ valid: false }` | Don't auto-retry; transaction stays in queue for `iap.refresh()` |
 | `STORAGE_ERROR` | yes | Capacitor Preferences write failed | In-memory state is fine; persistence will retry |
+| `INVALID_APP_USER_ID` | no | `purchase({ appUserId })` value (literal or fetcher-returned) isn't a UUID v4 | Pass `crypto.randomUUID()` or omit `appUserId` to fall back to subject.key mapping |
+| `APP_USER_ID_FETCH_FAILED` | no | The async appUserId fetcher threw or rejected | Inspect `error.cause` for the underlying error (network failure, backend non-2xx) |
 
 Get the per-code hint programmatically:
 
@@ -184,8 +186,10 @@ It DOES throw on:
 - `NOT_INITIALIZED`
 - `ALREADY_IN_PROGRESS` (concurrent purchase for same productId)
 - `PLATFORM_NOT_SUPPORTED` (web)
+- `INVALID_APP_USER_ID` (`appUserId` not a UUID v4)
+- `APP_USER_ID_FETCH_FAILED` (async fetcher threw / rejected; original attached as `cause`)
 
-These are programming errors, not user-flow errors — surface them in dev, silence them in production (the user can't fix them).
+These are programming errors / pre-flight failures, not user-flow errors — surface them in dev, silence them in production (the user can't fix them).
 
 ## Next
 

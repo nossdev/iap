@@ -91,7 +91,7 @@ After `initialize()` returns, all read methods (`hasEntitlement`, `getEntitlemen
 ## 4. Buy something
 
 ```typescript
-const result = await iap.purchase('premium_monthly');
+const result = await iap.purchase({ productId: 'premium_monthly' });
 
 switch (result.status) {
   case 'success':
@@ -118,6 +118,42 @@ switch (result.status) {
 ```
 
 The discriminated union is by design — UI code decides what to show without needing try/catch around every call.
+
+### Pre-attaching a user identifier (optional)
+
+If your app has a logged-in user at purchase time, pass an `appUserId` so it
+travels through StoreKit / Play Billing and reaches your backend on both the
+verify response and the eventual webhook. Eliminates the verify/webhook race
+on the backend side — see [Attesto's integration guide](https://attesto.nossdev.com/guide/integration#mapping-webhook-events-back-to-users)
+for the join pattern.
+
+```typescript
+// (a) Plain string — your app already has the UUID.
+await iap.purchase({
+  productId: 'premium_monthly',
+  appUserId: currentUser.iapUuid,
+});
+
+// (b) Async fetcher — your backend mints+saves the UUID per user the first
+//     time it's asked, returns the same UUID on later calls. iap calls the
+//     fetcher fresh on every purchase; backend owns the idempotency.
+await iap.purchase({
+  productId: 'premium_monthly',
+  appUserId: async () => {
+    const r = await fetch('/api/iap/uuid', { headers: authHeaders() });
+    return (await r.json()).uuid;
+  },
+});
+```
+
+The supplied value (literal or fetcher-returned) **must be a UUID v4**. iap
+validates before passing to native; non-UUIDs throw `IAPError(INVALID_APP_USER_ID)`.
+Apple requires UUIDs for `appAccountToken`; we enforce the same on Android
+for a consistent contract.
+
+For purchases without a logged-in user (guest flows), simply omit
+`appUserId` — your backend falls back to mapping by Attesto's `subject.key`
+(see the integration guide).
 
 ## 5. Read entitlements anywhere
 

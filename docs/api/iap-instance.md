@@ -7,7 +7,7 @@ interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   initialize(): Promise<void>;
   refresh(): Promise<void>;
   destroy(): Promise<void>;
-  purchase(productId: string): Promise<PurchaseResult<TEntitlement>>;
+  purchase(opts: PurchaseOptions): Promise<PurchaseResult<TEntitlement>>;
   restorePurchases(): Promise<RestoreResult<TEntitlement>>;
   getProducts(): Promise<Product[]>;
   hasEntitlement(key: string): boolean;
@@ -71,13 +71,27 @@ Tears down event listeners, removes the resume listener, disposes the native ada
 Don't call `destroy()` while `iap.purchase()` is in flight — the native `acknowledge()` step can become a no-op, leading to a 3-day Google auto-refund. Await the in-flight purchase first.
 :::
 
-## `purchase(productId)`
+## `purchase(opts)`
 
 ```typescript
-purchase(productId: string): Promise<PurchaseResult<TEntitlement>>
+purchase(opts: PurchaseOptions): Promise<PurchaseResult<TEntitlement>>
 ```
 
 Starts a purchase. Returns a discriminated union — does NOT throw on user cancellation, pending payment, or backend rejection.
+
+### Options
+
+```typescript
+interface PurchaseOptions {
+  productId: string;
+  appUserId?: string | (() => Promise<string>);
+}
+```
+
+| Field       | Type                                  | Required | Notes                                                                                                                                                                                                                                                                            |
+| ----------- | ------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `productId` | `string`                              | yes      | Must be in `config.products`.                                                                                                                                                                                                                                                    |
+| `appUserId` | `string \| (() => Promise<string>)` | no       | If supplied, validated as a UUID v4 then forwarded to StoreKit's `appAccountToken` (iOS) / Play Billing's `obfuscatedAccountId` (Android). Either a literal UUID v4 or an async fetcher invoked once per purchase. See [`AppUserId`](/api/types#appuserid) for fetcher semantics. |
 
 ```typescript
 type PurchaseResult<T> =
@@ -88,13 +102,15 @@ type PurchaseResult<T> =
   | { status: 'failed';              productId: string; error: IAPError };
 ```
 
-**Throws** only on programming errors:
+**Throws** only on programming errors / pre-flight failures:
 - `IAPError(NOT_INITIALIZED)`
 - `IAPError(ALREADY_IN_PROGRESS)` — a purchase for the same productId is already running
 - `IAPError(PRODUCT_NOT_FOUND)` — productId not in `config.products`
 - `IAPError(PLATFORM_NOT_SUPPORTED)` — called on web
+- `IAPError(INVALID_APP_USER_ID)` — `appUserId` (literal or fetcher-returned) isn't a UUID v4
+- `IAPError(APP_USER_ID_FETCH_FAILED)` — async fetcher threw or rejected (original error attached as `cause`)
 
-Emits `purchase-started`, then exactly one of: `purchase-success` (+ `entitlements-changed`), `purchase-cancelled`, `purchase-pending`, `verification-failed`, `purchase-failed`.
+Emits `purchase-started`, then exactly one of: `purchase-success` (+ `entitlements-changed`), `purchase-cancelled`, `purchase-pending`, `verification-failed`, `purchase-failed`. The two appUserId errors are pre-flight (caller-side fault) and surface synchronously without emitting `purchase-started`.
 
 ## `restorePurchases()`
 

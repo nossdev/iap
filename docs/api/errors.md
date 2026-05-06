@@ -72,6 +72,10 @@ const IAPErrorCode = {
 
   // Storage
   STORAGE_ERROR:            'STORAGE_ERROR',
+
+  // appUserId pre-attach
+  INVALID_APP_USER_ID:      'INVALID_APP_USER_ID',
+  APP_USER_ID_FETCH_FAILED: 'APP_USER_ID_FETCH_FAILED',
 } as const;
 
 type IAPErrorCode = typeof IAPErrorCode[keyof typeof IAPErrorCode];

@@ -109,7 +109,7 @@ describe('PurchaseOrchestrator — happy path', () => {
       backend: makeBackend({ verifyApple: verifyAppleSpy }),
     });
 
-    const result = await orchestrator.purchase('premium_monthly');
+    const result = await orchestrator.purchase({ productId: 'premium_monthly' });
 
     expect(result.status).toBe('success');
     if (result.status === 'success') {
@@ -144,7 +144,7 @@ describe('PurchaseOrchestrator — happy path', () => {
       backend: makeBackend({ verifyGoogle: verifyGoogleSpy }),
     });
 
-    await orchestrator.purchase('premium_monthly');
+    await orchestrator.purchase({ productId: 'premium_monthly' });
 
     expect(verifyGoogleSpy).toHaveBeenCalledTimes(1);
     expect(verifyGoogleSpy).toHaveBeenCalledWith({
@@ -174,7 +174,7 @@ describe('PurchaseOrchestrator — happy path', () => {
       backend: makeBackend({ verifyApple: verifyAppleSpy }),
     });
 
-    await orchestrator.purchase('remove_ads');
+    await orchestrator.purchase({ productId: 'remove_ads' });
 
     expect(verifyAppleSpy).toHaveBeenCalledWith({
       productId: 'remove_ads',
@@ -201,7 +201,7 @@ describe('PurchaseOrchestrator — failure paths', () => {
       backend: makeBackend({ verifyApple: verifySpy as never }),
     });
 
-    const result = await orchestrator.purchase('premium_monthly');
+    const result = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(result.status).toBe('cancelled');
     expect(verifySpy).not.toHaveBeenCalled();
     expect(acknowledgeSpy).not.toHaveBeenCalled();
@@ -222,7 +222,7 @@ describe('PurchaseOrchestrator — failure paths', () => {
       backend: makeBackend({ verifyApple: verifySpy as never }),
     });
 
-    const result = await orchestrator.purchase('premium_monthly');
+    const result = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(result.status).toBe('failed');
     if (result.status === 'failed') {
       expect(result.error.code).toBe(IAPErrorCode.STORE_ERROR);
@@ -243,7 +243,7 @@ describe('PurchaseOrchestrator — failure paths', () => {
       }),
     });
 
-    const result = await orchestrator.purchase('premium_monthly');
+    const result = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(result.status).toBe('pending');
     expect(events.map((e) => e.name)).toEqual(['purchase-started', 'purchase-pending']);
   });
@@ -264,7 +264,7 @@ describe('PurchaseOrchestrator — failure paths', () => {
       }),
     });
 
-    const result = await orchestrator.purchase('premium_monthly');
+    const result = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(result.status).toBe('verification_failed');
     if (result.status === 'verification_failed') {
       expect(result.error.code).toBe(IAPErrorCode.VERIFICATION_REJECTED);
@@ -300,7 +300,7 @@ describe('PurchaseOrchestrator — failure paths', () => {
       }),
     });
 
-    const result = await orchestrator.purchase('premium_monthly');
+    const result = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(result.status).toBe('verification_failed');
     expect(acknowledgeSpy).not.toHaveBeenCalled();
     expect(state.entitlements).toEqual([]);
@@ -325,12 +325,12 @@ describe('PurchaseOrchestrator — concurrency', () => {
       }),
     });
 
-    const first = orchestrator.purchase('premium_monthly');
+    const first = orchestrator.purchase({ productId: 'premium_monthly' });
     // Yield once so the first call has entered runFlow and registered the lock.
     await Promise.resolve();
 
     try {
-      await orchestrator.purchase('premium_monthly');
+      await orchestrator.purchase({ productId: 'premium_monthly' });
       throw new Error('should have rejected');
     } catch (error) {
       expect(error).toBeInstanceOf(IAPError);
@@ -363,9 +363,9 @@ describe('PurchaseOrchestrator — concurrency', () => {
       }),
     });
 
-    const first = orchestrator.purchase('premium_monthly');
+    const first = orchestrator.purchase({ productId: 'premium_monthly' });
     await Promise.resolve();
-    const second = orchestrator.purchase('remove_ads');
+    const second = orchestrator.purchase({ productId: 'remove_ads' });
     // second should resolve immediately without waiting for first
     const secondResult = await second;
     expect(secondResult.status).toBe('success');
@@ -379,7 +379,7 @@ describe('PurchaseOrchestrator — guards', () => {
   it('throws PRODUCT_NOT_FOUND for unconfigured productId', async () => {
     const { orchestrator } = makeOrchestrator({});
     try {
-      await orchestrator.purchase('not_a_real_product');
+      await orchestrator.purchase({ productId: 'not_a_real_product' });
       throw new Error('should have thrown');
     } catch (error) {
       expect(error).toBeInstanceOf(IAPError);
@@ -403,7 +403,7 @@ describe('PurchaseOrchestrator — guards', () => {
       backend: makeBackend({ verifyGoogle: verifyGoogleSpy as never }),
     });
 
-    const result = await orchestrator.purchase('premium_monthly');
+    const result = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(result.status).toBe('verification_failed');
     expect(verifyGoogleSpy).not.toHaveBeenCalled();
     expect(events.map((e) => e.name)).toEqual(['purchase-started', 'verification-failed']);
@@ -435,11 +435,11 @@ describe('PurchaseOrchestrator — restartability', () => {
     });
 
     // First call: throws unexpectedly
-    const first = await orchestrator.purchase('premium_monthly');
+    const first = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(first.status).toBe('failed');
 
     // Second call must succeed (lock released).
-    const second = await orchestrator.purchase('premium_monthly');
+    const second = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(second.status).toBe('success');
   });
 });
@@ -474,7 +474,7 @@ describe('PurchaseOrchestrator — defensive paths post-backend-success', () => 
       }),
     });
 
-    const result = await orchestrator.purchase('premium_monthly');
+    const result = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(result.status).toBe('success');
     expect(state.entitlements).toHaveLength(1);
     expect(state.entitlements[0]?.key).toBe('premium');
@@ -539,7 +539,7 @@ describe('PurchaseOrchestrator — defensive paths post-backend-success', () => 
       },
     });
 
-    const result = await orchestrator.purchase('premium_monthly');
+    const result = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(result.status).toBe('success');
     // In-memory state updated even though save threw.
     expect(state.entitlements).toHaveLength(1);
@@ -600,7 +600,7 @@ describe('PurchaseOrchestrator — defensive paths post-backend-success', () => 
       },
     });
 
-    const result = await orchestrator.purchase('premium_monthly');
+    const result = await orchestrator.purchase({ productId: 'premium_monthly' });
     expect(result.status).toBe('success');
     expect(state.entitlements).toHaveLength(1);
     // unfinished.remove() failure throws inside the persist call (because the
@@ -626,9 +626,142 @@ describe('PurchaseOrchestrator — defensive paths post-backend-success', () => 
     });
 
     expect(state.cachedAt).toBeNull();
-    await orchestrator.purchase('premium_monthly');
+    await orchestrator.purchase({ productId: 'premium_monthly' });
     const after = state.cachedAt;
     if (after === null) throw new Error('cachedAt should have been set');
     expect(after).toBeGreaterThanOrEqual(before);
+  });
+});
+
+// ─── appUserId pre-attach ─────────────────────────────────────────────────────
+
+const VALID_UUID = '550e8400-e29b-41d4-a716-446655440000';
+
+describe('PurchaseOrchestrator — appUserId pre-attach', () => {
+  describe('string mode', () => {
+    it('forwards a valid UUID v4 string as appAccountToken on the native call', async () => {
+      const purchaseSpy = vi.fn(async () => makeAppleTransaction('premium_monthly'));
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({ purchaseProduct: purchaseSpy }),
+      });
+
+      await orchestrator.purchase({ productId: 'premium_monthly', appUserId: VALID_UUID });
+
+      expect(purchaseSpy).toHaveBeenCalledTimes(1);
+      const opts = purchaseSpy.mock.calls[0]?.[0];
+      expect(opts?.appAccountToken).toBe(VALID_UUID);
+    });
+
+    it('omits appAccountToken when appUserId is not provided (current behavior preserved)', async () => {
+      const purchaseSpy = vi.fn(async () => makeAppleTransaction('premium_monthly'));
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({ purchaseProduct: purchaseSpy }),
+      });
+
+      await orchestrator.purchase({ productId: 'premium_monthly' });
+
+      const opts = purchaseSpy.mock.calls[0]?.[0];
+      expect(opts?.appAccountToken).toBeUndefined();
+    });
+
+    it('throws INVALID_APP_USER_ID synchronously on non-UUID string, never invoking native', async () => {
+      const purchaseSpy = vi.fn(async () => makeAppleTransaction('premium_monthly'));
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({ purchaseProduct: purchaseSpy }),
+      });
+
+      await expect(
+        orchestrator.purchase({ productId: 'premium_monthly', appUserId: 'not-a-uuid' }),
+      ).rejects.toMatchObject({
+        name: 'IAPError',
+        code: IAPErrorCode.INVALID_APP_USER_ID,
+      });
+      expect(purchaseSpy).not.toHaveBeenCalled();
+    });
+
+    it('throws INVALID_APP_USER_ID on empty string', async () => {
+      const { orchestrator } = makeOrchestrator({});
+      await expect(
+        orchestrator.purchase({ productId: 'premium_monthly', appUserId: '' }),
+      ).rejects.toMatchObject({ code: IAPErrorCode.INVALID_APP_USER_ID });
+    });
+  });
+
+  describe('async fetcher mode', () => {
+    it('invokes the fetcher exactly once and forwards the resolved UUID', async () => {
+      const fetcher = vi.fn(async () => VALID_UUID);
+      const purchaseSpy = vi.fn(async () => makeAppleTransaction('premium_monthly'));
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({ purchaseProduct: purchaseSpy }),
+      });
+
+      await orchestrator.purchase({ productId: 'premium_monthly', appUserId: fetcher });
+
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(purchaseSpy.mock.calls[0]?.[0]?.appAccountToken).toBe(VALID_UUID);
+    });
+
+    it('throws INVALID_APP_USER_ID when fetcher resolves to a non-UUID', async () => {
+      const fetcher = vi.fn(async () => 'still-not-a-uuid');
+      const purchaseSpy = vi.fn(async () => makeAppleTransaction('premium_monthly'));
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({ purchaseProduct: purchaseSpy }),
+      });
+
+      await expect(
+        orchestrator.purchase({ productId: 'premium_monthly', appUserId: fetcher }),
+      ).rejects.toMatchObject({ code: IAPErrorCode.INVALID_APP_USER_ID });
+      // Fetcher was awaited; native was not invoked because validation fails after.
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(purchaseSpy).not.toHaveBeenCalled();
+    });
+
+    it('wraps fetcher rejection as APP_USER_ID_FETCH_FAILED with cause', async () => {
+      const original = new Error('backend 503');
+      const fetcher = vi.fn(async () => {
+        throw original;
+      });
+      const { orchestrator } = makeOrchestrator({});
+
+      let caught: unknown;
+      try {
+        await orchestrator.purchase({ productId: 'premium_monthly', appUserId: fetcher });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(IAPError);
+      const e = caught as IAPError;
+      expect(e.code).toBe(IAPErrorCode.APP_USER_ID_FETCH_FAILED);
+      expect(e.cause).toBe(original);
+    });
+
+    it('does not emit purchase-started when validation fails (failure is pre-flight)', async () => {
+      const { orchestrator, events } = makeOrchestrator({});
+      await expect(
+        orchestrator.purchase({ productId: 'premium_monthly', appUserId: 'bad' }),
+      ).rejects.toMatchObject({ code: IAPErrorCode.INVALID_APP_USER_ID });
+      expect(events.map((e) => e.name)).toEqual([]);
+    });
+
+    it('does not pollute inFlight on validation failure (next purchase succeeds)', async () => {
+      // Regression guard: resolveAppUserId runs BEFORE inFlight.add(), so a
+      // failed pre-flight must not block a subsequent retry of the same
+      // productId with ALREADY_IN_PROGRESS. If someone refactors the order
+      // (e.g. adding inFlight.add before validation for "consistency"),
+      // this test catches it.
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({
+          purchaseProduct: async () => makeAppleTransaction('premium_monthly'),
+        }),
+      });
+      await expect(
+        orchestrator.purchase({ productId: 'premium_monthly', appUserId: 'bad' }),
+      ).rejects.toMatchObject({ code: IAPErrorCode.INVALID_APP_USER_ID });
+      const result = await orchestrator.purchase({
+        productId: 'premium_monthly',
+        appUserId: VALID_UUID,
+      });
+      expect(result.status).toBe('success');
+    });
   });
 });

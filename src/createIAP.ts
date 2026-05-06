@@ -27,7 +27,7 @@ import {
 import type { EntitlementBase } from './types/entitlement.js';
 import type { EventName, EventPayload, Unsubscribe } from './types/events.js';
 import type { ConfiguredProduct, Product } from './types/product.js';
-import type { PurchaseResult, RestoreResult } from './types/results.js';
+import type { PurchaseOptions, PurchaseResult, RestoreResult } from './types/results.js';
 
 export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   initialize(): Promise<void>;
@@ -61,16 +61,25 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
 
   /**
    * Start a purchase. Throws `IAPError` only on impossible states
-   * (NOT_INITIALIZED, ALREADY_IN_PROGRESS, PRODUCT_NOT_FOUND); all other
+   * (NOT_INITIALIZED, ALREADY_IN_PROGRESS, PRODUCT_NOT_FOUND,
+   * INVALID_APP_USER_ID, APP_USER_ID_FETCH_FAILED); all other
    * outcomes — user cancellation, backend rejection, native errors — are
    * surfaced via the `PurchaseResult` discriminated union so the caller
    * can render the right UI without try/catch gymnastics.
+   *
+   * `opts.appUserId` is optional. When provided (string or async fetcher
+   * returning a string), the resolved value is validated as a UUID v4
+   * and forwarded to StoreKit's `appAccountToken` (iOS) / Play
+   * Billing's `obfuscatedAccountId` (Android) — making it available on
+   * Attesto's verify response and outbound webhook payload as
+   * `appUserId` so backends can join on user identity directly. See
+   * `PurchaseOptions` and `AppUserId` for full semantics.
    *
    * Emits `purchase-started`, then exactly one of: `purchase-success`
    * (+ `entitlements-changed`), `purchase-cancelled`, `purchase-pending`,
    * `verification-failed`, or `purchase-failed`.
    */
-  purchase(productId: string): Promise<PurchaseResult<TEntitlement>>;
+  purchase(opts: PurchaseOptions): Promise<PurchaseResult<TEntitlement>>;
 
   /**
    * Re-verify every owned transaction with the consumer backend and
@@ -407,7 +416,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       state.recoverer = null;
     },
 
-    async purchase(productId) {
+    async purchase(opts) {
       requireInitialized(state);
       // orchestrator is set in initialize() alongside the native adapter,
       // so it's always present once initialized=true.
@@ -417,7 +426,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
           message: 'Purchase orchestrator not constructed; this is a library bug.',
         });
       }
-      return state.orchestrator.purchase(productId);
+      return state.orchestrator.purchase(opts);
     },
 
     async restorePurchases() {

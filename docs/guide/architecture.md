@@ -78,7 +78,7 @@ See [Backend contract](/guide/backend-contract) for the exact request/response s
 ## Data flow: a successful purchase
 
 ```
-1. UI                  iap.purchase('premium_monthly')
+1. UI                  iap.purchase({ productId: 'premium_monthly' })
 2. library  → plugin   storefront.order(productId)
 3. plugin   → store    StoreKit / Play Billing dialog
 4. user                taps Buy, authenticates
