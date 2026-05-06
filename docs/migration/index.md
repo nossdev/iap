@@ -1,6 +1,6 @@
 # Migration
 
-`@nossdev/iap` v0.x is the **Capacitor 5** line, built on `cordova-plugin-purchase`. Future major versions will support newer Capacitor releases via different native plugins.
+`@nosslabs/iap` v0.x is the **Capacitor 5** line, built on `cordova-plugin-purchase`. Future major versions will support newer Capacitor releases via different native plugins.
 
 ## v0.1 → v0.2 (breaking: `purchase()` signature)
 

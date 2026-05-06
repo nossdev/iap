@@ -1,13 +1,13 @@
 # React
 
-This recipe wires `@nossdev/iap` into a React 18+ app using `useSyncExternalStore` — the modern idiom for subscribing to external state without dual-bookkeeping.
+This recipe wires `@nosslabs/iap` into a React 18+ app using `useSyncExternalStore` — the modern idiom for subscribing to external state without dual-bookkeeping.
 
 ## 1. Create the IAP instance (singleton)
 
 ```typescript
 // src/services/iap.ts
-import { createIAP } from '@nossdev/iap';
-import type { EntitlementBase } from '@nossdev/iap';
+import { createIAP } from '@nosslabs/iap';
+import type { EntitlementBase } from '@nosslabs/iap';
 
 export interface AppEntitlement extends EntitlementBase {
   key: string;

@@ -12,7 +12,7 @@ Captured 2026-04-28 from `node_modules/@capgo/native-purchases/dist/esm/definiti
 | `6.0.x` | `^6.0.0` (Cap 6) |
 | `0.0.x` (last 0.0.72) | `^5.0.0` (Cap 5 — versioning was 0.0.x for Cap 5 line) |
 
-**v0.1.0 of `@nossdev/iap` targets v7.16.2** (last v7 release that's actually Cap-7-compatible).
+**v0.1.0 of `@nosslabs/iap` targets v7.16.2** (last v7 release that's actually Cap-7-compatible).
 
 ## Confirmed methods
 
@@ -104,7 +104,7 @@ interface Transaction {
 }
 ```
 
-## Verdict for the `@nossdev/iap` adapter
+## Verdict for the `@nosslabs/iap` adapter
 
 ✅ **`autoAcknowledgePurchases: false` works on both iOS and Android** — the safety guarantee ("never finish before backend confirms") is fully achievable on v7. The PLAN.md §2.1 honest-limitations section can be **softened**: there is no iOS-specific finish-before-verify race on v7.
 

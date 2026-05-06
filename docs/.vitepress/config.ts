@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitepress';
 
 export default defineConfig({
-  title: '@nossdev/iap',
+  title: '@nosslabs/iap',
   description:
     'Thin Capacitor IAP orchestrator that pairs with Attesto for server-side receipt validation.',
   lang: 'en-US',
@@ -15,7 +15,7 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
     ['meta', { name: 'theme-color', content: '#6366f1' }],
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:title', content: '@nossdev/iap' }],
+    ['meta', { property: 'og:title', content: '@nosslabs/iap' }],
     [
       'meta',
       {
@@ -38,7 +38,7 @@ export default defineConfig({
         text: 'v0.1.0',
         items: [
           { text: 'Changelog', link: 'https://github.com/nossdev/iap/blob/main/CHANGELOG.md' },
-          { text: 'npm', link: 'https://www.npmjs.com/package/@nossdev/iap' },
+          { text: 'npm', link: 'https://www.npmjs.com/package/@nosslabs/iap' },
         ],
       },
     ],
@@ -48,7 +48,7 @@ export default defineConfig({
         {
           text: 'Introduction',
           items: [
-            { text: 'What is @nossdev/iap?', link: '/guide/' },
+            { text: 'What is @nosslabs/iap?', link: '/guide/' },
             { text: 'Getting started', link: '/guide/getting-started' },
             { text: 'Installation', link: '/guide/installation' },
             { text: 'Configuration', link: '/guide/configuration' },

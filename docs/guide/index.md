@@ -1,8 +1,8 @@
-# What is `@nossdev/iap`?
+# What is `@nosslabs/iap`?
 
-`@nossdev/iap` is a thin, framework-agnostic TypeScript library that orchestrates the in-app purchase flow on the **client side** of a Capacitor app. It wraps [`cordova-plugin-purchase`](https://github.com/j3k0/cordova-plugin-purchase) and coordinates with **your backend**, which in turn talks to [Attesto](https://attesto.nossdev.com) for receipt validation.
+`@nosslabs/iap` is a thin, framework-agnostic TypeScript library that orchestrates the in-app purchase flow on the **client side** of a Capacitor app. It wraps [`cordova-plugin-purchase`](https://github.com/j3k0/cordova-plugin-purchase) and coordinates with **your backend**, which in turn talks to [Attesto](https://attesto.nossdev.com) for receipt validation.
 
-This library is the client-side counterpart to Attesto. **Attesto** answers _"is this transaction real?"_ on the server. **`@nossdev/iap`** answers _"how do we orchestrate the purchase flow and entitlement state cleanly on the client?"_
+This library is the client-side counterpart to Attesto. **Attesto** answers _"is this transaction real?"_ on the server. **`@nosslabs/iap`** answers _"how do we orchestrate the purchase flow and entitlement state cleanly on the client?"_
 
 ## Why it exists
 
@@ -19,11 +19,11 @@ Without this library, every Capacitor app reimplements the same orchestration pa
 9. Handle pending / interrupted transactions on app launch
 10. Persist entitlement state to survive app restarts
 
-That's a lot of orchestration to get right. `@nossdev/iap` encapsulates it once, correctly, and makes it consumable across all your apps.
+That's a lot of orchestration to get right. `@nosslabs/iap` encapsulates it once, correctly, and makes it consumable across all your apps.
 
 ## Design philosophy: thin wrapper, not a framework
 
-`@nossdev/iap` is **not** RevenueCat-on-the-client. It does **one thing**: orchestrate the purchase + verification + entitlement-caching dance against a backend you control.
+`@nosslabs/iap` is **not** RevenueCat-on-the-client. It does **one thing**: orchestrate the purchase + verification + entitlement-caching dance against a backend you control.
 
 ### What it DOES
 
@@ -59,7 +59,7 @@ This boundary is **non-negotiable**. If a feature request encroaches on entitlem
 └────────────────────────────────────────────────────────┘
                          ↕
 ┌────────────────────────────────────────────────────────┐
-│ @nossdev/iap (this library)                            │
+│ @nosslabs/iap (this library)                            │
 │   - orchestrates purchase flow                         │
 │   - coordinates with backend                           │
 │   - manages entitlement cache                          │

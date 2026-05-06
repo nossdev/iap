@@ -1,6 +1,6 @@
 # Testing on sandbox
 
-Apple and Google both provide sandbox environments where you can complete real purchase flows without being charged. This page covers setup for both platforms plus a few unit-test patterns for `@nossdev/iap` itself.
+Apple and Google both provide sandbox environments where you can complete real purchase flows without being charged. This page covers setup for both platforms plus a few unit-test patterns for `@nosslabs/iap` itself.
 
 ## iOS — App Store sandbox
 
@@ -96,7 +96,7 @@ If your backend has separate environments (staging vs. prod), point the staging 
 Attesto delivers Apple App Store Server Notifications v2 and Google RTDN webhooks to your backend the same way in sandbox and production. If you're testing renewal handling, configure both environments to receive webhooks at distinct paths (e.g. `/webhooks/attesto-prod` vs `/webhooks/attesto-staging`).
 :::
 
-## Unit testing your code that uses `@nossdev/iap`
+## Unit testing your code that uses `@nosslabs/iap`
 
 The `IAP` instance is a plain object with methods and an event emitter — easy to mock without touching the native plugin.
 
@@ -125,7 +125,7 @@ export const iap = {
 For integration-ish tests that exercise more of the library:
 
 ```typescript
-import { createIAP } from '@nossdev/iap';
+import { createIAP } from '@nosslabs/iap';
 
 const iap = createIAP({
   products: [{ id: 'premium', type: 'subscription', androidPlanId: 'monthly' }],

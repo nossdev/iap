@@ -9,7 +9,7 @@ This recipe is the typed Pinia store from the [Vue + Quasar recipe](/recipes/vue
 import { defineStore } from 'pinia';
 import { ref, computed, onScopeDispose, readonly } from 'vue';
 import { iap, type AppEntitlement } from 'src/services/iap';
-import type { PurchaseResult, RestoreResult } from '@nossdev/iap';
+import type { PurchaseResult, RestoreResult } from '@nosslabs/iap';
 
 export const useIAPStore = defineStore('iap', () => {
   // ────────────────────────────────────────────────

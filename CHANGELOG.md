@@ -1,9 +1,48 @@
 # Changelog
 
-All notable changes to `@nossdev/iap` will be documented here.
+All notable changes to `@nosslabs/iap` will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.3.0] — 2026-05-06
+
+### Changed (BREAKING)
+
+- **Package renamed: `@nossdev/iap` → `@nosslabs/iap`.** Update your install
+  and import sites:
+  ```
+  npm uninstall @nossdev/iap
+  npm install @nosslabs/iap
+  ```
+  ```ts
+  // before
+  import { createIAP } from '@nossdev/iap';
+  // after
+  import { createIAP } from '@nosslabs/iap';
+  ```
+  Behavior is unchanged. The rename disambiguates registry routing for
+  consumers that point `@nossdev:*` at a private registry — previously,
+  any `.npmrc` mapping `@nossdev` to a private feed would also intercept
+  the public `@nossdev/iap` lookup. The `@nossdev/iap` package on npm
+  remains installable at its existing versions but receives no further
+  updates under that name.
+
+- **Default storage namespace: `nossdev_iap` → `nosslabs_iap`.** On
+  upgrade, prior cached entitlements are not read. The library refetches
+  from the backend on first `getEntitlements()` / `restorePurchases()`
+  call, so no manual migration is required. If you depend on cache
+  continuity across the upgrade, set
+  `storage: { namespace: 'nossdev_iap' }` explicitly in your IAP config
+  to keep reading the old key.
+
+- **Logger console prefix: `[@nossdev/iap]` → `[@nosslabs/iap]`.** Update
+  any log-grep dashboards or filters keyed on the old prefix.
+
+### Migration
+
+No API changes. Drop-in once the package name and (optionally) the
+storage namespace override are updated.
 
 ## [0.2.0] — 2026-05-06
 

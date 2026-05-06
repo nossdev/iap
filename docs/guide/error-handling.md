@@ -5,7 +5,7 @@ Every error the library throws is an `IAPError` — a typed `Error` subclass wit
 ## Anatomy of an `IAPError`
 
 ```typescript
-import { IAPError, IAPErrorCode, isIAPError, errorHint } from '@nossdev/iap';
+import { IAPError, IAPErrorCode, isIAPError, errorHint } from '@nosslabs/iap';
 
 try {
   await iap.purchase({ productId: 'premium_monthly' });
@@ -34,7 +34,7 @@ Hints are auto-appended unless the constructor was called with `includeHint: fal
 The `error.code` field is a stable string enum. **Switch on it** rather than parsing `message`:
 
 ```typescript
-import { IAPErrorCode, isIAPError } from '@nossdev/iap';
+import { IAPErrorCode, isIAPError } from '@nosslabs/iap';
 
 try {
   await iap.purchase({ productId: 'premium_monthly' });
@@ -93,7 +93,7 @@ For the purchase flow specifically, the discriminated union from `iap.purchase()
 Get the per-code hint programmatically:
 
 ```typescript
-import { errorHint, IAPErrorCode } from '@nossdev/iap';
+import { errorHint, IAPErrorCode } from '@nosslabs/iap';
 
 console.log(errorHint(IAPErrorCode.BACKEND_AUTH_FAILED));
 // → "Backend returned 401/403. Check that getAuthHeaders() returns a valid Bearer token..."

@@ -12,7 +12,7 @@ If you're missing any of these, the [Backend contract](/guide/backend-contract) 
 ## 1. Install
 
 ```bash
-npm install @nossdev/iap cordova-plugin-purchase
+npm install @nosslabs/iap cordova-plugin-purchase
 npx cap sync
 ```
 
@@ -31,8 +31,8 @@ You can disable this by passing `options.refreshOnResume: false` when creating t
 
 ```typescript
 // src/services/iap.ts
-import { createIAP } from '@nossdev/iap';
-import type { EntitlementBase } from '@nossdev/iap';
+import { createIAP } from '@nosslabs/iap';
+import type { EntitlementBase } from '@nosslabs/iap';
 
 // Define your entitlement shape (extends the base).
 interface AppEntitlement extends EntitlementBase {

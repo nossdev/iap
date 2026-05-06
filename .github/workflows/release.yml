@@ -60,8 +60,8 @@ jobs:
       - name: Check if version is already on npm
         id: published_check
         run: |
-          if npm view "@nossdev/iap@$VERSION" version >/dev/null 2>&1; then
-            echo "::warning::@nossdev/iap@$VERSION is already published — skipping publish step."
+          if npm view "@nosslabs/iap@$VERSION" version >/dev/null 2>&1; then
+            echo "::warning::@nosslabs/iap@$VERSION is already published — skipping publish step."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -85,16 +85,16 @@ jobs:
         with:
           webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
           status: success
-          title: "Published @nossdev/iap@${{ env.VERSION }}"
+          title: "Published @nosslabs/iap@${{ env.VERSION }}"
           description: |
             Released to npm with provenance. Install with:
             ```
-            npm install @nossdev/iap@${{ env.VERSION }}
+            npm install @nosslabs/iap@${{ env.VERSION }}
             ```
           version: v${{ env.VERSION }}
           extra_fields: |
             [
-              { "name": "npm",     "value": "[@nossdev/iap on npmjs.com](https://www.npmjs.com/package/@nossdev/iap/v/${{ env.VERSION }})", "inline": true },
+              { "name": "npm",     "value": "[@nosslabs/iap on npmjs.com](https://www.npmjs.com/package/@nosslabs/iap/v/${{ env.VERSION }})", "inline": true },
               { "name": "Release", "value": "[GitHub release](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ env.VERSION }})", "inline": true }
             ]
 
@@ -105,13 +105,13 @@ jobs:
         with:
           webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
           status: info
-          title: "Workflow re-ran for @nossdev/iap@${{ env.VERSION }}"
+          title: "Workflow re-ran for @nosslabs/iap@${{ env.VERSION }}"
           description: |
             Version is already on npm. Idempotency guard fired — no re-publish.
           version: v${{ env.VERSION }}
           extra_fields: |
             [
-              { "name": "npm", "value": "[@nossdev/iap on npmjs.com](https://www.npmjs.com/package/@nossdev/iap/v/${{ env.VERSION }})", "inline": true }
+              { "name": "npm", "value": "[@nosslabs/iap on npmjs.com](https://www.npmjs.com/package/@nosslabs/iap/v/${{ env.VERSION }})", "inline": true }
             ]
 
       # ─── Notification: failure (any step) ──────────────────────────────
@@ -121,7 +121,7 @@ jobs:
         with:
           webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
           status: failure
-          title: "Release FAILED for @nossdev/iap@${{ env.VERSION }}"
+          title: "Release FAILED for @nosslabs/iap@${{ env.VERSION }}"
           description: |
-            ⚠️  Release of `@nossdev/iap@${{ env.VERSION }}` did not complete. Check the workflow logs for the failing step.
+            ⚠️  Release of `@nosslabs/iap@${{ env.VERSION }}` did not complete. Check the workflow logs for the failing step.
           version: v${{ env.VERSION }}

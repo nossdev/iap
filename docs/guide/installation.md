@@ -12,12 +12,12 @@ If your app needs to support iOS < 15, this library is not for you.
 ## Install the package
 
 ```bash
-npm install @nossdev/iap
+npm install @nosslabs/iap
 ```
 
 ## Install the native plugin
 
-`@nossdev/iap` wraps `cordova-plugin-purchase` (a.k.a. CdvPurchase / iap-2) — a free, MIT-licensed, production-tested Cordova plugin that Capacitor 5 supports natively via the Cordova bridge.
+`@nosslabs/iap` wraps `cordova-plugin-purchase` (a.k.a. CdvPurchase / iap-2) — a free, MIT-licensed, production-tested Cordova plugin that Capacitor 5 supports natively via the Cordova bridge.
 
 ```bash
 npm install cordova-plugin-purchase
@@ -43,7 +43,7 @@ npx cap sync
 
 ## Optional: app-resume listener
 
-By default, `@nossdev/iap` automatically calls `iap.refresh()` whenever the app returns from background. This catches subscription changes that happened server-side (renewals, billing retries, refunds via Attesto webhooks) without the user pulling-to-refresh.
+By default, `@nosslabs/iap` automatically calls `iap.refresh()` whenever the app returns from background. This catches subscription changes that happened server-side (renewals, billing retries, refunds via Attesto webhooks) without the user pulling-to-refresh.
 
 To enable it, install `@capacitor/app`:
 
@@ -55,7 +55,7 @@ npx cap sync
 If you don't want this behavior, set `options.refreshOnResume: false` in your config and skip the install.
 
 ::: tip Optional peer dep
-`@capacitor/app` is declared as `peerDependenciesMeta.optional: true` in `@nossdev/iap`'s `package.json`. npm won't complain if you skip it. The library detects its absence at runtime and logs a debug-level note instead of crashing.
+`@capacitor/app` is declared as `peerDependenciesMeta.optional: true` in `@nosslabs/iap`'s `package.json`. npm won't complain if you skip it. The library detects its absence at runtime and logs a debug-level note instead of crashing.
 :::
 
 ## Web platform note
@@ -90,7 +90,7 @@ Create a tiny script to confirm everything resolves:
 
 ```typescript
 // scripts/check-iap-install.ts
-import { createIAP } from '@nossdev/iap';
+import { createIAP } from '@nosslabs/iap';
 
 const iap = createIAP({
   products: [{ id: 'test', type: 'product' }],

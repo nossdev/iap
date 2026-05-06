@@ -1,6 +1,6 @@
 # Architecture
 
-`@nossdev/iap` is a thin orchestrator that sits between your UI and three independent systems: the native store, your backend, and Attesto. This page shows how those pieces compose.
+`@nosslabs/iap` is a thin orchestrator that sits between your UI and three independent systems: the native store, your backend, and Attesto. This page shows how those pieces compose.
 
 ## Three-tier model
 
@@ -13,7 +13,7 @@
                           │
                           ▼
 ┌──────────────────────────────────────────────────────────┐
-│ @nossdev/iap (this library — runs in the WebView)        │
+│ @nosslabs/iap (this library — runs in the WebView)        │
 │   - Orchestrates the purchase + verify + finish dance    │
 │   - Caches entitlements locally for instant reads        │
 │   - Recovers unfinished transactions on launch / resume  │
@@ -45,7 +45,7 @@
 - Subscribes to `entitlements-changed` to drive reactive state (Pinia / React stores).
 - **Does not** know what a receipt is, how to talk to Attesto, or when to call `tx.finish()`.
 
-### `@nossdev/iap`
+### `@nosslabs/iap`
 
 - Talks to the native plugin to start purchases and observe transaction events.
 - Talks to **your** backend (never Attesto directly) to verify receipts.
