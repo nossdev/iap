@@ -11,8 +11,7 @@
  * surrounding whitespace, and non-canonical lengths. The version nibble
  * (`4xxx`) and variant nibble (`[89ab]xxx`) match the RFC 4122 v4 spec.
  */
-const UUID_V4_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isValidUuidV4(value: string): boolean {
   return UUID_V4_REGEX.test(value);

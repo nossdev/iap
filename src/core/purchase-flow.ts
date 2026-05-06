@@ -3,11 +3,11 @@ import type { NativeAdapter } from '../adapters/native/types.js';
 import type { TypedEventEmitter } from '../events/emitter.js';
 import { IAPError, IAPErrorCode, toIAPError } from '../lib/errors.js';
 import type { Logger } from '../lib/logger.js';
+import { isValidUuidV4 } from '../lib/uuid.js';
 import type { EntitlementBase } from '../types/entitlement.js';
 import type { ConfiguredProduct } from '../types/product.js';
 import type { AppUserId, PurchaseOptions, PurchaseResult } from '../types/results.js';
 import type { NativeTransaction, VerifiedTransaction } from '../types/transaction.js';
-import { isValidUuidV4 } from '../lib/uuid.js';
 import type { EntitlementCache } from './entitlement-cache.js';
 import type { UnfinishedTransactionsStore } from './unfinished-transactions.js';
 import { verifyNativeTransaction } from './verify-helpers.js';
@@ -69,43 +69,6 @@ interface PurchaseOrchestratorDeps<TEntitlement extends EntitlementBase> {
  * - `failed` — native or transport error. May or may not be persisted depending
  *   on whether a NativeTransaction was produced.
  */
-/**
- * Resolve an `appUserId` supply to a validated UUID v4 string.
- *
- * - String input: validate directly.
- * - Async fetcher: invoke once (fresh per purchase — iap caches nothing,
- *   the backend owns mint-or-lookup idempotency), then validate the
- *   resolved value. Wraps fetcher rejections in
- *   `IAPError(APP_USER_ID_FETCH_FAILED, cause)` so callers can
- *   distinguish "fetcher exploded" from "fetcher returned junk".
- *
- * Throws synchronously (or via Promise rejection) on invalid input;
- * never returns a non-UUID string.
- */
-async function resolveAppUserId(supply: AppUserId): Promise<string> {
-  let resolved: string;
-  if (typeof supply === 'function') {
-    try {
-      resolved = await supply();
-    } catch (cause) {
-      throw new IAPError({
-        code: IAPErrorCode.APP_USER_ID_FETCH_FAILED,
-        message: 'The async appUserId fetcher threw or rejected.',
-        cause,
-      });
-    }
-  } else {
-    resolved = supply;
-  }
-  if (typeof resolved !== 'string' || !isValidUuidV4(resolved)) {
-    throw new IAPError({
-      code: IAPErrorCode.INVALID_APP_USER_ID,
-      message: `appUserId must be a UUID v4; received ${typeof resolved === 'string' ? `"${resolved}"` : typeof resolved}.`,
-    });
-  }
-  return resolved;
-}
-
 export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = EntitlementBase> {
   private readonly inFlight = new Set<string>();
 
@@ -295,4 +258,43 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     this.deps.emitter.emit('verification-failed', { productId, error: iapError });
     return { status: 'verification_failed', productId, error: iapError };
   }
+}
+
+/**
+ * Resolve an `appUserId` supply to a validated UUID v4 string.
+ *
+ * - String input: validate directly.
+ * - Async fetcher: invoke once (fresh per purchase — iap caches nothing,
+ *   the backend owns mint-or-lookup idempotency), then validate the
+ *   resolved value. Wraps fetcher rejections in
+ *   `IAPError(APP_USER_ID_FETCH_FAILED, cause)` so callers can
+ *   distinguish "fetcher exploded" from "fetcher returned junk".
+ *
+ * Throws synchronously (or via Promise rejection) on invalid input;
+ * never returns a non-UUID string.
+ */
+async function resolveAppUserId(supply: AppUserId): Promise<string> {
+  let resolved: string;
+  if (typeof supply === 'function') {
+    try {
+      resolved = await supply();
+    } catch (cause) {
+      throw new IAPError({
+        code: IAPErrorCode.APP_USER_ID_FETCH_FAILED,
+        message: 'The async appUserId fetcher threw or rejected.',
+        cause,
+      });
+    }
+  } else {
+    resolved = supply;
+  }
+  if (typeof resolved !== 'string' || !isValidUuidV4(resolved)) {
+    throw new IAPError({
+      code: IAPErrorCode.INVALID_APP_USER_ID,
+      message: `appUserId must be a UUID v4; received ${
+        typeof resolved === 'string' ? `"${resolved}"` : typeof resolved
+      }.`,
+    });
+  }
+  return resolved;
 }
