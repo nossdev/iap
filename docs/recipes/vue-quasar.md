@@ -1,13 +1,13 @@
 # Vue 3 + Quasar + Pinia
 
-This recipe wires `@nossdev/iap` into a Vue 3 / Quasar / Pinia app — the stack the library was designed against. End-to-end: factory creation, Pinia store, paywall component, restore button.
+This recipe wires `@nosslabs/iap` into a Vue 3 / Quasar / Pinia app — the stack the library was designed against. End-to-end: factory creation, Pinia store, paywall component, restore button.
 
 ## 1. Create the IAP instance
 
 ```typescript
 // src/services/iap.ts
-import { createIAP } from '@nossdev/iap';
-import type { EntitlementBase } from '@nossdev/iap';
+import { createIAP } from '@nosslabs/iap';
+import type { EntitlementBase } from '@nosslabs/iap';
 
 export interface AppEntitlement extends EntitlementBase {
   key: string;
@@ -162,7 +162,7 @@ boot: ['iap'],
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
 import { useIAPStore } from 'src/stores/iap';
-import { isIAPError, IAPErrorCode } from '@nossdev/iap';
+import { isIAPError, IAPErrorCode } from '@nosslabs/iap';
 
 const $q = useQuasar();
 const iapStore = useIAPStore();

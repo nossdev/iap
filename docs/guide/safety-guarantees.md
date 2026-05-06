@@ -1,6 +1,6 @@
 # Safety guarantees
 
-This page documents the correctness guarantees `@nossdev/iap` makes — and the bugs you can rule out by relying on them.
+This page documents the correctness guarantees `@nosslabs/iap` makes — and the bugs you can rule out by relying on them.
 
 ## 1. Backend-confirmed `finish()`
 

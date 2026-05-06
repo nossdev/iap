@@ -1,7 +1,7 @@
 # Events reference
 
 ```typescript
-import type { EventMap, EventName, EventPayload, Unsubscribe } from '@nossdev/iap';
+import type { EventMap, EventName, EventPayload, Unsubscribe } from '@nosslabs/iap';
 ```
 
 Type definitions for the event system. For a guide-style introduction with usage patterns, see [Events](/guide/events).

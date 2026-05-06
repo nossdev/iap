@@ -15,7 +15,7 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
   debug: 4,
 };
 
-const PREFIX = '[@nossdev/iap]';
+const PREFIX = '[@nosslabs/iap]';
 
 /**
  * Default logger that writes to console at or above the configured level.

@@ -69,7 +69,7 @@ import {
 
   // Version
   VERSION,
-} from '@nossdev/iap';
+} from '@nosslabs/iap';
 ```
 
 ## Stability

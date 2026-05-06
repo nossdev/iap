@@ -1,6 +1,6 @@
 # Events
 
-`@nossdev/iap` emits typed events you can subscribe to. Each event has a strongly-typed payload — unknown event names are a compile error.
+`@nosslabs/iap` emits typed events you can subscribe to. Each event has a strongly-typed payload — unknown event names are a compile error.
 
 ## Subscribing
 

@@ -30,9 +30,9 @@ describe('PreferencesAdapter', () => {
   });
 
   it('namespaces keys with the configured prefix', async () => {
-    const adapter = new PreferencesAdapter('nossdev_iap');
+    const adapter = new PreferencesAdapter('nosslabs_iap');
     await adapter.set('entitlements', '{"a":1}');
-    expect(backing.get('nossdev_iap.entitlements')).toBe('{"a":1}');
+    expect(backing.get('nosslabs_iap.entitlements')).toBe('{"a":1}');
   });
 
   it('returns null for missing keys', async () => {

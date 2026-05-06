@@ -124,7 +124,7 @@ const backendConfigSchema = z
 
 const storageConfigSchema = z.object({
   type: z.enum(['preferences', 'memory', 'custom']).default('preferences'),
-  namespace: z.string().min(1).default('nossdev_iap'),
+  namespace: z.string().min(1).default('nosslabs_iap'),
   adapter: z.unknown().optional(),
 });
 
@@ -162,7 +162,7 @@ export const iapConfigSchema = z
      */
     products: z.array(configuredProductSchema).min(1).optional(),
     backend: backendConfigSchema,
-    storage: storageConfigSchema.default({ type: 'preferences', namespace: 'nossdev_iap' }),
+    storage: storageConfigSchema.default({ type: 'preferences', namespace: 'nosslabs_iap' }),
     options: optionsConfigSchema.default({
       refreshOnResume: true,
       entitlementCacheTtlMs: 60 * 60 * 1000,

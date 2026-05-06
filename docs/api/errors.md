@@ -1,7 +1,7 @@
 # Errors
 
 ```typescript
-import { IAPError, IAPErrorCode, isIAPError, errorHint } from '@nossdev/iap';
+import { IAPError, IAPErrorCode, isIAPError, errorHint } from '@nosslabs/iap';
 ```
 
 ## `IAPError`
@@ -115,7 +115,7 @@ function errorHint(code: IAPErrorCode): string;
 Returns the canonical remediation hint for a code. The same string is auto-appended to thrown error messages.
 
 ```typescript
-import { errorHint, IAPErrorCode } from '@nossdev/iap';
+import { errorHint, IAPErrorCode } from '@nosslabs/iap';
 
 errorHint(IAPErrorCode.BACKEND_AUTH_FAILED);
 // → "Backend returned 401/403. Check that getAuthHeaders() returns a valid Bearer token..."
@@ -138,7 +138,7 @@ if (isIAPError(error)) {
 You typically don't need to construct one — the library throws. But for custom backend adapters:
 
 ```typescript
-import { IAPError, IAPErrorCode } from '@nossdev/iap';
+import { IAPError, IAPErrorCode } from '@nosslabs/iap';
 
 throw new IAPError({
   code: IAPErrorCode.BACKEND_BAD_RESPONSE,

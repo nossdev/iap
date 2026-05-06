@@ -1,16 +1,16 @@
-# @nossdev/iap
+# @nosslabs/iap
 
 > Thin Capacitor IAP orchestrator. Server-side validation via [Attesto](https://attesto.nossdev.com).
 
 **Status: 0.2.0 — published.** API may have breaking changes through the 0.x line as it's exercised in production apps. Pin the minor version (`^0.2.0`) and watch the [CHANGELOG](./CHANGELOG.md).
 
 ```bash
-npm install @nossdev/iap cordova-plugin-purchase
+npm install @nosslabs/iap cordova-plugin-purchase
 npx cap sync
 ```
 
 ```typescript
-import { createIAP } from '@nossdev/iap';
+import { createIAP } from '@nosslabs/iap';
 
 const iap = createIAP({
   products: [
@@ -63,7 +63,7 @@ await iap.purchase({
 
 ## Why this library
 
-`@nossdev/iap` does **one thing**: orchestrate the purchase flow on the client. It
+`@nosslabs/iap` does **one thing**: orchestrate the purchase flow on the client. It
 
 - wraps `cordova-plugin-purchase` for native purchase + restore,
 - POSTs to **your** backend (which calls Attesto) for receipt validation,
@@ -75,7 +75,7 @@ It does **not**: talk to Attesto directly, define entitlement business logic, ma
 
 ## Capacitor support matrix
 
-| `@nossdev/iap` | Capacitor | Plugin | Status |
+| `@nosslabs/iap` | Capacitor | Plugin | Status |
 |---|---|---|---|
 | 0.x | 5.x | `cordova-plugin-purchase ^13.x` | **Current** |
 | 1.x | 7.x | TBD (Capacitor-native plugin) | Roadmap |

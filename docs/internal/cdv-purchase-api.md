@@ -161,7 +161,7 @@ enum ErrorCode {
 }
 ```
 
-## Mapping `@nossdev/iap` → cdv
+## Mapping `@nosslabs/iap` → cdv
 
 | Library `ProductType` | cdv `ProductType` |
 |---|---|

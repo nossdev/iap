@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  @nossdev/iap full lockup: mark on the left + "iap" wordmark on the right.
+  @nosslabs/iap full lockup: mark on the left + "iap" wordmark on the right.
 
   Both mark and wordmark fill from indigo→violet gradients so the lockup
   reads as one continuous color story. SVG loaded via <img src="..."> does
@@ -8,7 +8,7 @@
   uses an explicit gradient fill — guarantees identical rendering across
   light and dark modes.
 
-  The wordmark intentionally drops the "@nossdev/" prefix: at 280×72 the
+  The wordmark intentionally drops the "@nosslabs/" prefix: at 280×72 the
   full namespace would crowd the lockup. Surrounding context (page title,
   GitHub link) supplies the namespace.
 -->

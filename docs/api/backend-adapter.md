@@ -131,7 +131,7 @@ The orchestrator distinguishes "backend rejected the receipt" from "backend was 
 
 ```typescript
 import { httpsCallable } from 'firebase/functions';
-import { IAPError, IAPErrorCode } from '@nossdev/iap';
+import { IAPError, IAPErrorCode } from '@nosslabs/iap';
 import type {
   BackendAdapter,
   VerifyAppleRequest,
@@ -139,7 +139,7 @@ import type {
   RestoreRequest,
   VerifyResponse,
   EntitlementBase,
-} from '@nossdev/iap';
+} from '@nosslabs/iap';
 
 import type { AppEntitlement } from './services/iap';
 
@@ -203,8 +203,8 @@ Same pattern, different transport:
 
 ```typescript
 import { SupabaseClient } from '@supabase/supabase-js';
-import { IAPError, IAPErrorCode } from '@nossdev/iap';
-import type { BackendAdapter, /* ... */ } from '@nossdev/iap';
+import { IAPError, IAPErrorCode } from '@nosslabs/iap';
+import type { BackendAdapter, /* ... */ } from '@nosslabs/iap';
 
 export class SupabaseBackendAdapter implements BackendAdapter<AppEntitlement> {
   constructor(private readonly supabase: SupabaseClient) {}
@@ -230,7 +230,7 @@ export class SupabaseBackendAdapter implements BackendAdapter<AppEntitlement> {
 The library exports the default HTTP implementation for advanced use:
 
 ```typescript
-import { HttpBackendAdapter, HttpClient } from '@nossdev/iap';
+import { HttpBackendAdapter, HttpClient } from '@nosslabs/iap';
 ```
 
 You typically don't import these — `createIAP` constructs them automatically when you pass `baseUrl` + `endpoints`. The named export exists so test setups can construct one manually with a mocked `HttpClient`.

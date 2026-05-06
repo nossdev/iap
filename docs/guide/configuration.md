@@ -5,8 +5,8 @@
 ## Full shape
 
 ```typescript
-import { createIAP } from '@nossdev/iap';
-import type { IAPConfigInput } from '@nossdev/iap';
+import { createIAP } from '@nosslabs/iap';
+import type { IAPConfigInput } from '@nosslabs/iap';
 
 const config: IAPConfigInput = {
   // Product catalog
@@ -40,7 +40,7 @@ const config: IAPConfigInput = {
   // Local persistence
   storage: {
     type: 'preferences',         // | 'memory' | 'custom'
-    namespace: 'nossdev_iap',
+    namespace: 'nosslabs_iap',
     // adapter: customStorageAdapter, // when type === 'custom'
   },
 
@@ -167,7 +167,7 @@ When `adapter` is provided, the `baseUrl` / `endpoints` / `getAuthHeaders` field
 
 ## `storage`
 
-Optional. Defaults to `{ type: 'preferences', namespace: 'nossdev_iap' }`.
+Optional. Defaults to `{ type: 'preferences', namespace: 'nosslabs_iap' }`.
 
 ```typescript
 type StorageConfig = {
@@ -181,7 +181,7 @@ type StorageConfig = {
 - `'memory'` — in-memory map. Good for tests, transient sessions.
 - `'custom'` — your own adapter implementing `StorageAdapter` (`get` / `set` / `remove` / `clear`).
 
-The `namespace` is prepended to every key (e.g. `nossdev_iap.entitlements`) so multiple `createIAP` instances or other Preferences consumers don't collide.
+The `namespace` is prepended to every key (e.g. `nosslabs_iap.entitlements`) so multiple `createIAP` instances or other Preferences consumers don't collide.
 
 ## `options`
 
@@ -202,7 +202,7 @@ All optional with documented defaults.
 The factory is generic over your entitlement shape:
 
 ```typescript
-import type { EntitlementBase } from '@nossdev/iap';
+import type { EntitlementBase } from '@nosslabs/iap';
 
 interface MyEntitlement extends EntitlementBase {
   // base fields (required by the library)

@@ -1,6 +1,6 @@
 # Types
 
-Domain types exported from `@nossdev/iap`.
+Domain types exported from `@nosslabs/iap`.
 
 ## `EntitlementBase`
 
