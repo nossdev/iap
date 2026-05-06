@@ -52,8 +52,7 @@ Authorization: Bearer <user token>
   "transaction": {
     "id": "2000000123456789",
     "productId": "premium_monthly",
-    "expiresAt": "2026-04-30T12:00:00Z",
-    "verifiedAt": "2026-03-30T12:00:00Z"
+    "expiresAt": "2026-04-30T12:00:00Z"
   },
   "entitlements": [
     {
@@ -66,18 +65,23 @@ Authorization: Bearer <user token>
 }
 ```
 
+- `transaction` — required on verify (the library surfaces `transaction.id`, `productId`, `expiresAt` in `PurchaseResult`).
 - `expiresAt` — ISO-8601 string or `null` for one-time non-consumables.
 - `entitlements` — the user's **full** entitlement set after this verification (not a delta). The library replaces the cache with this list.
-- Custom fields on entitlement objects (e.g. `tier`) ride through unvalidated. Type them via `createIAP<MyEntitlement>` so consumer code stays typed.
+- Any extra fields you attach (e.g. `verifiedAt`, `traceId`, your own debug metadata) ride through unvalidated and unstripped — the library validates only the named fields above. Custom fields on entitlement objects (e.g. `tier`) likewise ride through; type them via `createIAP<MyEntitlement>` so consumer code stays typed.
 
 ### Rejected response
 
 ```json
 {
   "valid": false,
-  "reason": "receipt_invalid"
+  "error": "TRANSACTION_NOT_FOUND",
+  "message": "Apple returned TRANSACTION_NOT_FOUND"
 }
 ```
+
+- `error` — required, stable machine-readable code your client may key on.
+- `message` — optional human-readable detail. Both surface in the thrown `IAPError.message`.
 
 When `valid: false`, the library throws `IAPError(VERIFICATION_REJECTED)`. The transaction stays in the unfinished queue; you can use `iap.refresh()` to re-attempt later, but the library does NOT auto-retry rejections (transient backend errors are retried; explicit rejections are not).
 
@@ -180,7 +184,7 @@ The library calls this when the consumer invokes `iap.restorePurchases()` — ty
 
 ```json
 {
-  "restored": 2,
+  "valid": true,
   "entitlements": [
     {
       "key": "premium",
@@ -196,10 +200,16 @@ The library calls this when the consumer invokes `iap.restorePurchases()` — ty
 }
 ```
 
-- `restored` — count of receipts your backend successfully validated. Surface this in your UI ("Restored 2 purchases").
+- `valid: true` — required.
 - `entitlements` — full entitlement set after restore (replaces cache).
+- **No `transaction` field is required.** Restore is a batch operation; the library never reads a per-batch transaction echo. If you do attach one, it rides through via passthrough — the library just doesn't gate on it.
+- Any other fields (analytics ids, server timestamps, debug metadata) ride through unvalidated.
+
+The rejected shape mirrors verify (`{ valid: false, error, message? }`) and throws `IAPError(VERIFICATION_REJECTED)`.
 
 If a single receipt in the batch is invalid, your backend should still validate the rest and return the consolidated state — the library doesn't have per-receipt failure handling for restore (it's an idempotent re-link, not a paid purchase).
+
+The `iap.restorePurchases()` Promise resolves to `{ restored, entitlements }` where `restored` is the count of native transactions submitted to your backend (set by the library, not by your response).
 
 ## `products` (optional)
 

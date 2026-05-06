@@ -109,7 +109,6 @@ describe('RestoreOrchestrator — single platform', () => {
       entitlements: [
         { key: 'premium', productId: 'premium_monthly', expiresAt: null } as EntitlementBase,
       ],
-      transaction: { id: 'consolidated', productId: 'consolidated' },
     }));
 
     const { restorer, events, state } = makeOrchestrator({
@@ -159,7 +158,6 @@ describe('RestoreOrchestrator — single platform', () => {
       entitlements: [
         { key: 'premium', productId: 'premium_monthly', expiresAt: null } as EntitlementBase,
       ],
-      transaction: { id: 'consolidated', productId: 'consolidated' },
     }));
 
     const { restorer } = makeOrchestrator({
@@ -215,7 +213,6 @@ describe('RestoreOrchestrator — multi-product mixed batch', () => {
           { key: 'premium', productId: 'premium_monthly', expiresAt: null },
           { key: 'no_ads', productId: 'remove_ads', expiresAt: null },
         ] as EntitlementBase[],
-        transaction: { id: 'consolidated', productId: 'consolidated' },
       };
     };
 
@@ -407,7 +404,6 @@ describe('RestoreOrchestrator — defensive paths', () => {
           entitlements: [
             { key: 'premium', productId: 'premium_monthly', expiresAt: null },
           ] as EntitlementBase[],
-          transaction: { id: 'consolidated', productId: 'consolidated' },
         }),
       }),
     });
@@ -455,7 +451,6 @@ describe('RestoreOrchestrator — defensive paths', () => {
           entitlements: [
             { key: 'premium', productId: 'premium_monthly', expiresAt: null },
           ] as EntitlementBase[],
-          transaction: { id: 'consolidated', productId: 'consolidated' },
         }),
       }),
       cache,
@@ -496,7 +491,6 @@ describe('RestoreOrchestrator — unfinished list maintenance', () => {
           entitlements: [
             { key: 'premium', productId: 'premium_monthly', expiresAt: null },
           ] as EntitlementBase[],
-          transaction: { id: 'consolidated', productId: 'consolidated' },
         }),
       }),
     });
@@ -527,7 +521,6 @@ describe('RestoreOrchestrator — unfinished list maintenance', () => {
           entitlements: [
             { key: 'premium', productId: 'premium_monthly', expiresAt: null },
           ] as EntitlementBase[],
-          transaction: { id: 'consolidated', productId: 'consolidated' },
         }),
       }),
     });

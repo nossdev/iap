@@ -44,7 +44,6 @@ describe('HttpBackendAdapter — verifyApple', () => {
           id: '2000000123456789',
           productId: 'premium_monthly',
           expiresAt: '2026-12-01T00:00:00Z',
-          verifiedAt: '2026-04-28T10:00:00Z',
         },
       }),
     );
@@ -313,6 +312,124 @@ describe('HttpBackendAdapter — restore', () => {
     });
     expect(result.valid).toBe(true);
     expect(fetchStub).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('HttpBackendAdapter — passthrough + slim schemas', () => {
+  it('restore: accepts success response without a `transaction` envelope', async () => {
+    // The orchestrator never reads response.transaction on the restore path;
+    // requiring it gates restore on a field the library doesn't consume.
+    const fetchStub = vi.fn().mockResolvedValue(
+      jsonResponse({
+        valid: true,
+        entitlements: [{ key: 'premium', productId: 'premium_monthly', expiresAt: null }],
+      }),
+    );
+    const adapter = makeAdapter(fetchStub);
+
+    const result = await adapter.restore({
+      transactions: [
+        { platform: 'apple', transactionId: '2000000111', productId: 'premium_monthly' },
+      ],
+    });
+    expect(result.valid).toBe(true);
+    if (result.valid) {
+      expect(result.entitlements).toHaveLength(1);
+    }
+  });
+
+  it('restore: preserves a backend-supplied `transaction` field via passthrough', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(
+      jsonResponse({
+        valid: true,
+        entitlements: [{ key: 'premium', productId: 'premium_monthly', expiresAt: null }],
+        transaction: { id: 'consolidated', productId: 'premium_monthly' },
+      }),
+    );
+    const adapter = makeAdapter(fetchStub);
+
+    const result = await adapter.restore({
+      transactions: [
+        { platform: 'apple', transactionId: '2000000111', productId: 'premium_monthly' },
+      ],
+    });
+    expect(result.valid).toBe(true);
+    expect((result as Record<string, unknown>).transaction).toEqual({
+      id: 'consolidated',
+      productId: 'premium_monthly',
+    });
+  });
+
+  it('restore: preserves arbitrary top-level fields the library does not validate', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(
+      jsonResponse({
+        valid: true,
+        entitlements: [{ key: 'premium', productId: 'premium_monthly', expiresAt: null }],
+        traceId: 'trace-abc',
+        serverTime: '2026-05-06T10:00:00Z',
+      }),
+    );
+    const adapter = makeAdapter(fetchStub);
+
+    const result = await adapter.restore({
+      transactions: [
+        { platform: 'apple', transactionId: '2000000111', productId: 'premium_monthly' },
+      ],
+    });
+    expect((result as Record<string, unknown>).traceId).toBe('trace-abc');
+    expect((result as Record<string, unknown>).serverTime).toBe('2026-05-06T10:00:00Z');
+  });
+
+  it('verifyApple: preserves arbitrary top-level fields via passthrough', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(
+      jsonResponse({
+        valid: true,
+        entitlements: [{ key: 'premium', productId: 'premium_monthly', expiresAt: null }],
+        transaction: { id: '1', productId: 'premium_monthly' },
+        traceId: 'trace-xyz',
+      }),
+    );
+    const adapter = makeAdapter(fetchStub);
+
+    const result = await adapter.verifyApple({
+      productId: 'premium_monthly',
+      transactionId: '1',
+      type: 'subscription',
+    });
+    expect((result as Record<string, unknown>).traceId).toBe('trace-xyz');
+  });
+
+  it('restore: still rejects when entitlements is missing (slim != optional)', async () => {
+    // Slimmer schema = drop ride-along fields, NOT make load-bearing fields optional.
+    const fetchStub = vi.fn().mockResolvedValue(jsonResponse({ valid: true }));
+    const adapter = makeAdapter(fetchStub);
+
+    await expect(
+      adapter.restore({
+        transactions: [
+          { platform: 'apple', transactionId: '2000000111', productId: 'premium_monthly' },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: IAPErrorCode.BACKEND_BAD_RESPONSE });
+  });
+
+  it('verify failure: preserves arbitrary top-level fields via passthrough', async () => {
+    const fetchStub = vi.fn().mockResolvedValue(
+      jsonResponse({
+        valid: false,
+        error: 'TRANSACTION_NOT_FOUND',
+        traceId: 'trace-failure',
+      }),
+    );
+    const adapter = makeAdapter(fetchStub);
+
+    const result = await adapter.verifyApple({
+      productId: 'p',
+      transactionId: 'x',
+      type: 'subscription',
+    });
+    expect(result.valid).toBe(false);
+    expect((result as Record<string, unknown>).traceId).toBe('trace-failure');
   });
 });
 

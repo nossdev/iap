@@ -9,7 +9,7 @@ interface BackendAdapter<TEntitlement extends EntitlementBase = EntitlementBase>
   verifyApple(req: VerifyAppleRequest):  Promise<VerifyResponse<TEntitlement>>;
   verifyGoogle(req: VerifyGoogleRequest): Promise<VerifyResponse<TEntitlement>>;
   getEntitlements():                      Promise<TEntitlement[]>;
-  restore(req: RestoreRequest):           Promise<VerifyResponse<TEntitlement>>;
+  restore(req: RestoreRequest):           Promise<RestoreResponse<TEntitlement>>;
   /** Optional: return the SKU manifest the app should register. */
   listProducts?():                        Promise<ConfiguredProduct[]>;
 }
@@ -53,15 +53,17 @@ interface RestoreRequest {
 }
 ```
 
-## Response type
+## Response types
 
 ### `VerifyResponse<T>`
+
+Used by `verifyApple` and `verifyGoogle`.
 
 ```typescript
 type VerifyResponse<T extends EntitlementBase = EntitlementBase> =
   | {
       valid: true;
-      transaction: VerifiedTransaction;
+      transaction: { id: string; productId: string; expiresAt?: string | null };
       entitlements: T[];
     }
   | {
@@ -71,7 +73,19 @@ type VerifyResponse<T extends EntitlementBase = EntitlementBase> =
     };
 ```
 
-Return shape is identical across all four methods (`getEntitlements` returns the entitlement array directly, since there's no per-transaction verdict).
+### `RestoreResponse<T>`
+
+Used by `restore`. Identical to `VerifyResponse` except the success branch has **no required `transaction` echo** — the library never reads it on the restore path.
+
+```typescript
+type RestoreResponse<T extends EntitlementBase = EntitlementBase> =
+  | { valid: true; entitlements: T[] }
+  | { valid: false; error: string; message?: string };
+```
+
+Backends that include a `transaction` (or any other extra fields) on either response shape ride through unmodified — the library validates only the named fields above and preserves everything else via Zod `.passthrough()`. Consumers can cast the resolved value to their own type to read backend-defined extras.
+
+`getEntitlements` returns the entitlement array directly (no per-transaction verdict).
 
 ### `listProducts()` (optional)
 

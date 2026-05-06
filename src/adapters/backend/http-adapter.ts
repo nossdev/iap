@@ -7,11 +7,13 @@ import { HttpClient } from './http-client.js';
 import {
   type BackendAdapter,
   type RestoreRequest,
+  type RestoreResponse,
   type VerifyAppleRequest,
   type VerifyGoogleRequest,
   type VerifyResponse,
   entitlementsResponseSchema,
   productManifestResponseSchema,
+  restoreResponseSchema,
   verifyResponseSchema,
 } from './types.js';
 
@@ -120,16 +122,16 @@ export class HttpBackendAdapter<TEntitlement extends EntitlementBase = Entitleme
     return result.entitlements as TEntitlement[];
   }
 
-  async restore(req: RestoreRequest): Promise<VerifyResponse<TEntitlement>> {
+  async restore(req: RestoreRequest): Promise<RestoreResponse<TEntitlement>> {
     // Empty-array guard lives in `RestoreOrchestrator` (transport-agnostic);
     // see Phase 3 review L7. If a consumer calls this adapter directly with
     // an empty list, the backend's response is whatever it returns — usually
     // a 400 the HttpClient surfaces as `BACKEND_BAD_RESPONSE`.
     const result = await this.http.request(
       { method: 'POST', path: this.endpoints.restore, body: req },
-      verifyResponseSchema,
+      restoreResponseSchema,
     );
-    return result as VerifyResponse<TEntitlement>;
+    return result as RestoreResponse<TEntitlement>;
   }
 
   async listProducts(): Promise<ConfiguredProduct[]> {

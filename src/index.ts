@@ -45,6 +45,7 @@ export type {
   BackendAdapter,
   RestoreRequest,
   RestoreRequestTransaction,
+  RestoreResponse,
   VerifyAppleRequest,
   VerifyGoogleRequest,
   VerifyResponse,

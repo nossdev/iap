@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-05-06
+
+### Fixed
+
+- **Restore response no longer requires a `transaction` envelope.** `HttpBackendAdapter.restore()` previously validated against the same schema as `verifyApple` / `verifyGoogle`, which required `transaction: { id, productId, ... }` on success. The orchestrator never reads `response.transaction` on the restore path — `iap.restorePurchases()` returns `{ restored, entitlements }` and the field was never surfaced. Backends may now respond with `{ valid: true, entitlements: [...] }` and the library accepts it. Backends that include `transaction` aren't broken — the field is preserved (passthrough) but no longer validated.
+- **Top-level response envelopes now passthrough unknown keys.** Every backend response schema (`verifyResponseSchema`, the new `restoreResponseSchema`, `entitlementsResponseSchema`, `productManifestResponseSchema`) used `z.object()`'s strip-unknown default, silently dropping consumer-defined extras (analytics ids, debug fields, server timestamps, custom flags). Inner schemas (`passthroughEntitlementSchema`, `verifiedTransactionSchema`) already passed through; this patch closes the top-level gap so backend metadata rides through end-to-end. Consumer code can read these extras via a runtime cast — the library validates only the named fields it owns.
+
+### Changed
+
+- **`BackendAdapter.restore()` return type** is now `RestoreResponse<T>` rather than `VerifyResponse<T>`. The success branch omits the `transaction` field; the failure branch is unchanged. Existing custom adapters returning `VerifyResponse` from `restore()` remain structurally compatible — `{ valid: true; entitlements; transaction }` is assignable to `{ valid: true; entitlements }`. Update your typings opportunistically.
+- **`transaction.verifiedAt` no longer validated** in the runtime schema. The library never read it; consumers that send it still see it preserved via the existing `verifiedTransactionSchema.passthrough()`.
+
+## [0.1.2] — 2026-05-05
+
 ### Fixed
 
 - **`androidPlanId` no longer required for subscription products** — the schema previously enforced `androidPlanId` cross-platform via a `.refine()` on `configuredProductSchema`, blocking iOS-only consumers and single-plan Android subscriptions from validating their config or backend manifest. The field is now consistently optional. The Android native adapter already falls back to `native.getOffer()` (the default offer) when it's missing, so the runtime is unaffected. Set `androidPlanId` explicitly only when an Android subscription has multiple base plans and you need to disambiguate. iOS ignores it.

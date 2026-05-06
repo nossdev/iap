@@ -55,33 +55,47 @@ const verifiedTransactionSchema = z
     productId: z.string(),
     /** ISO 8601 timestamp; null for non-expiring transactions. */
     expiresAt: z.string().nullable().optional(),
-    /** ISO 8601 timestamp the backend recorded the verification. */
-    verifiedAt: z.string().optional(),
   })
   .passthrough();
 
-const verifySuccessSchema = z.object({
-  valid: z.literal(true),
-  entitlements: z.array(passthroughEntitlementSchema),
-  transaction: verifiedTransactionSchema,
-});
+const verifySuccessSchema = z
+  .object({
+    valid: z.literal(true),
+    entitlements: z.array(passthroughEntitlementSchema),
+    transaction: verifiedTransactionSchema,
+  })
+  .passthrough();
 
-const verifyFailureSchema = z.object({
-  valid: z.literal(false),
-  /** Stable machine-readable code, e.g. "TRANSACTION_NOT_FOUND". */
-  error: z.string(),
-  /** Optional human-readable detail. */
-  message: z.string().optional(),
-});
+const verifyFailureSchema = z
+  .object({
+    valid: z.literal(false),
+    /** Stable machine-readable code, e.g. "TRANSACTION_NOT_FOUND". */
+    error: z.string(),
+    /** Optional human-readable detail. */
+    message: z.string().optional(),
+  })
+  .passthrough();
 
 export const verifyResponseSchema = z.discriminatedUnion('valid', [
   verifySuccessSchema,
   verifyFailureSchema,
 ]);
 
-export const entitlementsResponseSchema = z.object({
-  entitlements: z.array(passthroughEntitlementSchema),
-});
+const restoreSuccessSchema = z
+  .object({
+    valid: z.literal(true),
+    entitlements: z.array(passthroughEntitlementSchema),
+  })
+  .passthrough();
+
+export const restoreResponseSchema = z.discriminatedUnion('valid', [
+  restoreSuccessSchema,
+  verifyFailureSchema,
+]);
+
+export const entitlementsResponseSchema = z
+  .object({ entitlements: z.array(passthroughEntitlementSchema) })
+  .passthrough();
 
 /**
  * Backend product-manifest response. Mirrors the entitlements envelope
@@ -89,19 +103,44 @@ export const entitlementsResponseSchema = z.object({
  * is validated against the same `configuredProductSchema` used at config
  * parse time, so a backend that drifts from the schema fails loudly.
  */
-export const productManifestResponseSchema = z.object({
-  products: configuredProductsArraySchema,
-});
+export const productManifestResponseSchema = z
+  .object({ products: configuredProductsArraySchema })
+  .passthrough();
 
-// ----- Inferred response types (use these for typing; cast TEntitlement at adapter boundary) -----
+// ----- Public response types (plain TS; runtime schemas above passthrough extras at parse time) -----
+//
+// Defined as plain TS interfaces rather than `z.infer<...>` because Zod's
+// `.passthrough()` adds `[k: string]: unknown` to the inferred type, which
+// TS treats as overriding named property types — so consumer code reading
+// `result.entitlements` would receive `unknown`. The runtime schemas above
+// still passthrough at parse time, so backend-defined extras ARE preserved
+// on the resolved object — consumers who want them just cast.
+//
+// The transaction echo's shape is inlined (rather than referencing the
+// separate `VerifiedTransaction` in `src/types/transaction.ts`) because the
+// purchase orchestrator does its own `as VerifiedTransaction` cast when
+// surfacing the value in `PurchaseResult` — the public type there is the
+// canonical one.
 
-type ZodVerifySuccess = z.infer<typeof verifySuccessSchema>;
-type ZodVerifyFailure = z.infer<typeof verifyFailureSchema>;
-
-/** Public response type, generic over the consumer's entitlement shape. */
+/** Public response type for `verifyApple` / `verifyGoogle`, generic over the consumer's entitlement shape. */
 export type VerifyResponse<TEntitlement extends EntitlementBase = EntitlementBase> =
-  | (Omit<ZodVerifySuccess, 'entitlements'> & { entitlements: TEntitlement[] })
-  | ZodVerifyFailure;
+  | {
+      valid: true;
+      entitlements: TEntitlement[];
+      transaction: { id: string; productId: string; expiresAt?: string | null };
+    }
+  | { valid: false; error: string; message?: string };
+
+/**
+ * Restore response. Distinct from {@link VerifyResponse} because the
+ * orchestrator never reads `transaction` on the restore path — the schema
+ * accordingly omits any required transaction echo. Backends that include
+ * a `transaction` (or any other field) on the success branch ride through
+ * unmodified via top-level passthrough; consumers cast to read them.
+ */
+export type RestoreResponse<TEntitlement extends EntitlementBase = EntitlementBase> =
+  | { valid: true; entitlements: TEntitlement[] }
+  | { valid: false; error: string; message?: string };
 
 // ----- BackendAdapter interface (transport-agnostic) -----
 
@@ -122,8 +161,16 @@ export interface BackendAdapter<TEntitlement extends EntitlementBase = Entitleme
   verifyGoogle(req: VerifyGoogleRequest): Promise<VerifyResponse<TEntitlement>>;
   /** GET current entitlements; library uses this for refresh + warm cache. */
   getEntitlements(): Promise<TEntitlement[]>;
-  /** Batch re-verify. Backend returns consolidated entitlements. */
-  restore(req: RestoreRequest): Promise<VerifyResponse<TEntitlement>>;
+  /**
+   * Batch re-verify. Backend returns consolidated entitlements.
+   *
+   * Returns {@link RestoreResponse} (not {@link VerifyResponse}) — the orchestrator
+   * does not consume any per-transaction echo on restore, so the response
+   * shape intentionally omits the required `transaction` field that verify
+   * has. Backends may still attach a `transaction` (or any other extras)
+   * — they ride through via the schema's top-level passthrough.
+   */
+  restore(req: RestoreRequest): Promise<RestoreResponse<TEntitlement>>;
   /**
    * Optional: return the SKU manifest the app should register.
    *

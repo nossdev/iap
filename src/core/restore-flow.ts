@@ -2,7 +2,7 @@ import type {
   BackendAdapter,
   RestoreRequest,
   RestoreRequestTransaction,
-  VerifyResponse,
+  RestoreResponse,
 } from '../adapters/backend/types.js';
 import type { NativeAdapter } from '../adapters/native/types.js';
 import type { TypedEventEmitter } from '../events/emitter.js';
@@ -79,7 +79,7 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
       transactions: owned.map((tx) => this.toRestoreEntry(tx)),
     };
 
-    let response: VerifyResponse<TEntitlement>;
+    let response: RestoreResponse<TEntitlement>;
     try {
       response = await backend.restore(request);
     } catch (cause) {
