@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BackendAdapter } from '../../src/adapters/backend/types.js';
-import type { NativeAdapter } from '../../src/adapters/native/types.js';
+import type { NativeAdapter, NativePurchaseOptions } from '../../src/adapters/native/types.js';
 import { MemoryAdapter } from '../../src/adapters/storage/memory-adapter.js';
 import { EntitlementCache } from '../../src/core/entitlement-cache.js';
 import { PurchaseOrchestrator } from '../../src/core/purchase-flow.js';
@@ -640,7 +640,9 @@ const VALID_UUID = '550e8400-e29b-41d4-a716-446655440000';
 describe('PurchaseOrchestrator — appUserId pre-attach', () => {
   describe('string mode', () => {
     it('forwards a valid UUID v4 string as appAccountToken on the native call', async () => {
-      const purchaseSpy = vi.fn(async () => makeAppleTransaction('premium_monthly'));
+      const purchaseSpy = vi.fn(async (_opts: NativePurchaseOptions) =>
+        makeAppleTransaction('premium_monthly'),
+      );
       const { orchestrator } = makeOrchestrator({
         nativeAdapter: makeNativeAdapter({ purchaseProduct: purchaseSpy }),
       });
@@ -653,7 +655,9 @@ describe('PurchaseOrchestrator — appUserId pre-attach', () => {
     });
 
     it('omits appAccountToken when appUserId is not provided (current behavior preserved)', async () => {
-      const purchaseSpy = vi.fn(async () => makeAppleTransaction('premium_monthly'));
+      const purchaseSpy = vi.fn(async (_opts: NativePurchaseOptions) =>
+        makeAppleTransaction('premium_monthly'),
+      );
       const { orchestrator } = makeOrchestrator({
         nativeAdapter: makeNativeAdapter({ purchaseProduct: purchaseSpy }),
       });
@@ -665,7 +669,9 @@ describe('PurchaseOrchestrator — appUserId pre-attach', () => {
     });
 
     it('throws INVALID_APP_USER_ID synchronously on non-UUID string, never invoking native', async () => {
-      const purchaseSpy = vi.fn(async () => makeAppleTransaction('premium_monthly'));
+      const purchaseSpy = vi.fn(async (_opts: NativePurchaseOptions) =>
+        makeAppleTransaction('premium_monthly'),
+      );
       const { orchestrator } = makeOrchestrator({
         nativeAdapter: makeNativeAdapter({ purchaseProduct: purchaseSpy }),
       });
@@ -690,7 +696,9 @@ describe('PurchaseOrchestrator — appUserId pre-attach', () => {
   describe('async fetcher mode', () => {
     it('invokes the fetcher exactly once and forwards the resolved UUID', async () => {
       const fetcher = vi.fn(async () => VALID_UUID);
-      const purchaseSpy = vi.fn(async () => makeAppleTransaction('premium_monthly'));
+      const purchaseSpy = vi.fn(async (_opts: NativePurchaseOptions) =>
+        makeAppleTransaction('premium_monthly'),
+      );
       const { orchestrator } = makeOrchestrator({
         nativeAdapter: makeNativeAdapter({ purchaseProduct: purchaseSpy }),
       });
