@@ -130,19 +130,27 @@ Argument shape for `iap.purchase(opts)`. Required: `productId`. Optional: `appUs
 ## `AppUserId`
 
 ```typescript
-type AppUserId = string | (() => Promise<string>);
+type AppUserId =
+  | string
+  | (() => Promise<string>)
+  | ((ctx: AppUserIdFetcherContext) => Promise<string>);
+
+interface AppUserIdFetcherContext {
+  authHeaders: Record<string, string>;
+}
 ```
 
 Pre-attach value supplied to `iap.purchase({ appUserId })`. Travels through StoreKit / Play Billing and surfaces on Attesto's verify response and outbound webhook payload as a top-level `appUserId` field — lets the integrator's backend join on user identity directly.
 
-| Form               | Behavior                                                                                                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `string`           | Validated as a UUID v4 then passed to native. Use when the caller already has the UUID (cached locally / app state).                                                                                                            |
-| Async function     | Invoked **once per purchase** (no caching by iap — backend owns mint-or-lookup idempotency). Resolved value validated as a UUID v4. Wraps any thrown/rejected error as `IAPError(APP_USER_ID_FETCH_FAILED, cause: <original>)`. |
+| Form                  | Behavior                                                                                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `string`              | Validated as a UUID v4 then passed to native. Use when the caller already has the UUID (cached locally / app state).                                                                                                            |
+| `() => Promise`       | Zero-arg async fetcher. Invoked **once per purchase** (no caching by iap — backend owns mint-or-lookup idempotency). Resolved value validated as a UUID v4. Wraps any thrown/rejected error as `IAPError(APP_USER_ID_FETCH_FAILED, cause: <original>)`. The fetcher closes over its own auth state. |
+| `(ctx) => Promise`    | Same semantics as the zero-arg form, plus iap passes `ctx.authHeaders` populated from `backend.getAuthHeaders()` (resolved fresh per purchase) so consumers whose UUID-minting endpoint shares auth with their IAP backend can reuse it without redefining a helper. For consumers using a custom `BackendAdapter` (no `getAuthHeaders` configured), `authHeaders` is `{}`. |
 
 Non-UUID values throw `IAPError(INVALID_APP_USER_ID)`. Apple requires a UUID for `appAccountToken`; iap enforces the same constraint on Android for cross-platform consistency.
 
-The fetcher signature is `() => Promise<string>` — no arguments. iap passes no implicit context; the caller's fetcher closes over whatever auth state it needs (session token, JWT, cookie). This is deliberate: different apps have different points in their UX where a user account exists, so coupling the fetcher to a specific auth callback would force a UX shape.
+`ctx.authHeaders` is **convenience, not contract**. Use it when your UUID-minting endpoint shares auth with your IAP backend; ignore the parameter and close over your own auth state when it doesn't (e.g. a separate identity service with its own auth scheme).
 
 ## `PurchaseResult`
 

@@ -6,7 +6,12 @@ import type { Logger } from '../lib/logger.js';
 import { isValidUuidV4 } from '../lib/uuid.js';
 import type { EntitlementBase } from '../types/entitlement.js';
 import type { ConfiguredProduct } from '../types/product.js';
-import type { AppUserId, PurchaseOptions, PurchaseResult } from '../types/results.js';
+import type {
+  AppUserId,
+  AppUserIdFetcherContext,
+  PurchaseOptions,
+  PurchaseResult,
+} from '../types/results.js';
 import type { NativeTransaction, VerifiedTransaction } from '../types/transaction.js';
 import type { EntitlementCache } from './entitlement-cache.js';
 import type { UnfinishedTransactionsStore } from './unfinished-transactions.js';
@@ -40,6 +45,16 @@ interface PurchaseOrchestratorDeps<TEntitlement extends EntitlementBase> {
    * see a spurious "stale" reading after a purchase.
    */
   setCachePersisted: (cachedAt: number) => void;
+  /**
+   * Resolves the auth headers the library uses for backend requests.
+   * Forwarded to function-form `appUserId` fetchers as `ctx.authHeaders`
+   * so consumers whose UUID-minting endpoint shares auth with their IAP
+   * backend can reuse it without redefining a helper. For consumers
+   * using a custom `BackendAdapter` (no `getAuthHeaders` configured),
+   * this returns `{}`. Awaited fresh per purchase so token refresh
+   * keeps working.
+   */
+  getAuthHeaders: () => Promise<Record<string, string>>;
 }
 
 /**
@@ -94,8 +109,19 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     // purchase-started — these throws are pre-flight (caller bug or
     // backend-fetcher failure), not purchase outcomes. They surface
     // synchronously to the awaiter without polluting the event stream.
-    const resolvedAppUserId =
-      appUserId !== undefined ? await resolveAppUserId(appUserId) : undefined;
+    //
+    // For function-form fetchers, eagerly resolve `getAuthHeaders()` so
+    // we can pass it via ctx. String-form supplies skip the await. The
+    // ctx is always populated (with `{}` when no headers are wired) so
+    // fetchers that destructure `({ authHeaders })` never see undefined.
+    let resolvedAppUserId: string | undefined;
+    if (appUserId !== undefined) {
+      const ctx: AppUserIdFetcherContext =
+        typeof appUserId === 'function'
+          ? { authHeaders: await this.deps.getAuthHeaders() }
+          : { authHeaders: {} };
+      resolvedAppUserId = await resolveAppUserId(appUserId, ctx);
+    }
 
     this.inFlight.add(productId);
     this.deps.emitter.emit('purchase-started', { productId });
@@ -270,14 +296,20 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
  *   `IAPError(APP_USER_ID_FETCH_FAILED, cause)` so callers can
  *   distinguish "fetcher exploded" from "fetcher returned junk".
  *
+ * Function-form fetchers always receive `ctx`. Zero-arg fetchers
+ * (`async () => '...'`) ignore the extra argument at runtime — JS
+ * standard behavior — so 0.2.x callers continue to work unchanged.
+ *
  * Throws synchronously (or via Promise rejection) on invalid input;
  * never returns a non-UUID string.
  */
-async function resolveAppUserId(supply: AppUserId): Promise<string> {
+async function resolveAppUserId(supply: AppUserId, ctx: AppUserIdFetcherContext): Promise<string> {
   let resolved: string;
   if (typeof supply === 'function') {
     try {
-      resolved = await supply();
+      // Cast to the ctx-form signature so the call typechecks for both
+      // shapes in the union; zero-arg fetchers ignore the extra arg.
+      resolved = await (supply as (ctx: AppUserIdFetcherContext) => Promise<string>)(ctx);
     } catch (cause) {
       throw new IAPError({
         code: IAPErrorCode.APP_USER_ID_FETCH_FAILED,

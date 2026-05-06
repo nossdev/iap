@@ -84,14 +84,14 @@ Starts a purchase. Returns a discriminated union — does NOT throw on user canc
 ```typescript
 interface PurchaseOptions {
   productId: string;
-  appUserId?: string | (() => Promise<string>);
+  appUserId?: AppUserId;
 }
 ```
 
-| Field       | Type                                  | Required | Notes                                                                                                                                                                                                                                                                            |
-| ----------- | ------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `productId` | `string`                              | yes      | Must be in `config.products`.                                                                                                                                                                                                                                                    |
-| `appUserId` | `string \| (() => Promise<string>)` | no       | If supplied, validated as a UUID v4 then forwarded to StoreKit's `appAccountToken` (iOS) / Play Billing's `obfuscatedAccountId` (Android). Either a literal UUID v4 or an async fetcher invoked once per purchase. See [`AppUserId`](/api/types#appuserid) for fetcher semantics. |
+| Field       | Type                          | Required | Notes                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------- | ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `productId` | `string`                      | yes      | Must be in `config.products`.                                                                                                                                                                                                                                                                                                                                                        |
+| `appUserId` | [`AppUserId`](/api/types#appuserid) | no       | UUID v4 (literal or async-fetched) forwarded to StoreKit's `appAccountToken` (iOS) / Play Billing's `obfuscatedAccountId` (Android). Three forms accepted: plain string, zero-arg fetcher `() => Promise<string>`, or ctx-form fetcher `(ctx) => Promise<string>` where `ctx.authHeaders` is populated from `backend.getAuthHeaders()`. See [`AppUserId`](/api/types#appuserid) for full semantics. |
 
 ```typescript
 type PurchaseResult<T> =

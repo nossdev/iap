@@ -5,6 +5,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-05-06
+
+### Added
+
+- **`appUserId` async fetcher may now accept an optional `ctx`
+  parameter.** The library passes `{ authHeaders }` populated from
+  `backend.getAuthHeaders()` (resolved fresh per purchase), letting
+  consumers reuse the same auth they configured for IAP-backend
+  requests when their UUID-minting endpoint uses that same auth.
+  The parameter is optional convenience, not contract — zero-arg
+  fetchers from 0.2.x continue to work unchanged. Ignore the
+  parameter when your UUID endpoint uses different auth and close
+  over your own auth state instead. For consumers using a custom
+  `BackendAdapter` (no `getAuthHeaders` configured), `ctx.authHeaders`
+  is `{}`.
+
+  ```ts
+  // before — still valid
+  appUserId: async () => {
+    const r = await fetch('/api/iap/uuid', { headers: authHeaders() });
+    return (await r.json()).uuid;
+  }
+
+  // after — equivalent, no helper duplication
+  appUserId: async ({ authHeaders }) => {
+    const r = await fetch('/api/iap/uuid', { headers: authHeaders });
+    return (await r.json()).uuid;
+  }
+  ```
+
+  See `docs/guide/getting-started.md` (Pre-attaching a user identifier)
+  and `docs/api/types.md` (`AppUserId`) for the updated reference.
+
 ## [0.3.0] — 2026-05-06
 
 ### Changed (BREAKING)
