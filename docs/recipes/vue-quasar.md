@@ -78,7 +78,7 @@ export const useIAPStore = defineStore('iap', () => {
   async function purchase(productId: string) {
     isPurchasing.value = true;
     try {
-      return await iap.purchase(productId);
+      return await iap.purchase({ productId });
     } finally {
       isPurchasing.value = false;
     }

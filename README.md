@@ -2,7 +2,7 @@
 
 > Thin Capacitor IAP orchestrator. Server-side validation via [Attesto](https://attesto.nossdev.com).
 
-**Status: 0.1.0 — published.** API may have breaking changes through the 0.x line as it's exercised in production apps. Pin the minor version (`^0.1.0`) and watch the [CHANGELOG](./CHANGELOG.md).
+**Status: 0.2.0 — published.** API may have breaking changes through the 0.x line as it's exercised in production apps. Pin the minor version (`^0.2.0`) and watch the [CHANGELOG](./CHANGELOG.md).
 
 ```bash
 npm install @nossdev/iap cordova-plugin-purchase
@@ -32,10 +32,24 @@ const iap = createIAP({
 
 await iap.initialize();
 
-const result = await iap.purchase('premium_monthly');
+const result = await iap.purchase({ productId: 'premium_monthly' });
 if (result.status === 'success') {
   // backend has validated; entitlements are cached
 }
+
+// (optional) Pre-attach a UUID so it travels through StoreKit/Play Billing
+// and reaches your backend on both the verify response and the eventual
+// webhook — eliminates the verify/webhook race for purchases where the
+// user is signed in. Either pass a string you already have or an async
+// fetcher that hits your backend (which mints+saves on first call,
+// returns the existing UUID on subsequent calls).
+await iap.purchase({
+  productId: 'premium_monthly',
+  appUserId: async () => {
+    const r = await fetch('/api/iap/uuid', { headers: authHeaders() });
+    return (await r.json()).uuid;
+  },
+});
 ```
 
 ## Documentation

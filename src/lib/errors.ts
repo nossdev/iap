@@ -28,6 +28,20 @@ export const IAPErrorCode = {
 
   // Storage
   STORAGE_ERROR: 'STORAGE_ERROR',
+
+  // appUserId pre-attach
+  /**
+   * The supplied `appUserId` (literal or fetcher-returned) is not a valid
+   * UUID v4. Apple requires a UUID for `appAccountToken`; we enforce the
+   * same constraint cross-platform for a consistent contract.
+   */
+  INVALID_APP_USER_ID: 'INVALID_APP_USER_ID',
+  /**
+   * The async `appUserId` fetcher threw or rejected. Original error is
+   * attached as `cause` so the caller can introspect (network failure,
+   * backend 5xx, etc.).
+   */
+  APP_USER_ID_FETCH_FAILED: 'APP_USER_ID_FETCH_FAILED',
 } as const;
 
 export type IAPErrorCode = (typeof IAPErrorCode)[keyof typeof IAPErrorCode];
@@ -90,6 +104,12 @@ const HINTS: Readonly<Record<IAPErrorCode, string>> = {
   // Storage
   STORAGE_ERROR:
     'Capacitor Preferences write failed. Check device storage availability; the in-memory state is still updated, only persistence failed.',
+
+  // appUserId pre-attach
+  INVALID_APP_USER_ID:
+    'appUserId must be a UUID v4 (e.g. crypto.randomUUID()). Apple requires this for appAccountToken; we enforce the same on Android for consistency.',
+  APP_USER_ID_FETCH_FAILED:
+    'The async appUserId fetcher threw or rejected. Inspect the cause field for the underlying error (network failure, backend non-2xx, parse failure).',
 };
 
 /** Public accessor for the hint text — exported so docs / consumer error UIs can render it. */

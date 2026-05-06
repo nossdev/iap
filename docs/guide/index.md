@@ -51,20 +51,20 @@ This boundary is **non-negotiable**. If a feature request encroaches on entitlem
 ## Three-tier model
 
 ```
-┌──────────────────────────────────────────────────────┐
-│ Consumer App (Vue / Quasar / React / Svelte)         │
-│   await iap.purchase('premium_monthly')              │
-│   iap.hasEntitlement('premium')                      │
-│   iap.on('entitlements-changed', ...)                │
-└──────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│ Consumer App (Vue / Quasar / React / Svelte)           │
+│   await iap.purchase({ productId: 'premium_monthly' }) │
+│   iap.hasEntitlement('premium')                        │
+│   iap.on('entitlements-changed', ...)                  │
+└────────────────────────────────────────────────────────┘
                          ↕
-┌──────────────────────────────────────────────────────┐
-│ @nossdev/iap (this library)                          │
-│   - orchestrates purchase flow                       │
-│   - coordinates with backend                         │
-│   - manages entitlement cache                        │
-│   - emits reactive events                            │
-└──────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│ @nossdev/iap (this library)                            │
+│   - orchestrates purchase flow                         │
+│   - coordinates with backend                           │
+│   - manages entitlement cache                          │
+│   - emits reactive events                              │
+└────────────────────────────────────────────────────────┘
               ↓                            ↓
    ┌─────────────────────┐    ┌──────────────────────┐
    │ cordova-plugin-     │    │ Your backend         │

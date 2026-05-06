@@ -100,9 +100,9 @@ Your store reflects backend truth within milliseconds of every refresh.
 
 ## 4. Single in-flight purchase per product
 
-**Concurrent `iap.purchase(productId)` calls for the same product are coalesced.**
+**Concurrent `iap.purchase({ productId })` calls for the same product are coalesced.**
 
-If `iap.purchase('premium_monthly')` is in flight and you call it again, the second call rejects immediately with `IAPError(ALREADY_IN_PROGRESS)`. Different products can purchase in parallel; the same product cannot.
+If `iap.purchase({ productId: 'premium_monthly' })` is in flight and you call it again, the second call rejects immediately with `IAPError(ALREADY_IN_PROGRESS)`. Different products can purchase in parallel; the same product cannot.
 
 This rules out double-charging when a UI button is rapidly tapped or when navigation re-mounts a paywall component mid-purchase.
 

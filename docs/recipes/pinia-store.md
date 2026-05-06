@@ -57,7 +57,7 @@ export const useIAPStore = defineStore('iap', () => {
     isPurchasing.value = true;
     lastError.value = null;
     try {
-      const result = await iap.purchase(productId);
+      const result = await iap.purchase({ productId });
       if (result.status === 'failed' || result.status === 'verification_failed') {
         lastError.value = result.error.message;
       }

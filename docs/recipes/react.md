@@ -126,7 +126,7 @@ export function Paywall() {
     setPurchasing(true);
     setMessage(null);
 
-    const result = await iap.purchase('premium_monthly');
+    const result = await iap.purchase({ productId: 'premium_monthly' });
 
     switch (result.status) {
       case 'success':

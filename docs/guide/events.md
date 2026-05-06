@@ -33,7 +33,7 @@ If you need a Promise interface, just `await iap.initialize()` — `ready` is fo
 iap.on('purchase-started', ({ productId }) => { /* ... */ });
 ```
 
-Emitted when `iap.purchase(productId)` calls into the native plugin. Useful for showing a spinner before the system purchase sheet animates in.
+Emitted when `iap.purchase({ productId })` calls into the native plugin. Useful for showing a spinner before the system purchase sheet animates in.
 
 ### `purchase-success`
 
@@ -169,7 +169,7 @@ restore-started
 For the synchronous purchase flow, prefer the return value over event subscriptions:
 
 ```typescript
-const result = await iap.purchase('premium_monthly');
+const result = await iap.purchase({ productId: 'premium_monthly' });
 if (result.status === 'success') { /* ... */ }
 ```
 

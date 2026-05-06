@@ -116,6 +116,34 @@ Surfaced to consumers via:
 - `purchase-success` event payload
 - `PurchaseResult` `success` variant
 
+## `PurchaseOptions`
+
+```typescript
+interface PurchaseOptions {
+  productId: string;
+  appUserId?: AppUserId;
+}
+```
+
+Argument shape for `iap.purchase(opts)`. Required: `productId`. Optional: `appUserId` — see below.
+
+## `AppUserId`
+
+```typescript
+type AppUserId = string | (() => Promise<string>);
+```
+
+Pre-attach value supplied to `iap.purchase({ appUserId })`. Travels through StoreKit / Play Billing and surfaces on Attesto's verify response and outbound webhook payload as a top-level `appUserId` field — lets the integrator's backend join on user identity directly.
+
+| Form               | Behavior                                                                                                                                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `string`           | Validated as a UUID v4 then passed to native. Use when the caller already has the UUID (cached locally / app state).                                                                                                            |
+| Async function     | Invoked **once per purchase** (no caching by iap — backend owns mint-or-lookup idempotency). Resolved value validated as a UUID v4. Wraps any thrown/rejected error as `IAPError(APP_USER_ID_FETCH_FAILED, cause: <original>)`. |
+
+Non-UUID values throw `IAPError(INVALID_APP_USER_ID)`. Apple requires a UUID for `appAccountToken`; iap enforces the same constraint on Android for cross-platform consistency.
+
+The fetcher signature is `() => Promise<string>` — no arguments. iap passes no implicit context; the caller's fetcher closes over whatever auth state it needs (session token, JWT, cookie). This is deliberate: different apps have different points in their UX where a user account exists, so coupling the fetcher to a specific auth callback would force a UX shape.
+
 ## `PurchaseResult`
 
 ```typescript
@@ -127,7 +155,7 @@ type PurchaseResult<T extends EntitlementBase = EntitlementBase> =
   | { status: 'failed';              productId: string; error: IAPError };
 ```
 
-The discriminated union returned by `iap.purchase(productId)`. Switch on `status` to render the right UI without try/catch.
+The discriminated union returned by `iap.purchase(opts)`. Switch on `status` to render the right UI without try/catch.
 
 ## `RestoreResult`
 

@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-06
+
+### Changed (BREAKING)
+
+- **`purchase()` signature is now an options object.** Replace `iap.purchase('premium_monthly')` with `iap.purchase({ productId: 'premium_monthly' })`. The new shape is required for the additive `appUserId` field below and any future per-purchase options. Search-and-replace migration; one mechanical edit per call site. See [Migration § v0.1 → v0.2](https://iap.nossdev.com/migration#v0-1-v0-2-breaking-purchase-signature).
+
+### Added
+
+- **Pre-attached `appUserId` for the verify/webhook user-mapping path.** New optional `appUserId` field on `PurchaseOptions` accepts either a UUID v4 string or an async fetcher (`() => Promise<string>`). When supplied, the resolved value is validated as a UUID v4 and forwarded to StoreKit's `appAccountToken` (iOS) / Play Billing's `obfuscatedAccountId` (Android) — making it available to the consumer's backend on Attesto's verify response and outbound webhook payload as a top-level `appUserId` field. Eliminates the verify/webhook race for purchases where the user is signed in. Fetcher is invoked fresh per purchase; no iap-side caching (backend owns the mint-or-lookup idempotency). See [Getting started § Pre-attaching a user identifier](https://iap.nossdev.com/guide/getting-started#pre-attaching-a-user-identifier-optional).
+- **`AppUserId` and `PurchaseOptions` types** exported from the package root for consumers who type their own helpers around `purchase(...)`.
+- **Two new error codes**:
+  - `INVALID_APP_USER_ID` — supplied value (literal or fetcher-returned) isn't a valid UUID v4. Thrown synchronously / via Promise rejection, before reaching the native adapter.
+  - `APP_USER_ID_FETCH_FAILED` — async fetcher threw or rejected. Original error is attached as `cause` for introspection.
+
 ## [0.1.3] — 2026-05-06
 
 ### Fixed

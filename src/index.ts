@@ -25,6 +25,8 @@ export type {
 } from './types/transaction.js';
 
 export type {
+  AppUserId,
+  PurchaseOptions,
   PurchaseResult,
   RestoreResult,
 } from './types/results.js';
