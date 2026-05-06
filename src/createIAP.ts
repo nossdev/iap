@@ -260,6 +260,15 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
 
       // Now that the native adapter is resolved, wire the orchestrators.
       // Both share the same getter/setter triplet into createIAP's state.
+      // The HTTP-config `getAuthHeaders` is hoisted here so the purchase
+      // orchestrator can forward it to function-form `appUserId` fetchers
+      // as `ctx.authHeaders`. Custom-adapter consumers don't have one
+      // configured at the IAP-config level, so we resolve to `{}` for
+      // them (their fetcher closes over their own auth state).
+      const configGetAuthHeaders = state.config.backend.getAuthHeaders;
+      const getAuthHeaders: () => Promise<Record<string, string>> = configGetAuthHeaders
+        ? async () => configGetAuthHeaders()
+        : async () => ({});
       const sharedDeps = {
         nativeAdapter: state.adapter,
         backend: state.backend,
@@ -274,6 +283,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         setCachePersisted: (cachedAt: number) => {
           state.cachedAt = cachedAt;
         },
+        getAuthHeaders,
       };
 
       state.orchestrator = new PurchaseOrchestrator<TEntitlement>({

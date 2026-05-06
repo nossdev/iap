@@ -3,6 +3,25 @@ import type { EntitlementBase } from './entitlement.js';
 import type { VerifiedTransaction } from './transaction.js';
 
 /**
+ * Convenience context the library passes to a function-form
+ * {@link AppUserId} fetcher. `authHeaders` is the result of awaiting
+ * `backend.getAuthHeaders()` — the same headers the library will use
+ * for its own backend requests. Resolved fresh per purchase so token
+ * refresh keeps working.
+ *
+ * It's a convenience, not a contract: fetchers may legitimately ignore
+ * the parameter. Use it when your UUID-minting endpoint shares auth
+ * with your IAP backend; ignore it (and close over your own auth
+ * state) when it doesn't.
+ *
+ * For consumers using a custom `BackendAdapter` (no `getAuthHeaders`
+ * configured), `authHeaders` is `{}`.
+ */
+export interface AppUserIdFetcherContext {
+  authHeaders: Record<string, string>;
+}
+
+/**
  * Value supplied to `iap.purchase({ appUserId })`. Either a UUID v4
  * string the caller already has (e.g. from local cache / app state) or
  * an async fetcher the library invokes once per purchase to retrieve
@@ -10,9 +29,14 @@ import type { VerifiedTransaction } from './transaction.js';
  * persists on first call, returns the existing UUID on later calls).
  *
  * The fetcher is invoked **fresh on every purchase** — iap caches
- * nothing. The backend owns the mint-or-lookup idempotency. The
- * fetcher closes over whatever auth state the caller needs (session
- * token, JWT, cookie); iap passes no implicit context.
+ * nothing. The backend owns the mint-or-lookup idempotency.
+ *
+ * Two fetcher shapes are supported:
+ * - `() => Promise<string>` — closes over its own auth state.
+ * - `(ctx) => Promise<string>` — receives `ctx.authHeaders` populated
+ *   from `backend.getAuthHeaders()` so the auth wired up for IAP
+ *   requests can be reused without redefining a helper. See
+ *   {@link AppUserIdFetcherContext}.
  *
  * Either form is validated as UUID v4 before being forwarded to
  * StoreKit's `appAccountToken` (iOS) / Play Billing's
@@ -20,7 +44,10 @@ import type { VerifiedTransaction } from './transaction.js';
  * `IAPError(INVALID_APP_USER_ID)`. A throwing/rejecting fetcher
  * surfaces as `IAPError(APP_USER_ID_FETCH_FAILED, cause: <original>)`.
  */
-export type AppUserId = string | (() => Promise<string>);
+export type AppUserId =
+  | string
+  | (() => Promise<string>)
+  | ((ctx: AppUserIdFetcherContext) => Promise<string>);
 
 /**
  * Options accepted by `iap.purchase(...)`. `productId` is required;

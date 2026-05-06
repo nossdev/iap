@@ -29,6 +29,7 @@ const products: ConfiguredProduct[] = [
 function makeOrchestrator<T extends EntitlementBase = EntitlementBase>(opts: {
   nativeAdapter?: NativeAdapter;
   backend?: BackendAdapter<T>;
+  getAuthHeaders?: () => Promise<Record<string, string>>;
 }): {
   orchestrator: PurchaseOrchestrator<T>;
   emitter: TypedEventEmitter<T>;
@@ -81,6 +82,7 @@ function makeOrchestrator<T extends EntitlementBase = EntitlementBase>(opts: {
     setCachePersisted: (cachedAt) => {
       state.cachedAt = cachedAt;
     },
+    getAuthHeaders: opts.getAuthHeaders ?? (async () => ({})),
   });
 
   return { orchestrator, emitter, cache, unfinished, storage, events, state };
@@ -537,6 +539,7 @@ describe('PurchaseOrchestrator — defensive paths post-backend-success', () => 
       setCachePersisted: (ts) => {
         state.cachedAt = ts;
       },
+      getAuthHeaders: async () => ({}),
     });
 
     const result = await orchestrator.purchase({ productId: 'premium_monthly' });
@@ -598,6 +601,7 @@ describe('PurchaseOrchestrator — defensive paths post-backend-success', () => 
       setCachePersisted: (ts) => {
         state.cachedAt = ts;
       },
+      getAuthHeaders: async () => ({}),
     });
 
     const result = await orchestrator.purchase({ productId: 'premium_monthly' });
@@ -770,6 +774,125 @@ describe('PurchaseOrchestrator — appUserId pre-attach', () => {
         appUserId: VALID_UUID,
       });
       expect(result.status).toBe('success');
+    });
+  });
+
+  describe('async fetcher mode — ctx.authHeaders convenience parameter', () => {
+    it('passes ctx.authHeaders populated from backend.getAuthHeaders to the fetcher', async () => {
+      const expectedHeaders = { Authorization: 'Bearer abc123', 'X-Tenant': 't-1' };
+      const getAuthHeaders = vi.fn(async () => expectedHeaders);
+      const fetcher = vi.fn(async (ctx: { authHeaders: Record<string, string> }) => {
+        // Simulate using ctx.authHeaders for a fetch — assert what we received.
+        expect(ctx.authHeaders).toEqual(expectedHeaders);
+        return VALID_UUID;
+      });
+      const purchaseSpy = vi.fn(async (_opts: NativePurchaseOptions) =>
+        makeAppleTransaction('premium_monthly'),
+      );
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({ purchaseProduct: purchaseSpy }),
+        getAuthHeaders,
+      });
+
+      const result = await orchestrator.purchase({
+        productId: 'premium_monthly',
+        appUserId: fetcher,
+      });
+
+      expect(result.status).toBe('success');
+      expect(getAuthHeaders).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(purchaseSpy.mock.calls[0]?.[0]?.appAccountToken).toBe(VALID_UUID);
+    });
+
+    it('zero-arg fetcher (0.2.x form) continues to work — extra ctx arg is ignored at runtime', async () => {
+      // Regression guard: changing the resolveAppUserId signature must not
+      // break existing zero-arg fetchers. JS ignores extra args, so calling
+      // a `() => Promise<string>` with a ctx object is a no-op for the body.
+      const fetcher = vi.fn(async () => VALID_UUID);
+      const getAuthHeaders = vi.fn(async () => ({ Authorization: 'Bearer xyz' }));
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({
+          purchaseProduct: async () => makeAppleTransaction('premium_monthly'),
+        }),
+        getAuthHeaders,
+      });
+
+      const result = await orchestrator.purchase({
+        productId: 'premium_monthly',
+        appUserId: fetcher,
+      });
+
+      expect(result.status).toBe('success');
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      // getAuthHeaders is awaited regardless (we don't sniff fetcher.length),
+      // but the fetcher body never reads it.
+      expect(getAuthHeaders).toHaveBeenCalledTimes(1);
+    });
+
+    it('custom-adapter consumer (no getAuthHeaders configured) sees ctx.authHeaders === {}', async () => {
+      // createIAP wraps an absent config.backend.getAuthHeaders with
+      // `async () => ({})`, so consumers using a custom BackendAdapter
+      // get an empty object — never undefined — when destructuring
+      // ctx.authHeaders.
+      const fetcher = vi.fn(async (ctx: { authHeaders: Record<string, string> }) => {
+        expect(ctx.authHeaders).toEqual({});
+        return VALID_UUID;
+      });
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({
+          purchaseProduct: async () => makeAppleTransaction('premium_monthly'),
+        }),
+        getAuthHeaders: async () => ({}),
+      });
+
+      const result = await orchestrator.purchase({
+        productId: 'premium_monthly',
+        appUserId: fetcher,
+      });
+
+      expect(result.status).toBe('success');
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not invoke getAuthHeaders when appUserId is a string (no fetcher)', async () => {
+      // Optimization guard: string-form supplies skip the await entirely.
+      // If someone refactors purchase() to always resolve headers eagerly,
+      // this test catches the regression.
+      const getAuthHeaders = vi.fn(async () => ({ Authorization: 'Bearer abc' }));
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({
+          purchaseProduct: async () => makeAppleTransaction('premium_monthly'),
+        }),
+        getAuthHeaders,
+      });
+
+      await orchestrator.purchase({ productId: 'premium_monthly', appUserId: VALID_UUID });
+
+      expect(getAuthHeaders).not.toHaveBeenCalled();
+    });
+
+    it('ctx-form fetcher rejection still wraps as APP_USER_ID_FETCH_FAILED with cause', async () => {
+      // Back-compat guarantee: the runtime cast in resolveAppUserId is purely
+      // a TS construct, but if a future refactor changes the call shape we
+      // want explicit coverage that ctx-form rejections wrap identically to
+      // zero-arg ones. Pairs with the existing zero-arg rejection test.
+      const cause = new Error('uuid endpoint 500');
+      const fetcher = async (_ctx: { authHeaders: Record<string, string> }) => {
+        throw cause;
+      };
+      const { orchestrator } = makeOrchestrator({
+        nativeAdapter: makeNativeAdapter({
+          purchaseProduct: async () => makeAppleTransaction('premium_monthly'),
+        }),
+        getAuthHeaders: async () => ({ Authorization: 'Bearer x' }),
+      });
+      await expect(
+        orchestrator.purchase({ productId: 'premium_monthly', appUserId: fetcher }),
+      ).rejects.toMatchObject({
+        code: IAPErrorCode.APP_USER_ID_FETCH_FAILED,
+        cause,
+      });
     });
   });
 });

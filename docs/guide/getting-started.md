@@ -144,6 +144,20 @@ await iap.purchase({
     return (await r.json()).uuid;
   },
 });
+
+// (c) Async fetcher with `ctx` — equivalent to (b) when your UUID endpoint
+//     uses the same auth as your IAP backend. iap awaits
+//     `backend.getAuthHeaders()` and passes the result as `ctx.authHeaders`,
+//     so you don't have to redefine a helper. Convenience only — ignore the
+//     parameter and close over your own auth state when your UUID endpoint
+//     uses different auth.
+await iap.purchase({
+  productId: 'premium_monthly',
+  appUserId: async ({ authHeaders }) => {
+    const r = await fetch('/api/iap/uuid', { headers: authHeaders });
+    return (await r.json()).uuid;
+  },
+});
 ```
 
 The supplied value (literal or fetcher-returned) **must be a UUID v4**. iap
