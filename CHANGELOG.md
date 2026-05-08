@@ -24,13 +24,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   ```ts
   // before — still valid
   appUserId: async () => {
-    const r = await fetch('/api/iap/uuid', { headers: authHeaders() });
+    const r = await fetch('/api/iap/uuid', { method: 'POST', headers: authHeaders() });
     return (await r.json()).uuid;
   }
 
   // after — equivalent, no helper duplication
   appUserId: async ({ authHeaders }) => {
-    const r = await fetch('/api/iap/uuid', { headers: authHeaders });
+    const r = await fetch('/api/iap/uuid', { method: 'POST', headers: authHeaders });
     return (await r.json()).uuid;
   }
   ```

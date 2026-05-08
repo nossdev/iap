@@ -46,7 +46,7 @@ if (result.status === 'success') {
 await iap.purchase({
   productId: 'premium_monthly',
   appUserId: async () => {
-    const r = await fetch('/api/iap/uuid', { headers: authHeaders() });
+    const r = await fetch('/api/iap/uuid', { method: 'POST', headers: authHeaders() });
     return (await r.json()).uuid;
   },
 });
