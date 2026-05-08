@@ -11,7 +11,7 @@ import {
 } from './core/app-resume-listener.js';
 import { EntitlementCache, entitlementsEqual } from './core/entitlement-cache.js';
 import { PurchaseOrchestrator } from './core/purchase-flow.js';
-import { RecoveryOrchestrator } from './core/recovery-flow.js';
+import { DEFAULT_PERMANENT_ERROR_CODES, RecoveryOrchestrator } from './core/recovery-flow.js';
 import { RestoreOrchestrator } from './core/restore-flow.js';
 import { UnfinishedTransactionsStore } from './core/unfinished-transactions.js';
 import { TypedEventEmitter } from './events/emitter.js';
@@ -294,6 +294,9 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       state.recoverer = new RecoveryOrchestrator<TEntitlement>({
         ...sharedDeps,
         maxBatch: state.config.options.recoveryMaxBatch,
+        permanentErrorCodes: new Set(
+          state.config.options.permanentErrorCodes ?? DEFAULT_PERMANENT_ERROR_CODES,
+        ),
       });
 
       try {

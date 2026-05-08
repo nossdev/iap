@@ -50,6 +50,7 @@ const config: IAPConfigInput = {
     entitlementCacheTtlMs: 60 * 60 * 1000,         // 1 hour
     recoverUnfinishedTransactions: true,
     recoveryMaxBatch: 50,
+    // permanentErrorCodes: ['TRANSACTION_NOT_FOUND', 'PRODUCT_MISMATCH'], // see DEFAULT_PERMANENT_ERROR_CODES
     productPriceCacheTtlMs: 24 * 60 * 60 * 1000,   // 24 hours
     logLevel: 'info',                              // 'silent' | 'error' | 'warn' | 'info' | 'debug'
     // logger: customLogger,                       // implements Logger interface
@@ -193,6 +194,7 @@ All optional with documented defaults.
 | `entitlementCacheTtlMs` | `3_600_000` (1h) | When the cache age exceeds this, `initialize()` schedules a background refresh after `ready`. Reads still return cached values immediately. |
 | `recoverUnfinishedTransactions` | `true` | Run recovery for unfinished transactions during `initialize()`. Disable only for tests / web. |
 | `recoveryMaxBatch` | `50` | Cap on entries inspected per launch. Excess stays in storage for subsequent launches. |
+| `permanentErrorCodes` | `DEFAULT_PERMANENT_ERROR_CODES` | List of backend `valid:false` error codes that recovery treats as permanent (entry removed instead of retried). Default `['TRANSACTION_NOT_FOUND', 'PRODUCT_MISMATCH']`. REPLACES default when set; pass `[...DEFAULT_PERMANENT_ERROR_CODES, 'YOUR_CODE']` to extend or `[]` to disable. See [error handling § permanent vs transient](./error-handling#permanent-vs-transient-classification). |
 | `productPriceCacheTtlMs` | `86_400_000` (24h) | TTL for cached native product info (titles, prices). Currently informational; auto-refresh on stale prices ships in v0.2. |
 | `logLevel` | `'info'` | One of `'silent' \| 'error' \| 'warn' \| 'info' \| 'debug'`. |
 | `logger` | console-backed | Implements `Logger` (error/warn/info/debug methods). Plug Sentry, Datadog, etc. |
