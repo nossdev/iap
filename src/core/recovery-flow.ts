@@ -12,6 +12,25 @@ import type {
 } from './unfinished-transactions.js';
 import { verifyNativeTransaction } from './verify-helpers.js';
 
+/**
+ * Backend `valid:false` error codes that are treated as permanent by default
+ * (entry removed from `unfinished_transactions` instead of retried forever).
+ *
+ * Conservative on purpose: only the two codes the documented recipe
+ * contract identifies as unambiguous "domain-not-found" answers. Consumers
+ * with custom backend error vocabularies extend via
+ * `options.permanentErrorCodes`.
+ *
+ * Distinct from the `RECOVERABLE_CODES` set in `lib/errors.ts`: that one
+ * classifies iap-internal `IAPErrorCode`s for transport/storage retry
+ * semantics; this one classifies opaque error strings the consumer's
+ * backend returns in `valid:false` responses.
+ */
+export const DEFAULT_PERMANENT_ERROR_CODES: readonly string[] = [
+  'TRANSACTION_NOT_FOUND',
+  'PRODUCT_MISMATCH',
+] as const;
+
 interface RecoveryOrchestratorDeps<TEntitlement extends EntitlementBase> {
   nativeAdapter: NativeAdapter;
   backend: BackendAdapter<TEntitlement>;
@@ -24,6 +43,13 @@ interface RecoveryOrchestratorDeps<TEntitlement extends EntitlementBase> {
   setCachePersisted: (cachedAt: number) => void;
   /** Cap on entries inspected per launch (config.options.recoveryMaxBatch). */
   maxBatch: number;
+  /**
+   * Backend `valid:false` error codes treated as permanent. Entries with a
+   * matching error are removed from storage instead of retried next launch.
+   * Resolved from `config.options.permanentErrorCodes` (or the default set
+   * when omitted) at orchestrator construction in `createIAP`.
+   */
+  permanentErrorCodes: ReadonlySet<string>;
 }
 
 interface RecoveryResult {
@@ -31,6 +57,12 @@ interface RecoveryResult {
   recovered: number;
   /** Number of entries left in the list (transient errors, valid:false, etc.). */
   failures: number;
+  /**
+   * Number of entries removed from the list because the backend's
+   * `valid:false` response carried a permanent error code (per
+   * `options.permanentErrorCodes`). These will NOT retry on next launch.
+   */
+  droppedPermanent: number;
   /** Total entries inspected. */
   inspected: number;
 }
@@ -68,7 +100,7 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
     const { unfinished, logger, maxBatch } = this.deps;
     const allEntries = await unfinished.list();
     if (allEntries.length === 0) {
-      return { recovered: 0, failures: 0, inspected: 0 };
+      return { recovered: 0, failures: 0, droppedPermanent: 0, inspected: 0 };
     }
 
     // L2: cap inspected entries per launch. Excess entries stay in storage
@@ -89,6 +121,7 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
 
     let recovered = 0;
     let failures = 0;
+    let droppedPermanent = 0;
     let latestEntitlements: TEntitlement[] | null = null;
 
     // Iterate in input order so latestEntitlements is the LAST successful
@@ -108,6 +141,8 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
       if (result.value.kind === 'recovered') {
         recovered += 1;
         latestEntitlements = result.value.entitlements;
+      } else if (result.value.kind === 'dropped-permanent') {
+        droppedPermanent += 1;
       } else {
         failures += 1;
       }
@@ -118,16 +153,20 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
     }
 
     logger.debug(
-      `Recovery: ${recovered} recovered, ${failures} left in list (will retry next launch).`,
+      `Recovery: ${recovered} recovered, ${droppedPermanent} dropped (permanent), ${failures} left in list (will retry next launch).`,
     );
 
-    return { recovered, failures, inspected: entries.length };
+    return { recovered, failures, droppedPermanent, inspected: entries.length };
   }
 
   private async processEntry(
     entry: UnfinishedTransaction,
-  ): Promise<{ kind: 'recovered'; entitlements: TEntitlement[] } | { kind: 'failed' }> {
-    const { nativeAdapter, unfinished, logger } = this.deps;
+  ): Promise<
+    | { kind: 'recovered'; entitlements: TEntitlement[] }
+    | { kind: 'failed' }
+    | { kind: 'dropped-permanent' }
+  > {
+    const { nativeAdapter, unfinished, logger, emitter, permanentErrorCodes } = this.deps;
     const tx = entryToNativeTransaction(entry);
     const tokenLabel = maskToken(entry.token);
 
@@ -135,8 +174,46 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
       const response = await verifyNativeTransaction(this.deps.backend, tx);
 
       if (!response.valid) {
+        if (permanentErrorCodes.has(response.error)) {
+          logger.info(
+            `Recovery: dropping permanently-invalid token=${tokenLabel} productId=${entry.productId} (${response.error}).`,
+          );
+
+          // Best-effort native ack — clears StoreKit's queue. Failure here
+          // doesn't block removal: the entry is permanently invalid, native
+          // ack failure is rare and transient, and even an orphaned native
+          // tx won't re-enter unfinished storage (no init-time sync exists,
+          // only `purchase-flow.ts` writes to this store).
+          try {
+            await nativeAdapter.acknowledge(tx);
+          } catch (error) {
+            logger.warn(
+              `Recovery: best-effort acknowledge() failed for productId=${entry.productId}; proceeding with removal anyway.`,
+              error,
+            );
+          }
+
+          try {
+            await unfinished.remove(entry.token);
+          } catch (error) {
+            logger.warn(
+              `Recovery: unfinished.remove() failed for productId=${entry.productId} after permanent classification; will dedupe on next launch.`,
+              error,
+            );
+          }
+
+          emitter.emit('recovery-dropped-permanent', {
+            productId: entry.productId,
+            token: entry.token,
+            error: response.error,
+            ...(response.message !== undefined ? { message: response.message } : {}),
+          });
+
+          return { kind: 'dropped-permanent' };
+        }
+
         logger.debug(
-          `Recovery: backend rejected token=${tokenLabel} productId=${entry.productId} (${response.error}); leaving in list.`,
+          `Recovery: backend rejected token=${tokenLabel} productId=${entry.productId} (${response.error}); leaving in list for retry.`,
         );
         return { kind: 'failed' };
       }

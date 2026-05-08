@@ -143,6 +143,19 @@ const optionsConfigSchema = z.object({
    * Excess entries stay in storage and are processed on subsequent launches.
    */
   recoveryMaxBatch: z.number().int().positive().default(50),
+  /**
+   * List of backend `valid:false` error codes that recovery should treat as
+   * permanent — entries with a matching error are removed from storage
+   * instead of retried on every launch. When omitted (the default), iap
+   * uses `DEFAULT_PERMANENT_ERROR_CODES` (`['TRANSACTION_NOT_FOUND',
+   * 'PRODUCT_MISMATCH']`).
+   *
+   * REPLACES the default when provided — pass `[...DEFAULT_PERMANENT_ERROR_CODES,
+   * 'YOUR_CODE']` to extend, or `[]` to disable the feature entirely
+   * (revert to retry-forever behavior). Export the constant from
+   * `@nosslabs/iap` for the spread form.
+   */
+  permanentErrorCodes: z.array(z.string()).optional(),
   productPriceCacheTtlMs: z
     .number()
     .int()

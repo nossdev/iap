@@ -5,6 +5,75 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-08
+
+### Added
+
+- **`options.permanentErrorCodes` config** — list of backend
+  `valid:false` error codes that recovery should treat as permanent.
+  Entries with a matching error are removed from
+  `unfinished_transactions` storage instead of being retried on every
+  app launch. Defaults to `['TRANSACTION_NOT_FOUND', 'PRODUCT_MISMATCH']`
+  per the documented recipe contract — the two codes that mean "the
+  backend looked and the answer is permanently no, this transaction is
+  not valid." When provided, the option REPLACES the default (no magic
+  merge); pass `[...DEFAULT_PERMANENT_ERROR_CODES, 'YOUR_CODE']` to
+  extend, or `[]` to disable the feature entirely (revert to
+  retry-forever behavior).
+
+  ```ts
+  import { createIAP, DEFAULT_PERMANENT_ERROR_CODES } from '@nosslabs/iap';
+
+  // Default: TRANSACTION_NOT_FOUND and PRODUCT_MISMATCH are dropped.
+  createIAP({ /* ... */ });
+
+  // Extend with your backend's custom permanent codes.
+  createIAP({
+    options: {
+      permanentErrorCodes: [...DEFAULT_PERMANENT_ERROR_CODES, 'MY_CUSTOM_CODE'],
+    },
+  });
+
+  // Opt out entirely — every valid:false retains the entry for retry.
+  createIAP({
+    options: { permanentErrorCodes: [] },
+  });
+  ```
+
+- **`'recovery-dropped-permanent'` event** — fires once per entry
+  removed by the new classifier. Payload:
+  `{ productId, token, error, message? }`. Useful for ops
+  observability when a stuck-loop self-heals.
+
+- **`DEFAULT_PERMANENT_ERROR_CODES` exported** from the package root
+  for the spread-then-extend pattern above.
+
+- **`RecoveryResult.droppedPermanent`** — new field on the recovery
+  result alongside `recovered` and `failures`. Counts how many
+  entries were removed during the current sweep.
+
+### Changed
+
+- **Recovery no longer retries `valid:false` responses with
+  permanently-invalid error codes** (default:
+  `TRANSACTION_NOT_FOUND`, `PRODUCT_MISMATCH`). Previous behavior is
+  preserved for any code not in the permanent set, and is
+  configurable via `options.permanentErrorCodes`. Strict improvement
+  for the cases it affects (stuck loops self-heal); other paths
+  unchanged. **Bumped to a minor version** because the behavior is
+  observable — consumers asserting on `RecoveryResult` shape or
+  intentionally depending on retry-forever semantics for a specific
+  code should opt out via `permanentErrorCodes: []`.
+
+  > **Backend assumption.** The default set assumes your backend
+  > queries Apple App Store Server API / Google Play Developer API
+  > with eventually-consistent reads (typical for Attesto's recipe
+  > pattern). If your backend reads from a replicated database with
+  > replication lag exceeding app-launch cadence, a `TRANSACTION_NOT_FOUND`
+  > response could be transient — in that case configure
+  > `permanentErrorCodes: []` (or a custom set) until you've reconciled
+  > the lag.
+
 ## [0.3.1] — 2026-05-06
 
 ### Added

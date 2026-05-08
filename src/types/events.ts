@@ -18,6 +18,24 @@ export interface EventMap<TEntitlement extends EntitlementBase = EntitlementBase
   'restore-completed': { restored: number; entitlements: TEntitlement[] };
   'entitlements-changed': { entitlements: TEntitlement[]; previous: TEntitlement[] };
   'price-stale': { productId: string; lastFetchedAt: number };
+  /**
+   * Recovery classified an `unfinished_transactions` entry as permanently
+   * invalid (per `options.permanentErrorCodes`) and removed it from
+   * storage. Will not be retried on subsequent launches. Useful for ops
+   * logging / alerting on stuck-loop self-heal events.
+   *
+   * **Token is unmasked.** Receipt tokens (Apple `transactionId` /
+   * Google `purchaseToken`) are useful for correlation in debugging
+   * but are receipts you don't want to leak — treat as sensitive. Mask
+   * before forwarding to external analytics / logging services. iap's
+   * own internal logs use a masked form (see `lib/redact.ts`).
+   */
+  'recovery-dropped-permanent': {
+    productId: string;
+    token: string;
+    error: string;
+    message?: string;
+  };
   error: { error: IAPError };
 }
 

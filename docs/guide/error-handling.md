@@ -191,6 +191,80 @@ It DOES throw on:
 
 These are programming errors / pre-flight failures, not user-flow errors — surface them in dev, silence them in production (the user can't fix them).
 
+## Permanent vs transient classification (recovery)
+
+When recovery runs at `initialize()` time, every entry in the
+unfinished-transactions list is re-verified with your backend. The
+backend's response shape is `{ valid: true, ... }` or
+`{ valid: false, error: string, message?: string }`. Before v0.4.0,
+*every* `valid:false` was retained for retry on the next launch — fine
+for transient backend hiccups, but pathological for **permanent**
+domain failures like `TRANSACTION_NOT_FOUND` (Apple/Google has no
+record of this transactionId), where retrying achieves nothing and
+hammers your backend on every app resume.
+
+From v0.4.0, recovery classifies the `error` code against
+`options.permanentErrorCodes`:
+
+- **In the set** → drop the entry (best-effort `acknowledge()` to
+  clear the platform queue, then `unfinished.remove()`, then emit
+  `'recovery-dropped-permanent'`).
+- **Not in the set** → retain (legacy behavior — retry on next
+  launch).
+
+Default set:
+
+```ts
+import { DEFAULT_PERMANENT_ERROR_CODES } from '@nosslabs/iap';
+// ['TRANSACTION_NOT_FOUND', 'PRODUCT_MISMATCH']
+```
+
+Extend with your backend's custom permanent codes:
+
+```ts
+createIAP({
+  options: {
+    permanentErrorCodes: [...DEFAULT_PERMANENT_ERROR_CODES, 'MY_BACKEND_CODE'],
+  },
+});
+```
+
+Disable entirely (revert to retry-forever):
+
+```ts
+createIAP({
+  options: { permanentErrorCodes: [] },
+});
+```
+
+Listen for drops via the new event for ops observability:
+
+```ts
+iap.on('recovery-dropped-permanent', ({ productId, error, message }) => {
+  console.warn(`[iap] dropped permanently-invalid tx for ${productId}: ${error}`, { message });
+});
+```
+
+The default codes match the documented contract used by Attesto's
+[backend recipes](https://attesto.nossdev.com/recipes/) — both
+`TRANSACTION_NOT_FOUND` and `PRODUCT_MISMATCH` are answers, not
+infrastructure failures (they're returned with HTTP 200 +
+`valid:false`, never as 5xx). Codes deliberately excluded from the
+default set: `STALE_TRANSACTION` (sometimes legitimately retryable),
+`SIGNATURE_INVALID` (Apple cert rotation has caused historical false
+positives), and any `INVALID_REQUEST` (caller bug — shouldn't fire
+from recovery, which resends previously-valid request shapes).
+
+::: warning Backend lag assumption
+The default set assumes your backend queries Apple App Store Server
+API / Google Play Developer API with eventually-consistent reads
+(typical for Attesto's recipe pattern). If your backend reads from a
+replicated database with replication lag exceeding app-launch cadence,
+a `TRANSACTION_NOT_FOUND` response could be transient — in that case
+configure `permanentErrorCodes: []` (or a custom set) until the lag is
+reconciled.
+:::
+
 ## Next
 
 - [Events](/guide/events) — full event reference

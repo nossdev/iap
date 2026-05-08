@@ -1,4 +1,5 @@
 export { createIAP, type IAP } from './createIAP.js';
+export { DEFAULT_PERMANENT_ERROR_CODES } from './core/recovery-flow.js';
 export { IAPError, IAPErrorCode, errorHint, isIAPError } from './lib/errors.js';
 export { VERSION } from './version.js';
 
