@@ -22,7 +22,7 @@
               │                              │
               ▼                              ▼
 ┌──────────────────────────┐    ┌──────────────────────────┐
-│ cordova-plugin-purchase  │    │ Your backend (HTTP/JSON) │
+│ @capgo/native-purchases  │    │ Your backend (HTTP/JSON) │
 │   (native iOS/Android)   │    │   - /verify/apple        │
 │   - StoreKit 2 (iOS)     │    │   - /verify/google       │
 │   - Play Billing 7       │    │   - /entitlements        │
@@ -53,11 +53,11 @@
 - Persists entitlements + unfinished-transaction queue via `@capacitor/preferences`.
 - Stays small — no UI, no business rules, no auth.
 
-### Native plugin (`cordova-plugin-purchase`)
+### Native plugin (`@capgo/native-purchases`)
 
 - Bridges to StoreKit 2 (iOS 15+) and Google Play Billing 7 (Android API 21+).
 - Hands the library a transaction with a token (Apple `transactionId` or Google `purchaseToken`).
-- Honours **deferred finish** — the transaction stays open until we explicitly call `finish()`. Critical for the safety guarantee.
+- Honours **deferred finish** on both platforms — with `autoAcknowledgePurchases: false` the transaction stays open until we explicitly call `acknowledgePurchase()`. Critical for the safety guarantee, with no iOS-specific finish-before-verify race.
 
 ### Your backend
 
@@ -79,17 +79,17 @@ See [Backend contract](/guide/backend-contract) for the exact request/response s
 
 ```
 1. UI                  iap.purchase({ productId: 'premium_monthly' })
-2. library  → plugin   storefront.order(productId)
+2. library  → plugin   purchaseProduct({ ..., autoAcknowledgePurchases: false })
 3. plugin   → store    StoreKit / Play Billing dialog
 4. user                taps Buy, authenticates
 5. store    → plugin   transaction { token, productId }
-6. plugin   → library  receiveTransaction(...)
+6. plugin   → library  resolves with the (unfinished) transaction
 7. library             persist to unfinished_transactions
 8. library  → backend  POST /verify/apple { token, ... }
 9. backend  → Attesto  validate receipt
 10. Attesto → backend  { valid: true, ... }
 11. backend → library  { valid: true, transaction, entitlements }
-12. library → plugin   transaction.finish()              ← only now!
+12. library → plugin   acknowledgePurchase({ purchaseToken })   ← only now!
 13. library            update entitlement cache + remove from queue
 14. library            emit 'purchase-success', 'entitlements-changed'
 15. UI                 reactive store updates → premium UI shows

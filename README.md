@@ -2,10 +2,10 @@
 
 > Thin Capacitor IAP orchestrator. Server-side validation via [Attesto](https://attesto.nossdev.com).
 
-**Status: 0.2.0 — published.** API may have breaking changes through the 0.x line as it's exercised in production apps. Pin the minor version (`^0.2.0`) and watch the [CHANGELOG](./CHANGELOG.md).
+**Status: `1.0.0-next.0` — prerelease on the `@next` dist-tag** (the Capacitor 7+ line, built on `@capgo/native-purchases`). The Capacitor 5 line (`cordova-plugin-purchase`) continues on `@latest` / the `main` branch. API may have breaking changes through the 1.x prerelease line; watch the [CHANGELOG](./CHANGELOG.md).
 
 ```bash
-npm install @nosslabs/iap cordova-plugin-purchase
+npm install @nosslabs/iap@next @capgo/native-purchases
 npx cap sync
 ```
 
@@ -65,9 +65,9 @@ await iap.purchase({
 
 `@nosslabs/iap` does **one thing**: orchestrate the purchase flow on the client. It
 
-- wraps `cordova-plugin-purchase` for native purchase + restore,
+- wraps [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) for native purchase + restore,
 - POSTs to **your** backend (which calls Attesto) for receipt validation,
-- acknowledges native transactions only **after** the backend confirms (no phantom grants),
+- acknowledges native transactions only **after** the backend confirms — `autoAcknowledgePurchases: false` defers finishing on **both** iOS and Android, so there's no phantom grant and no iOS finish-before-verify race,
 - caches entitlements locally for instant, reactive UI reads,
 - recovers unfinished transactions across app launches.
 
@@ -75,10 +75,10 @@ It does **not**: talk to Attesto directly, define entitlement business logic, ma
 
 ## Capacitor support matrix
 
-| `@nosslabs/iap` | Capacitor | Plugin | Status |
-|---|---|---|---|
-| 0.x | 5.x | `cordova-plugin-purchase ^13.x` | **Current** |
-| 1.x | 7.x | TBD (Capacitor-native plugin) | Roadmap |
+| `@nosslabs/iap` | Capacitor | Native plugin | dist-tag | Status |
+|---|---|---|---|---|
+| 1.x | 7.x (also runs on 8.x) | `@capgo/native-purchases 7.16.x` (or `^8` on Cap 8) | `@next` | **Current (prerelease)** |
+| 0.x | 5.x | `cordova-plugin-purchase ^13.x` | `@latest` | Maintenance |
 
 ## Optional peer dependency
 
@@ -94,7 +94,7 @@ Or disable the listener with `options.refreshOnResume: false`. See [installation
 ## Development
 
 ```bash
-mise install        # Node 22 + npm 10
+mise install        # Node 22 + npm 11 (pinned in mise.toml)
 npm install
 npm run typecheck   # tsc --noEmit
 npm run lint        # biome check

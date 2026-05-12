@@ -1283,27 +1283,21 @@ Open and tracked:
 
 ---
 
-## 18. Future: Capacitor 7 migration
+## 18. Capacitor 7 migration
 
-When Infopathy migrates to Capacitor 7+, the library bumps to `1.0.0` and replaces (or adds alongside) the cdv adapter. The work is largely already done — preserved in this repository's history.
+✅ **Done on the `next` branch (2026-05-12).** The `1.x` line is the Capacitor 7+ line built on `@capgo/native-purchases`, published as `1.0.0-next.N` prereleases on the `@next` npm dist-tag. `main` stays the Capacitor 5 `0.x` maintenance line. The notes below record what was done (and where it deviated from the original restoration plan).
 
-**Restoration steps:**
+**What shipped:**
 
-1. **Restore the v7 adapter source:**
-   ```
-   git show f1d20ed:src/adapters/native/v7/native-adapter.ts > src/adapters/native/v7/native-adapter.ts
-   ```
-   The file wraps `@capgo/native-purchases@7.16.2` against the same `NativeAdapter` interface — no core-flow changes needed.
-2. **Restore the v7 plugin API doc:** move `docs/internal/_future/plugin-v7-api.md` back to `docs/internal/plugin-v7-api.md`.
-3. **Update `package.json`:**
-   - peerDependencies: switch `@capacitor/core` and `@capacitor/preferences` to `^7.0.0 || ^8.0.0`; add `@capgo/native-purchases: ^7.0.0 || ^8.0.0`; remove `cordova-plugin-purchase`.
-   - devDependencies: install `@capgo/native-purchases@7.16.2`; remove `cordova-plugin-purchase` and `jsdom` (vitest can return to `'node'`).
-4. **Update `src/adapters/native/index.ts`:** detect Cap 7+ at runtime and pick `V7NativeAdapter`. If you want a single library binary that supports both Cap 5 and Cap 7+, keep both adapters and pick based on `Capacitor.getCapabilities().pluginInstalled('CdvPurchase')` (or similar).
-5. **Bump library version to `1.0.0`** — this is a breaking change for Cap 5 consumers (or keep it as `0.x` if both adapters coexist).
-6. **Update README support matrix** (§11 of this PLAN).
-7. **Update tests:** the v7 adapter has its own tests in commit `f1d20ed` — restore them too if you remove the cdv adapter, or run both test suites side by side.
+1. **Adapter restored from `f1d20ed`** — `git show f1d20ed:src/adapters/native/v7/native-adapter.ts` → `src/adapters/native/capgo/native-adapter.ts`, class renamed `V7NativeAdapter` → `CapgoNativeAdapter` (the `v7/` name was confusable with "Capacitor 7"; `capgo/` parallels the existing `cdv/`-named-after-the-plugin convention). Wraps `@capgo/native-purchases@7.16.2` against the unchanged `NativeAdapter` interface — no core-flow changes (only comment cleanup in `purchase-flow.ts` / `restore-flow.ts` / `types.ts` / `errors.ts` / `createIAP.ts`).
+2. **Plugin API doc moved** — `docs/internal/_future/plugin-v7-api.md` → `docs/internal/plugin-v7-api.md`; `docs/internal/cdv-purchase-api.md` deleted (lives on `main` for the `0.x` line).
+3. **`package.json`** — peerDeps: `@capacitor/core`/`@capacitor/preferences`/`@capacitor/app` → `^7.0.0 || ^8.0.0`; added `@capgo/native-purchases: 7.16.x || ^8.0.0` (lower bound `7.16.x`, *not* `^7.0.0` — `7.17+` requires Cap 8 per `docs/internal/plugin-v7-api.md`); removed `cordova-plugin-purchase`. devDeps: added `@capgo/native-purchases@7.16.2`, bumped `@capacitor/*` to `^7`, removed `cordova-plugin-purchase`. **Kept `jsdom`** — `@capacitor/preferences`' web fallback reads `window.localStorage`, so vitest stays on `environment: 'jsdom'` (the original plan said switch to `'node'`; that was wrong).
+4. **`src/adapters/native/index.ts`** — `selectNativeAdapter()` dynamic-imports `./capgo/native-adapter.js`; dropped the `{ products }` option (the capgo adapter has no `store.register()` bootstrap). Single-binary Cap-5/Cap-7 coexistence was rejected (unsatisfiable `@capacitor/core ^5` vs `^7` peer-dep conjunction).
+5. **Version** — `1.0.0-next.0` via `mise run publish`; the publish task was relaxed to allow prerelease versions from the `next` branch.
+6. **README support matrix** and the docs site (`installation.md`, `migration/index.md`, `getting-started.md`, `architecture.md`, `safety-guarantees.md`, `error-handling.md`, `guide/index.md`, `index.md`, `api/*`, `.vitepress/config.ts`, `CHANGELOG.md`) updated for Capacitor 7+ / `@capgo/native-purchases` / the `@next` dist-tag.
+7. **Tests** — `tests/unit/native-adapter.test.ts` rewritten with a `CapgoNativeAdapter` block (mocks `@capgo/native-purchases`); `tests/mocks/mock-cdv-purchase.ts` deleted. The iOS `transactionUpdated` / `transactionVerificationFailed` listeners were *not* wired — recovery replays from the `unfinished_transactions` store and `refreshOnResume` reconciles server-side renewals; they'd be a future additive optional `NativeAdapter` method.
 
-The public `IAP<TEntitlement>` API does not change. Consumer apps just need to bump peer deps and run `npx cap sync`.
+The public `IAP<TEntitlement>` API did not change. Consumer apps bump peer deps and run `npx cap sync`.
 
 ---
 

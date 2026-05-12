@@ -68,9 +68,9 @@ On every `initialize()` (and optionally on app resume — see [`refreshOnResume`
 - **Lost purchases when the network fails mid-verification** — same thing.
 - **Lost purchases when the user kills the app during the purchase sheet** — the store hands the transaction to us on next launch, and we recover.
 
-### Note on duplicate `finish()` calls
+### Note on duplicate acknowledgement
 
-`cordova-plugin-purchase` is idempotent: calling `finish()` twice on the same transaction is a no-op the second time. The library doesn't rely on this — it removes from storage immediately after `finish()` so the recovery loop won't re-process.
+`@capgo/native-purchases`' `acknowledgePurchase()` is idempotent — calling it twice for the same token is a no-op the second time (on iOS it maps to `Transaction.finish()`; on Android re-acknowledging an already-acknowledged purchase is harmless). The library doesn't rely on this — it removes from storage immediately after a successful ack so the recovery loop won't re-process.
 
 ## 3. Backend is the source of truth
 

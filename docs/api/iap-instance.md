@@ -31,7 +31,7 @@ One-time setup. Idempotent — calling twice resolves immediately the second tim
 Steps:
 
 1. Loads cached entitlements from storage (warm cache).
-2. Resolves the native adapter (web → no-op stub, iOS/Android → cordova-plugin-purchase).
+2. Resolves the native adapter (web → no-op stub, iOS/Android → `@capgo/native-purchases`).
 3. Recovers any unfinished transactions from prior sessions (capped at `recoveryMaxBatch`).
 4. Wires the app-resume listener if `refreshOnResume: true` and `@capacitor/app` is installed.
 5. If cache age exceeds `entitlementCacheTtlMs`, schedules a background `refresh()` after `ready`.

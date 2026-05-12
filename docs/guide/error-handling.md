@@ -73,7 +73,7 @@ For the purchase flow specifically, the discriminated union from `iap.purchase()
 | `INVALID_CONFIG` | no | `createIAP({ ... })` — schema validation failed | Fix the config; re-read the field paths in the message |
 | `NOT_INITIALIZED` | no | A method called before `initialize()` resolved | `await iap.initialize()` first |
 | `PLATFORM_NOT_SUPPORTED` | no | `purchase()` / `restorePurchases()` on web | Guard the UI behind `Capacitor.isNativePlatform()` |
-| `BILLING_NOT_AVAILABLE` | no | `cordova-plugin-purchase` couldn't initialize | Check `npx cap sync` ran; check device sandbox account |
+| `BILLING_NOT_AVAILABLE` | no | Store billing service unavailable (`@capgo/native-purchases` not linked, or no sandbox account) | Check `npx cap sync` ran; check device sandbox account |
 | `PRODUCT_NOT_FOUND` | no | Purchasing a productId not in the store catalog | Verify productId in App Store Connect / Play Console AND in `createIAP({ products })` |
 | `USER_CANCELLED` | no | User dismissed the system purchase sheet | No action needed |
 | `PURCHASE_PENDING` | no | Android: payment awaiting external clearance | Tell the user; trust the backend webhook |
@@ -179,6 +179,10 @@ So `await iap.initialize()` should very rarely throw in practice. The few cases 
 ## What `iap.purchase()` can throw
 
 `purchase()` does NOT throw on user-cancellation, pending, or verification failure — those are surfaced via the `PurchaseResult` discriminated union (`status: 'cancelled' | 'pending' | 'verification_failed' | 'failed'`).
+
+::: warning Android can't always distinguish cancellation
+On iOS, a user dismissing the StoreKit sheet reliably yields `status: 'cancelled'`. On Android, Google Play Billing does **not** distinguish user-cancel from other purchase failures at the level `@capgo/native-purchases` exposes — so an Android cancellation surfaces as `status: 'failed'` (with an `IAPError` whose `code` is `STORE_ERROR`). Treat `failed` on Android the same as `cancelled` for UX purposes (don't show a scary error toast for it).
+:::
 
 It DOES throw on:
 

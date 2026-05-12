@@ -1,6 +1,6 @@
 # What is `@nosslabs/iap`?
 
-`@nosslabs/iap` is a thin, framework-agnostic TypeScript library that orchestrates the in-app purchase flow on the **client side** of a Capacitor app. It wraps [`cordova-plugin-purchase`](https://github.com/j3k0/cordova-plugin-purchase) and coordinates with **your backend**, which in turn talks to [Attesto](https://attesto.nossdev.com) for receipt validation.
+`@nosslabs/iap` is a thin, framework-agnostic TypeScript library that orchestrates the in-app purchase flow on the **client side** of a Capacitor app. It wraps [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) and coordinates with **your backend**, which in turn talks to [Attesto](https://attesto.nossdev.com) for receipt validation.
 
 This library is the client-side counterpart to Attesto. **Attesto** answers _"is this transaction real?"_ on the server. **`@nosslabs/iap`** answers _"how do we orchestrate the purchase flow and entitlement state cleanly on the client?"_
 
@@ -27,7 +27,7 @@ That's a lot of orchestration to get right. `@nosslabs/iap` encapsulates it once
 
 ### What it DOES
 
-- Wrap `cordova-plugin-purchase` for purchase + restore flows
+- Wrap `@capgo/native-purchases` for purchase + restore flows
 - POST to a configurable backend endpoint for verification
 - Acknowledge native transactions only **after** the backend confirms
 - Cache entitlements locally for instant UI reads
@@ -67,8 +67,8 @@ This boundary is **non-negotiable**. If a feature request encroaches on entitlem
 └────────────────────────────────────────────────────────┘
               ↓                            ↓
    ┌─────────────────────┐    ┌──────────────────────┐
-   │ cordova-plugin-     │    │ Your backend         │
-   │ purchase (native)   │    │ (HTTP API)           │
+   │ @capgo/native-      │    │ Your backend         │
+   │ purchases (native)  │    │ (HTTP API)           │
    │ → StoreKit/Billing  │    │ → calls Attesto      │
    └─────────────────────┘    └──────────────────────┘
                                          ↓

@@ -50,7 +50,7 @@ The factory does NOT call native code or hit the network. After `createIAP`:
 3. Optionally call `iap.destroy()` on logout / app teardown.
 
 ::: warning One instance per process
-Don't call `createIAP` per render or per route. The instance owns event listeners, native plugin handles, and the storage cache — multiple instances will fight over the same `cordova-plugin-purchase` singleton on the native side.
+Don't call `createIAP` per render or per route. The instance owns event listeners, native plugin handles, and the storage cache — multiple instances will fight over the same `@capgo/native-purchases` plugin on the native side.
 :::
 
 ## Examples

@@ -5,6 +5,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [1.0.0-next.0] — 2026-05-12
+
+First release of the **Capacitor 7+** line, published on the `@next`
+npm dist-tag. The Capacitor 5 line continues on `@latest` (the `0.x`
+releases) from the `main` branch — see [Migration](https://iap.nossdev.com/migration/).
+
+### Changed
+
+- **BREAKING: dropped Capacitor 5 support.** The `1.x` line targets
+  **Capacitor 7+** (also runs on Capacitor 8) via
+  [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases),
+  replacing `cordova-plugin-purchase`. The native adapter now lives at
+  `src/adapters/native/capgo/native-adapter.ts` (`CapgoNativeAdapter`),
+  selected behind the same `NativeAdapter` interface as before.
+- **Peer dependencies** are now `@capacitor/core`, `@capacitor/preferences`,
+  and (optional) `@capacitor/app` at `^7.0.0 || ^8.0.0`, plus
+  `@capgo/native-purchases` at `7.16.x || ^8.0.0`. `cordova-plugin-purchase`
+  is no longer a peer dependency. Migration is a peer-dep swap + `npx cap sync`
+  — no changes to your `createIAP({ ... })` config or any consumer code.
+- **Acknowledgement defers on both platforms.** `@capgo/native-purchases`
+  supports `autoAcknowledgePurchases: false` on iOS and Android, so the
+  "never grant entitlement before the backend confirms" guarantee holds
+  with no iOS-specific finish-before-verify race.
+- **Android user-cancellation surfaces as `status: 'failed'`** (not
+  `'cancelled'`). Google Play Billing — at the level `@capgo/native-purchases`
+  exposes — doesn't distinguish a user-cancelled flow from other purchase
+  failures; iOS still reports `'cancelled'` reliably. Treat `failed` on
+  Android the same as `cancelled` for UX. (The Capacitor 5 line via
+  `cordova-plugin-purchase` could distinguish this.)
+
+### Unchanged
+
+- Public API surface: `createIAP`, the `IAP` interface, all events, all
+  `IAPErrorCode` values, and every public type are identical to `0.4.0`.
+- The full `0.2`–`0.4` feature set carries forward: the options-object
+  `purchase()` signature, optional `appUserId` pre-attachment, the
+  `INVALID_APP_USER_ID` / `APP_USER_ID_FETCH_FAILED` error codes, the
+  `permanentErrorCodes` config, the `recovery-dropped-permanent` event,
+  and `RecoveryResult.droppedPermanent`.
+
 ## [0.4.0] — 2026-05-08
 
 ### Added

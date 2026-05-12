@@ -7,8 +7,8 @@ export default defineConfig({
   lang: 'en-US',
   cleanUrls: true,
   lastUpdated: true,
-  // Internal recon docs (cdv-purchase-api.md, _future/plugin-v7-api.md) are
-  // engineering notes; keep them out of the public site.
+  // Internal recon docs (plugin-v7-api.md) are engineering notes; keep them
+  // out of the public site.
   srcExclude: ['internal/**', '**/README.md'],
 
   head: [
@@ -20,7 +20,7 @@ export default defineConfig({
       'meta',
       {
         property: 'og:description',
-        content: 'In-app purchases for Capacitor 5 with server-side validation via Attesto.',
+        content: 'In-app purchases for Capacitor 7+ with server-side validation via Attesto.',
       },
     ],
     ['meta', { property: 'og:url', content: 'https://iap.nossdev.com/' }],
@@ -35,7 +35,7 @@ export default defineConfig({
       { text: 'API', link: '/api/', activeMatch: '/api/' },
       { text: 'Migration', link: '/migration/', activeMatch: '/migration/' },
       {
-        text: 'v0.1.0',
+        text: 'v1.0.0-next',
         items: [
           { text: 'Changelog', link: 'https://github.com/nossdev/iap/blob/main/CHANGELOG.md' },
           { text: 'npm', link: 'https://www.npmjs.com/package/@nosslabs/iap' },
@@ -100,7 +100,7 @@ export default defineConfig({
       '/migration/': [
         {
           text: 'Migration',
-          items: [{ text: 'v0.1 → v1.0 (Capacitor 7+)', link: '/migration/' }],
+          items: [{ text: '0.x (Cap 5) → 1.x (Cap 7+)', link: '/migration/' }],
         },
       ],
     },

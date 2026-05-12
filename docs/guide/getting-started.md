@@ -2,7 +2,7 @@
 
 This page walks you from zero to a working sandbox purchase in under 30 minutes. It assumes you already have:
 
-- A Capacitor 5 app
+- A Capacitor 7+ app (also runs on Capacitor 8)
 - Products configured in App Store Connect (sandbox testers OK) and/or Google Play Console (license testers OK)
 - A backend you can deploy a few new endpoints to (or you can implement them as a [custom `BackendAdapter`](/api/backend-adapter))
 - An [Attesto](https://attesto.nossdev.com) tenant with API key
@@ -12,7 +12,7 @@ If you're missing any of these, the [Backend contract](/guide/backend-contract) 
 ## 1. Install
 
 ```bash
-npm install @nosslabs/iap cordova-plugin-purchase
+npm install @nosslabs/iap@next @capgo/native-purchases
 npx cap sync
 ```
 

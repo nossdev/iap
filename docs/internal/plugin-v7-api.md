@@ -12,7 +12,7 @@ Captured 2026-04-28 from `node_modules/@capgo/native-purchases/dist/esm/definiti
 | `6.0.x` | `^6.0.0` (Cap 6) |
 | `0.0.x` (last 0.0.72) | `^5.0.0` (Cap 5 — versioning was 0.0.x for Cap 5 line) |
 
-**v0.1.0 of `@nosslabs/iap` targets v7.16.2** (last v7 release that's actually Cap-7-compatible).
+**The `1.x` line of `@nosslabs/iap` targets v7.16.2** (last v7 release that's actually Cap-7-compatible). The peer dep is `7.16.x || ^8.0.0` — Cap 8 consumers can move to `@capgo/native-purchases@^8`; Cap 7 consumers stay on `7.16.x`.
 
 ## Confirmed methods
 
@@ -58,7 +58,7 @@ isBillingSupported(): Promise<{ isBillingSupported: boolean }>;
 
 getPluginVersion(): Promise<{ version: string }>;
 
-// Bonus methods (since 7.16.0) — useful for grandfather flows but out of v0.1.0 scope:
+// Bonus methods (since 7.16.0) — useful for grandfather flows but out of 1.x scope:
 getAppTransaction(): Promise<{ appTransaction: AppTransaction }>;
 isEntitledToOldBusinessModel(opts: {
   targetVersion?: string;
@@ -112,6 +112,6 @@ interface Transaction {
 
 ✅ `getPurchases()` returns owned transactions for both platforms — replaces the original plan's `syncTransactions()` reference.
 
-✅ Event listeners (`transactionUpdated`, `transactionVerificationFailed`) on iOS are useful for handling out-of-band StoreKit updates (e.g., subscription renewal), but **not required** for the v0.1.0 purchase flow.
+✅ Event listeners (`transactionUpdated`, `transactionVerificationFailed`) on iOS are useful for handling out-of-band StoreKit updates (e.g., subscription renewal), but **not wired by the 1.x adapter** — recovery replays from the `unfinished_transactions` store and `refreshOnResume` reconciles server-side renewals. They'd surface as a future additive optional `NativeAdapter` method.
 
 ⚠️ **Cap 7 plugin was just deprecated** — v7.16.2 is the last v7 release that actually works on Cap 7 (later 7.x releases require Cap 8). If a critical bug shows up, we fork-and-patch.

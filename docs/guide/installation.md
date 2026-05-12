@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- **Capacitor:** 5.x (the v0.1 line; Cap 6/7/8 support is roadmap — see [Migration](/migration/))
+- **Capacitor:** 7.x (also runs on 8.x). For the Capacitor 5 line, install `@nosslabs/iap@latest` (the `0.x` releases) — see [Migration](/migration/).
 - **Platform versions:** iOS 15.0+ (StoreKit 2 requirement), Android API 21+ (Google Play Billing 7.x)
 - **Node:** 18+ for tooling
 - **Backend:** any HTTP/JSON service you control (or a custom [`BackendAdapter`](/api/backend-adapter) for non-HTTP transports)
@@ -12,27 +12,29 @@ If your app needs to support iOS < 15, this library is not for you.
 ## Install the package
 
 ```bash
-npm install @nosslabs/iap
+npm install @nosslabs/iap@next
 ```
+
+(The `1.x` line ships on the `@next` dist-tag while it's a prerelease. `@nosslabs/iap@latest` is the Capacitor 5 `0.x` line.)
 
 ## Install the native plugin
 
-`@nosslabs/iap` wraps `cordova-plugin-purchase` (a.k.a. CdvPurchase / iap-2) — a free, MIT-licensed, production-tested Cordova plugin that Capacitor 5 supports natively via the Cordova bridge.
+`@nosslabs/iap` wraps [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) — a free, MIT-licensed, StoreKit 2 / Google Play Billing 7 plugin built as a first-class Capacitor plugin.
 
 ```bash
-npm install cordova-plugin-purchase
+npm install @capgo/native-purchases
 npx cap sync
 ```
 
-`npx cap sync` is required so the iOS and Android native projects pick up the plugin code. Re-run it any time you add/update native dependencies.
+On Capacitor 7 install `@capgo/native-purchases@7.16.x`; on Capacitor 8 you can use `@capgo/native-purchases@^8`. `npx cap sync` is required so the iOS and Android native projects pick up the plugin code. Re-run it any time you add/update native dependencies.
 
 ::: warning Don't skip `cap sync`
-A common cause of `BILLING_NOT_AVAILABLE` errors is forgetting `npx cap sync` after installing `cordova-plugin-purchase`. The plugin's native source files don't get linked otherwise.
+A common cause of purchases silently failing (or `isAvailable()` returning `false`) is forgetting `npx cap sync` after installing `@capgo/native-purchases`. The plugin's native source files don't get linked otherwise.
 :::
 
 ## Install Capacitor peer dependencies
 
-If you don't already have these installed in your Capacitor 5 app, add them:
+If you don't already have these installed in your Capacitor 7 app, add them:
 
 ```bash
 npm install @capacitor/core @capacitor/preferences
@@ -60,7 +62,7 @@ If you don't want this behavior, set `options.refreshOnResume: false` in your co
 
 ## Web platform note
 
-`cordova-plugin-purchase` is iOS/Android only. On web:
+`@capgo/native-purchases` is iOS/Android only. On web:
 
 - `iap.purchase()` and `iap.restorePurchases()` reject with `IAPError(PLATFORM_NOT_SUPPORTED)`
 - `iap.getProducts()` returns `[]`
