@@ -28,10 +28,19 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-# Hard-fail off main — releases should always cut from main so the tag matches what CI validated.
+# Branch policy: stable releases cut from `main`; prereleases (version contains
+# a `-`) may also cut from `next` — that's the long-lived branch for the
+# Capacitor 7+ `1.x` line, and `release.yml` auto-publishes `*-*` versions on
+# the `@next` dist-tag.
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-if [[ "$BRANCH" != 'main' ]]; then
-  echo "Error: currently on '$BRANCH'. Publish from 'main'." >&2
+IS_PRERELEASE=false
+[[ "$VERSION" == *-* ]] && IS_PRERELEASE=true
+if [[ "$BRANCH" == 'main' ]]; then
+  :  # both stable and prerelease are fine from main
+elif [[ "$BRANCH" == 'next' && "$IS_PRERELEASE" == 'true' ]]; then
+  echo "→ Publishing prerelease $VERSION from 'next' (lands on the @next dist-tag)."
+else
+  echo "Error: on '$BRANCH'. Publish stable releases from 'main'; prereleases from 'main' or 'next'." >&2
   exit 1
 fi
 
@@ -55,8 +64,8 @@ git commit -m "chore(release): v$VERSION"
 echo "→ Tagging v$VERSION"
 git tag -a "v$VERSION" -m "Release $VERSION"
 
-echo '→ Pushing main + tag to origin'
-git push origin main
+echo "→ Pushing $BRANCH + tag to origin"
+git push origin "$BRANCH"
 git push origin "v$VERSION"
 
 echo ''
