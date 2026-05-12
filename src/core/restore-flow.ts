@@ -31,8 +31,8 @@ interface RestoreOrchestratorDeps<TEntitlement extends EntitlementBase> {
  *
  * Sequence:
  * 1. Emit `restore-started`.
- * 2. `nativeAdapter.getOwnedTransactions()` (delegates to cdv's
- *    `store.restorePurchases()` + `localTransactions` filter).
+ * 2. `nativeAdapter.getOwnedTransactions()` (delegates to the capgo plugin's
+ *    `getPurchases()`).
  * 3. If empty → emit `restore-completed` with current entitlements,
  *    return `{ restored: 0, entitlements: <current> }`. No backend call.
  *    This covers fresh-install-no-purchases. The empty-array guard lives
@@ -40,14 +40,13 @@ interface RestoreOrchestratorDeps<TEntitlement extends EntitlementBase> {
  *    transport implementations benefit automatically.
  * 4. POST batch to `backend.restore()`.
  * 5. On `valid: true`:
- *    - Acknowledge each native transaction (best-effort; cdv's
- *      `pendingFinish` map needs draining or `.approved()` will replay
- *      them every launch).
+ *    - Acknowledge each native transaction (best-effort; an ack failure just
+ *      means the store keeps reporting it as owned and the next
+ *      restore()/refresh() retries).
  *    - Persist consolidated entitlements via `cache.save()`.
  *    - Replace state.
- *    - Remove from `unfinished_transactions` (the entries were never
- *      written by purchase flow, but defensive — getOwnedTransactions
- *      may have re-staged them via the cdv long-lived listener).
+ *    - Remove from `unfinished_transactions` (defensive — purchase flow may
+ *      have left an entry there for one of these tokens after a crash).
  *    - Emit `restore-completed` then `entitlements-changed`.
  * 6. On `valid: false` or backend throw: throw `IAPError` (orchestrator
  *    surface is throw-on-fail, unlike `purchase()` which returns a
@@ -100,9 +99,8 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
     }
 
     // Acknowledge each native transaction. Failures are best-effort —
-    // backend says these are valid; if cdv finish() fails, the long-lived
-    // .approved() listener on next launch will re-stage them and the
-    // next refresh()/restore() will retry the ack.
+    // backend says these are valid; if acknowledge() fails the store still
+    // reports the purchase as owned, so the next refresh()/restore() retries.
     for (const tx of owned) {
       try {
         await nativeAdapter.acknowledge(tx);

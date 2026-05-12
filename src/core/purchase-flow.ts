@@ -18,7 +18,7 @@ import type { UnfinishedTransactionsStore } from './unfinished-transactions.js';
 import { verifyNativeTransaction } from './verify-helpers.js';
 
 interface PurchaseOrchestratorDeps<TEntitlement extends EntitlementBase> {
-  /** Native adapter (cdv on iOS/Android, web stub on web). Always non-null
+  /** Native adapter (capgo on iOS/Android, web stub on web). Always non-null
    *  by the time the orchestrator is invoked — initialize() ensures it. */
   nativeAdapter: NativeAdapter;
   backend: BackendAdapter<TEntitlement>;
@@ -68,12 +68,11 @@ interface PurchaseOrchestratorDeps<TEntitlement extends EntitlementBase> {
  *    points is recovered on next launch via `unfinished.list()`.
  * 2. **Never `acknowledge()` before backend confirms** — `nativeAdapter.acknowledge()`
  *    is only called after `backend.verifyApple/Google()` returns `valid: true`.
- *    On any failure path the cdv `Transaction` stays in cdv's `pendingFinish`
- *    map so it can be replayed by the long-lived `.approved()` listener on the
- *    next session.
- * 3. **Per-product lock** — concurrent `purchase('premium_monthly')` calls
- *    would race for the same `.approved()` event. The `inFlight` set rejects
- *    the second call with `ALREADY_IN_PROGRESS`.
+ *    On any failure path the transaction is left in the `unfinished` store (or
+ *    still owned at the store level) so it's retried on the next launch via
+ *    the recovery flow.
+ * 3. **Per-product lock** — concurrent `purchase('premium_monthly')` calls are
+ *    rejected: the `inFlight` set throws `ALREADY_IN_PROGRESS` on the second.
  *
  * The 5 result statuses (PLAN.md §5.4):
  * - `success` — backend returned `valid: true`; entitlements + cache updated.
@@ -189,8 +188,9 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     const entitlements = response.entitlements;
 
     // Acknowledge the native transaction. Failure here is recoverable —
-    // entitlement state on backend says we're good; ack will be retried
-    // on next launch via the cdv adapter's long-lived approved listener.
+    // entitlement state on the backend says we're good, and the store still
+    // reports the purchase as owned/unfinished, so a later restore()/refresh()
+    // re-acks it (on Android, before the 3-day auto-refund window closes).
     try {
       await nativeAdapter.acknowledge(nativeTx);
     } catch (error) {

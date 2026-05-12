@@ -3,6 +3,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     globals: true,
+    // jsdom (not node): @capacitor/preferences' web fallback reads
+    // window.localStorage, and createIAP integration tests exercise it.
     environment: 'jsdom',
     include: ['tests/**/*.test.ts'],
     coverage: {

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let mockedPlatform: 'ios' | 'android' | 'web' = 'ios';
 vi.mock('@capacitor/core', () => ({
@@ -8,17 +8,23 @@ vi.mock('@capacitor/core', () => ({
   },
 }));
 
-import { CdvNativeAdapter } from '../../src/adapters/native/cdv/native-adapter.js';
+const nativePurchasesMock = vi.hoisted(() => ({
+  isBillingSupported: vi.fn(),
+  getProducts: vi.fn(),
+  purchaseProduct: vi.fn(),
+  getPurchases: vi.fn(),
+  acknowledgePurchase: vi.fn(),
+  manageSubscriptions: vi.fn(),
+}));
+
+vi.mock('@capgo/native-purchases', () => ({
+  NativePurchases: nativePurchasesMock,
+  PURCHASE_TYPE: { INAPP: 'inapp', SUBS: 'subs' },
+}));
+
+import { CapgoNativeAdapter } from '../../src/adapters/native/capgo/native-adapter.js';
 import { WebStubAdapter } from '../../src/adapters/native/web/web-stub.js';
 import { IAPError, IAPErrorCode } from '../../src/lib/errors.js';
-import {
-  MOCK_PAYMENT_CANCELLED_CODE,
-  type MockCdv,
-  fireApproved,
-  installMockCdv,
-  makeTransaction,
-  uninstallMockCdv,
-} from '../mocks/mock-cdv-purchase.js';
 
 describe('WebStubAdapter', () => {
   const adapter = new WebStubAdapter();
@@ -65,339 +71,294 @@ describe('WebStubAdapter', () => {
   });
 });
 
-describe('CdvNativeAdapter', () => {
-  let mock: MockCdv;
+// Minimal plugin-shape builders — only the fields the adapter reads matter.
+function pluginProduct(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    identifier: 'premium_monthly',
+    description: 'Premium, billed monthly',
+    title: 'Premium Monthly',
+    price: 4.99,
+    priceString: '$4.99',
+    currencyCode: 'USD',
+    currencySymbol: '$',
+    isFamilyShareable: false,
+    ...over,
+  };
+}
 
+function appleTx(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    transactionId: '2000000123456789',
+    productIdentifier: 'premium_monthly',
+    purchaseDate: '2026-05-12T00:00:00Z',
+    receipt: 'base64-storekit-receipt',
+    willCancel: null,
+    productType: 'subs',
+    ...over,
+  };
+}
+
+function googleTx(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    transactionId: 'GPA.1234-5678-9012-34567',
+    productIdentifier: 'remove_ads',
+    purchaseDate: '2026-05-12T00:00:00Z',
+    purchaseToken: 'play-token-abc',
+    orderId: 'GPA.1234-5678-9012-34567',
+    purchaseState: '1',
+    willCancel: null,
+    productType: 'inapp',
+    ...over,
+  };
+}
+
+describe('CapgoNativeAdapter', () => {
   beforeEach(() => {
     mockedPlatform = 'ios';
-    mock = installMockCdv({
-      defaultPlatform: 'ios-appstore',
-      products: [
-        {
-          id: 'premium_monthly',
-          title: 'Premium Monthly',
-          priceString: '$4.99',
-          priceMicros: 4_990_000,
-          currency: 'USD',
-        },
-        {
-          id: 'remove_ads',
-          title: 'Remove Ads',
-          priceString: '$1.99',
-          priceMicros: 1_990_000,
-          currency: 'USD',
-        },
-      ],
-    });
+    nativePurchasesMock.isBillingSupported.mockReset();
+    nativePurchasesMock.getProducts.mockReset();
+    nativePurchasesMock.purchaseProduct.mockReset();
+    nativePurchasesMock.getPurchases.mockReset();
+    nativePurchasesMock.acknowledgePurchase.mockReset();
+    nativePurchasesMock.manageSubscriptions.mockReset();
   });
 
-  afterEach(() => {
-    uninstallMockCdv();
-    mockedPlatform = 'ios';
+  it('isAvailable() returns true when billing is supported', async () => {
+    nativePurchasesMock.isBillingSupported.mockResolvedValue({ isBillingSupported: true });
+    expect(await new CapgoNativeAdapter().isAvailable()).toBe(true);
   });
 
-  it('isAvailable() bootstraps and returns true', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly' }],
-    });
-    expect(await adapter.isAvailable()).toBe(true);
-    expect(mock.store._initialized).toBe(true);
-    expect(mock.store._registered).toHaveLength(1);
-    expect(mock.store._registered[0]?.id).toBe('premium_monthly');
+  it('isAvailable() returns false when billing is unsupported', async () => {
+    nativePurchasesMock.isBillingSupported.mockResolvedValue({ isBillingSupported: false });
+    expect(await new CapgoNativeAdapter().isAvailable()).toBe(false);
   });
 
-  it('purchaseProduct() resolves on .approved() event with normalized transaction', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly' }],
-    });
-
-    // order() succeeds; .approved() fires shortly after
-    mock.store._orderImpl = async () => {
-      queueMicrotask(() => {
-        const tx = makeTransaction('premium_monthly');
-        fireApproved(mock, tx);
-      });
-      return undefined;
-    };
-
-    const result = await adapter.purchaseProduct({
-      productId: 'premium_monthly',
-      productType: 'subscription',
-    });
-
-    expect(result.platform).toBe('apple');
-    expect(result.productId).toBe('premium_monthly');
-    expect(result.token).toMatch(/^txn-premium_monthly-/);
-    expect(result.productType).toBe('subscription');
+  it('isAvailable() returns false when the plugin throws', async () => {
+    nativePurchasesMock.isBillingSupported.mockRejectedValue(new Error('no bridge'));
+    expect(await new CapgoNativeAdapter().isAvailable()).toBe(false);
   });
 
-  it('purchaseProduct() rejects with USER_CANCELLED when order returns PAYMENT_CANCELLED', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'remove_ads', type: 'product' }],
-    });
-
-    mock.store._orderImpl = async () => ({
-      isError: true,
-      code: MOCK_PAYMENT_CANCELLED_CODE,
-      message: 'cancelled',
-    });
-
-    try {
-      await adapter.purchaseProduct({
-        productId: 'remove_ads',
-        productType: 'product',
-      });
-      throw new Error('should have rejected');
-    } catch (error) {
-      expect(error).toBeInstanceOf(IAPError);
-      expect((error as IAPError).code).toBe(IAPErrorCode.USER_CANCELLED);
-    }
+  it('getProducts() returns [] for an empty request without calling the plugin', async () => {
+    const products = await new CapgoNativeAdapter().getProducts([]);
+    expect(products).toEqual([]);
+    expect(nativePurchasesMock.getProducts).not.toHaveBeenCalled();
   });
 
-  it('purchaseProduct() rejects with STORE_ERROR for non-cancellation order errors', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'remove_ads', type: 'product' }],
+  it('getProducts() splits a mixed catalog into separate inapp/subs calls and normalizes', async () => {
+    nativePurchasesMock.getProducts.mockImplementation(async (opts: { productType: string }) => {
+      if (opts.productType === 'subs') {
+        return { products: [pluginProduct({ identifier: 'premium_monthly', price: 4.99 })] };
+      }
+      return {
+        products: [
+          pluginProduct({
+            identifier: 'remove_ads',
+            title: 'Remove Ads',
+            description: 'No ads, forever',
+            price: 1.99,
+            priceString: '$1.99',
+          }),
+        ],
+      };
     });
 
-    mock.store._orderImpl = async () => ({
-      isError: true,
-      code: 6777999,
-      message: 'something went wrong',
-    });
-
-    try {
-      await adapter.purchaseProduct({
-        productId: 'remove_ads',
-        productType: 'product',
-      });
-      throw new Error('should have rejected');
-    } catch (error) {
-      expect(error).toBeInstanceOf(IAPError);
-      expect((error as IAPError).code).toBe(IAPErrorCode.STORE_ERROR);
-    }
-  });
-
-  it('purchaseProduct() rejects with PRODUCT_NOT_FOUND when product is unregistered', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly' }],
-    });
-    // bootstrap so the store is ready
-    await adapter.isAvailable();
-    // request a productId that wasn't registered
-    try {
-      await adapter.purchaseProduct({
-        productId: 'unknown_product',
-        productType: 'product',
-      });
-      throw new Error('should have rejected');
-    } catch (error) {
-      expect(error).toBeInstanceOf(IAPError);
-      expect((error as IAPError).code).toBe(IAPErrorCode.PRODUCT_NOT_FOUND);
-    }
-  });
-
-  it('acknowledge() calls finish() on the captured transaction', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'remove_ads', type: 'product' }],
-    });
-
-    const tx = makeTransaction('remove_ads');
-    mock.store._orderImpl = async () => {
-      queueMicrotask(() => fireApproved(mock, tx));
-      return undefined;
-    };
-
-    const purchase = await adapter.purchaseProduct({
-      productId: 'remove_ads',
-      productType: 'product',
-    });
-
-    expect(tx.finishCalls).toBe(0);
-    await adapter.acknowledge(purchase);
-    expect(tx.finishCalls).toBe(1);
-  });
-
-  it('acknowledge() is idempotent — second call is a no-op', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'remove_ads', type: 'product' }],
-    });
-
-    const tx = makeTransaction('remove_ads');
-    mock.store._orderImpl = async () => {
-      queueMicrotask(() => fireApproved(mock, tx));
-      return undefined;
-    };
-
-    const purchase = await adapter.purchaseProduct({
-      productId: 'remove_ads',
-      productType: 'product',
-    });
-
-    await adapter.acknowledge(purchase);
-    await adapter.acknowledge(purchase); // second call
-    expect(tx.finishCalls).toBe(1);
-  });
-
-  it('getOwnedTransactions() returns approved-state transactions and stages them for finish', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [
-        { id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly' },
-        { id: 'remove_ads', type: 'product' },
-      ],
-    });
-
-    const owned1 = makeTransaction('premium_monthly', { state: 'approved' });
-    const owned2 = makeTransaction('remove_ads', { state: 'approved' });
-    const stale = makeTransaction('remove_ads', { state: 'finished' });
-    mock.store._localTransactions = [owned1, owned2, stale];
-
-    const result = await adapter.getOwnedTransactions();
-    expect(result).toHaveLength(2);
-    expect(result.map((t) => t.productId).sort()).toEqual(['premium_monthly', 'remove_ads']);
-
-    // After acknowledging, finish() runs on the right cdv tx
-    const first = result[0];
-    if (!first) throw new Error('expected at least one owned transaction');
-    await adapter.acknowledge(first);
-    expect(owned1.finishCalls + owned2.finishCalls).toBe(1);
-  });
-
-  it('getProducts() returns normalized product info from the cdv catalog', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [
-        { id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly' },
-        { id: 'remove_ads', type: 'product' },
-      ],
-    });
-
+    const adapter = new CapgoNativeAdapter();
     const products = await adapter.getProducts([
       { id: 'premium_monthly', type: 'subscription' },
       { id: 'remove_ads', type: 'product' },
-      { id: 'unknown', type: 'product' },
+      { id: 'cant_find_me', type: 'product' },
     ]);
 
-    expect(products).toHaveLength(2);
+    expect(nativePurchasesMock.getProducts).toHaveBeenCalledWith({
+      productIdentifiers: ['remove_ads', 'cant_find_me'],
+      productType: 'inapp',
+    });
+    expect(nativePurchasesMock.getProducts).toHaveBeenCalledWith({
+      productIdentifiers: ['premium_monthly'],
+      productType: 'subs',
+    });
+
     const monthly = products.find((p) => p.id === 'premium_monthly');
-    expect(monthly?.priceString).toBe('$4.99');
-    expect(monthly?.priceMicros).toBe('4990000');
-    expect(monthly?.currency).toBe('USD');
-    expect(monthly?.type).toBe('subscription');
+    expect(monthly).toEqual({
+      id: 'premium_monthly',
+      type: 'subscription',
+      title: 'Premium Monthly',
+      description: 'Premium, billed monthly',
+      priceString: '$4.99',
+      priceMicros: '4990000',
+      currency: 'USD',
+    });
+    const ads = products.find((p) => p.id === 'remove_ads');
+    expect(ads?.type).toBe('product');
+    expect(ads?.priceMicros).toBe('1990000');
+    // unmatched id silently dropped (plugin didn't return it)
+    expect(products.find((p) => p.id === 'cant_find_me')).toBeUndefined();
   });
 
-  it('detects google platform via Capacitor.getPlatform()', async () => {
-    uninstallMockCdv();
-    mockedPlatform = 'android';
-    mock = installMockCdv({
-      defaultPlatform: 'android-playstore',
-      products: [
-        { id: 'remove_ads', priceString: '$1.99', priceMicros: 1_990_000, currency: 'USD' },
-      ],
+  it('getProducts() only calls the subs endpoint when the catalog is subs-only', async () => {
+    nativePurchasesMock.getProducts.mockResolvedValue({ products: [pluginProduct()] });
+    await new CapgoNativeAdapter().getProducts([{ id: 'premium_monthly', type: 'subscription' }]);
+    expect(nativePurchasesMock.getProducts).toHaveBeenCalledTimes(1);
+    expect(nativePurchasesMock.getProducts).toHaveBeenCalledWith({
+      productIdentifiers: ['premium_monthly'],
+      productType: 'subs',
     });
-
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'remove_ads', type: 'product' }],
-    });
-
-    const googleTx = makeTransaction('remove_ads', {
-      platform: 'android-playstore',
-      nativePurchase: { purchaseToken: 'play-token-abc' },
-    });
-    mock.store._orderImpl = async () => {
-      queueMicrotask(() => fireApproved(mock, googleTx));
-      return undefined;
-    };
-
-    const result = await adapter.purchaseProduct({
-      productId: 'remove_ads',
-      productType: 'product',
-    });
-
-    expect(result.platform).toBe('google');
-    expect(result.token).toBe('play-token-abc');
-    expect(mock.store._registered[0]?.platform).toBe('android-playstore');
   });
 
-  it('does not leak per-purchase listener on success path (regression for C1)', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'remove_ads', type: 'product' }],
-    });
-    await adapter.isAvailable(); // bootstrap so the long-lived listener attaches
-
-    const baseline = mock.store._approvedHandlers.length;
-
-    const tx = makeTransaction('remove_ads');
-    mock.store._orderImpl = async () => {
-      queueMicrotask(() => fireApproved(mock, tx));
-      return undefined;
-    };
-
-    await adapter.purchaseProduct({ productId: 'remove_ads', productType: 'product' });
-    await adapter.purchaseProduct({
-      productId: 'remove_ads',
-      productType: 'product',
-    });
-    await adapter.purchaseProduct({
-      productId: 'remove_ads',
-      productType: 'product',
-    });
-
-    // After three purchases the only listener still attached should be the
-    // bootstrap-time long-lived one; per-purchase listeners must have been
-    // removed by the cleanup path.
-    expect(mock.store._approvedHandlers.length).toBe(baseline);
-  });
-
-  it('passes androidPlanId through to getOffer (regression for C2)', async () => {
-    // Capture the plan id passed to getOffer
-    let capturedPlanId: string | undefined;
-    const originalGet = mock.store.get.bind(mock.store);
-    mock.store.get = (id: string) => {
-      const product = originalGet(id);
-      if (!product) return undefined;
-      const offer = product.getOffer();
-      return {
-        ...product,
-        getOffer: (planId?: string) => {
-          capturedPlanId = planId;
-          return offer;
-        },
-      };
-    };
-
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'premium_monthly', type: 'subscription', androidPlanId: 'monthly-plan' }],
-    });
-
-    const tx = makeTransaction('premium_monthly');
-    mock.store._orderImpl = async () => {
-      queueMicrotask(() => fireApproved(mock, tx));
-      return undefined;
-    };
-
-    await adapter.purchaseProduct({
+  it('purchaseProduct() defers acknowledgement and normalizes an iOS transaction', async () => {
+    nativePurchasesMock.purchaseProduct.mockResolvedValue(appleTx());
+    const result = await new CapgoNativeAdapter().purchaseProduct({
       productId: 'premium_monthly',
       productType: 'subscription',
       androidPlanId: 'monthly-plan',
+      appAccountToken: '550e8400-e29b-41d4-a716-446655440000',
     });
 
-    expect(capturedPlanId).toBe('monthly-plan');
+    expect(nativePurchasesMock.purchaseProduct).toHaveBeenCalledWith({
+      productIdentifier: 'premium_monthly',
+      productType: 'subs',
+      planIdentifier: 'monthly-plan',
+      appAccountToken: '550e8400-e29b-41d4-a716-446655440000',
+      isConsumable: false,
+      autoAcknowledgePurchases: false,
+    });
+    expect(result).toMatchObject({
+      platform: 'apple',
+      productId: 'premium_monthly',
+      token: '2000000123456789',
+      productType: 'subscription',
+    });
   });
 
-  it('rejects approved transaction with no extractable token (regression for C3)', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'remove_ads', type: 'product' }],
+  it('purchaseProduct() marks consumables and normalizes a Google transaction', async () => {
+    nativePurchasesMock.purchaseProduct.mockResolvedValue(googleTx());
+    const result = await new CapgoNativeAdapter().purchaseProduct({
+      productId: 'coins_100',
+      productType: 'consumable',
     });
 
-    const tx = makeTransaction('remove_ads', {
-      transactionId: '', // empty — no token derivable on iOS
+    expect(nativePurchasesMock.purchaseProduct).toHaveBeenCalledWith({
+      productIdentifier: 'coins_100',
+      productType: 'inapp',
+      planIdentifier: undefined,
+      appAccountToken: undefined,
+      isConsumable: true,
+      autoAcknowledgePurchases: false,
     });
-    mock.store._orderImpl = async () => {
-      queueMicrotask(() => fireApproved(mock, tx));
-      return undefined;
-    };
+    expect(result).toMatchObject({
+      platform: 'google',
+      token: 'play-token-abc',
+      productType: 'consumable',
+    });
+  });
 
+  it('purchaseProduct() falls back to transactionId for a Google tx with no purchaseToken', async () => {
+    nativePurchasesMock.purchaseProduct.mockResolvedValue(
+      googleTx({ purchaseToken: undefined, transactionId: 'GPA.fallback-id' }),
+    );
+    const result = await new CapgoNativeAdapter().purchaseProduct({
+      productId: 'remove_ads',
+      productType: 'product',
+    });
+    expect(result.platform).toBe('google');
+    expect(result.token).toBe('GPA.fallback-id');
+  });
+
+  describe('purchaseProduct() error mapping', () => {
+    it.each([
+      ['User cancelled', IAPErrorCode.USER_CANCELLED],
+      ['Transaction pending', IAPErrorCode.PURCHASE_PENDING],
+      ['Purchase is pending', IAPErrorCode.PURCHASE_PENDING],
+      ['Product not found', IAPErrorCode.PRODUCT_NOT_FOUND],
+      ['Purchase is not purchased', IAPErrorCode.STORE_ERROR],
+    ])('maps "%s" → %s', async (pluginMessage, expectedCode) => {
+      nativePurchasesMock.purchaseProduct.mockRejectedValue(new Error(pluginMessage));
+      try {
+        await new CapgoNativeAdapter().purchaseProduct({
+          productId: 'remove_ads',
+          productType: 'product',
+        });
+        throw new Error('should have rejected');
+      } catch (error) {
+        expect(error).toBeInstanceOf(IAPError);
+        expect((error as IAPError).code).toBe(expectedCode);
+      }
+    });
+
+    it('passes an existing IAPError through unchanged', async () => {
+      const original = new IAPError({ code: IAPErrorCode.STORE_ERROR, message: 'boom' });
+      nativePurchasesMock.purchaseProduct.mockRejectedValue(original);
+      await expect(
+        new CapgoNativeAdapter().purchaseProduct({
+          productId: 'remove_ads',
+          productType: 'product',
+        }),
+      ).rejects.toBe(original);
+    });
+  });
+
+  it('getOwnedTransactions() maps getPurchases() and infers per-tx product type', async () => {
+    nativePurchasesMock.getPurchases.mockResolvedValue({
+      purchases: [appleTx({ productType: 'subs' }), googleTx({ productType: 'inapp' })],
+    });
+    const owned = await new CapgoNativeAdapter().getOwnedTransactions();
+    expect(owned).toHaveLength(2);
+    expect(owned[0]).toMatchObject({ platform: 'apple', productType: 'subscription' });
+    expect(owned[1]).toMatchObject({ platform: 'google', productType: 'product' });
+  });
+
+  it('getOwnedTransactions() drops Android PENDING purchases and defaults missing productType to product', async () => {
+    nativePurchasesMock.getPurchases.mockResolvedValue({
+      purchases: [
+        googleTx({ purchaseState: '1', productType: undefined }), // owned, no productType
+        googleTx({ purchaseState: '0', transactionId: 'GPA.pending' }), // pending — dropped
+      ],
+    });
+    const owned = await new CapgoNativeAdapter().getOwnedTransactions();
+    expect(owned).toHaveLength(1);
+    expect(owned[0]).toMatchObject({ platform: 'google', productType: 'product' });
+  });
+
+  it('acknowledge() finishes the transaction by token', async () => {
+    nativePurchasesMock.acknowledgePurchase.mockResolvedValue(undefined);
+    await new CapgoNativeAdapter().acknowledge({
+      platform: 'google',
+      productId: 'remove_ads',
+      token: 'play-token-abc',
+      productType: 'product',
+    });
+    expect(nativePurchasesMock.acknowledgePurchase).toHaveBeenCalledWith({
+      purchaseToken: 'play-token-abc',
+    });
+  });
+
+  it('acknowledge() wraps plugin failures as a recoverable STORE_ERROR', async () => {
+    nativePurchasesMock.acknowledgePurchase.mockRejectedValue(new Error('billing offline'));
     try {
-      await adapter.purchaseProduct({ productId: 'remove_ads', productType: 'product' });
+      await new CapgoNativeAdapter().acknowledge({
+        platform: 'google',
+        productId: 'remove_ads',
+        token: 'play-token-abc',
+        productType: 'product',
+      });
+      throw new Error('should have rejected');
+    } catch (error) {
+      expect(error).toBeInstanceOf(IAPError);
+      expect((error as IAPError).code).toBe(IAPErrorCode.STORE_ERROR);
+      expect((error as IAPError).recoverable).toBe(true);
+    }
+  });
+
+  it('manageSubscriptions() delegates to the plugin', async () => {
+    nativePurchasesMock.manageSubscriptions.mockResolvedValue(undefined);
+    await new CapgoNativeAdapter().manageSubscriptions();
+    expect(nativePurchasesMock.manageSubscriptions).toHaveBeenCalledOnce();
+  });
+
+  it('manageSubscriptions() wraps plugin failures as a STORE_ERROR', async () => {
+    nativePurchasesMock.manageSubscriptions.mockRejectedValue(new Error('cannot open'));
+    try {
+      await new CapgoNativeAdapter().manageSubscriptions();
       throw new Error('should have rejected');
     } catch (error) {
       expect(error).toBeInstanceOf(IAPError);
@@ -405,43 +366,46 @@ describe('CdvNativeAdapter', () => {
     }
   });
 
-  it('dispose() removes the bootstrap listener and clears pendingFinish', async () => {
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'remove_ads', type: 'product' }],
-    });
-    await adapter.isAvailable();
-    const beforeDispose = mock.store._approvedHandlers.length;
-    expect(beforeDispose).toBeGreaterThan(0);
-
-    // Stage a pending finish
-    const tx = makeTransaction('remove_ads');
-    mock.store._orderImpl = async () => {
-      queueMicrotask(() => fireApproved(mock, tx));
-      return undefined;
-    };
-    await adapter.purchaseProduct({ productId: 'remove_ads', productType: 'product' });
-
-    await adapter.dispose();
-    // The bootstrap listener should be detached. The per-purchase listener
-    // is already off (handled in C1 fix).
-    expect(mock.store._approvedHandlers.length).toBe(beforeDispose - 1);
-
-    // After dispose, acknowledge() of the previously-staged transaction is
-    // a no-op since pendingFinish has been cleared.
-    await adapter.acknowledge({
-      platform: 'apple',
-      productId: 'remove_ads',
-      token: tx.transactionId,
-      productType: 'product',
-    });
-    expect(tx.finishCalls).toBe(0);
+  it('dispose() is a safe no-op', async () => {
+    await expect(new CapgoNativeAdapter().dispose()).resolves.toBeUndefined();
   });
 
-  it('throws BILLING_NOT_AVAILABLE when CdvPurchase global is missing', async () => {
-    uninstallMockCdv();
-    const adapter = new CdvNativeAdapter({
-      products: [{ id: 'remove_ads', type: 'product' }],
+  describe('platform inference', () => {
+    it('treats a transaction with a purchaseToken as Google', async () => {
+      nativePurchasesMock.purchaseProduct.mockResolvedValue(
+        googleTx({ orderId: undefined, purchaseState: undefined }),
+      );
+      const r = await new CapgoNativeAdapter().purchaseProduct({
+        productId: 'remove_ads',
+        productType: 'product',
+      });
+      expect(r.platform).toBe('google');
     });
-    expect(await adapter.isAvailable()).toBe(false);
+
+    it('treats a transaction with a jwsRepresentation as Apple', async () => {
+      nativePurchasesMock.purchaseProduct.mockResolvedValue(
+        appleTx({ receipt: undefined, jwsRepresentation: 'eyJ...' }),
+      );
+      const r = await new CapgoNativeAdapter().purchaseProduct({
+        productId: 'premium_monthly',
+        productType: 'subscription',
+      });
+      expect(r.platform).toBe('apple');
+    });
+
+    it('falls back to the runtime platform when the transaction is ambiguous', async () => {
+      mockedPlatform = 'android';
+      nativePurchasesMock.purchaseProduct.mockResolvedValue({
+        transactionId: 'ambiguous-1',
+        productIdentifier: 'remove_ads',
+        purchaseDate: '2026-05-12T00:00:00Z',
+        willCancel: null,
+      });
+      const r = await new CapgoNativeAdapter().purchaseProduct({
+        productId: 'remove_ads',
+        productType: 'product',
+      });
+      expect(r.platform).toBe('google');
+    });
   });
 });

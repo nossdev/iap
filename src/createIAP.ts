@@ -40,9 +40,7 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
    */
   refresh(): Promise<void>;
   /**
-   * Tear down. Removes event listeners and disposes the native adapter
-   * (which clears its `pendingFinish` map and removes the long-lived
-   * `.approved()` listener on cdv).
+   * Tear down. Removes event listeners and disposes the native adapter.
    *
    * NOTE 1: persisted entitlement cache is NOT cleared. If you're handling
    * a logout for a multi-user app, also call your storage adapter's
@@ -52,10 +50,11 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
    *
    * NOTE 2: calling `destroy()` while a `purchase()` is in flight may
    * leave the result in an inconsistent state — the backend may have
-   * recorded the entitlement but the native `acknowledge()` call will
-   * be a no-op (because cdv's `pendingFinish` was cleared mid-flow).
-   * On Android this means Google auto-refunds in 3 days. Avoid by
-   * awaiting the in-flight `purchase()` before calling `destroy()`.
+   * recorded the entitlement but the native `acknowledge()` call may not
+   * have run yet. On Android this means Google auto-refunds in 3 days
+   * (the unfinished-transaction recovery on the next launch re-acks, but
+   * only if it runs within that window). Avoid by awaiting the in-flight
+   * `purchase()` before calling `destroy()`.
    */
   destroy(): Promise<void>;
 
@@ -129,7 +128,7 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
 interface IAPInternalState<TEntitlement extends EntitlementBase> {
   config: IAPConfig;
   /** Populated by initialize(); null beforehand. Lazy to avoid loading
-   *  cordova-plugin-purchase on web platforms (PLAN.md §9 / review C4). */
+   *  `@capgo/native-purchases` on web platforms (PLAN.md §9 / review C4). */
   adapter: NativeAdapter | null;
   /** Backend transport. Constructed eagerly in the factory so config errors
    *  surface immediately; methods are not invoked until refresh()/purchase(). */
@@ -255,8 +254,8 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       }
 
       // Lazy adapter construction — this is the dynamic-import boundary so
-      // web builds don't pull in cordova-plugin-purchase.
-      state.adapter = await selectNativeAdapter({ products: state.products });
+      // web builds don't pull in `@capgo/native-purchases`.
+      state.adapter = await selectNativeAdapter();
 
       // Now that the native adapter is resolved, wire the orchestrators.
       // Both share the same getter/setter triplet into createIAP's state.

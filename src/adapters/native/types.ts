@@ -34,8 +34,9 @@ export interface NativeAdapter {
 
   /**
    * Acknowledge / finish a transaction post-verification.
-   * On cdv this calls `tx.finish()`; on the web stub it's a no-op.
-   * Idempotent: a second call against the same token is safe.
+   * On the capgo adapter this calls `acknowledgePurchase({ purchaseToken })`
+   * (which maps to `Transaction.finish()` on iOS); on the web stub it's a
+   * no-op. Idempotent: a second call against the same token is safe.
    */
   acknowledge(transaction: NativeTransaction): Promise<void>;
 

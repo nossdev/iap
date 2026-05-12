@@ -72,7 +72,7 @@ const HINTS: Readonly<Record<IAPErrorCode, string>> = {
   PLATFORM_NOT_SUPPORTED:
     'In-app purchases run on iOS/Android only. Web is no-op by design — guard your purchase UI behind Capacitor.isNativePlatform().',
   BILLING_NOT_AVAILABLE:
-    'cordova-plugin-purchase failed to initialize. Confirm the plugin is installed and `npx cap sync` has run; check device sandbox/test account is signed in.',
+    'The store billing service is unavailable. Confirm @capgo/native-purchases is installed and `npx cap sync` has run; check the device sandbox/test account is signed in.',
   PRODUCT_NOT_FOUND:
     'Ensure the productId is registered in App Store Connect / Play Console AND in your createIAP({ products }) config.',
   USER_CANCELLED: 'No action needed — the user dismissed the native purchase sheet.',
