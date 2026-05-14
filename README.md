@@ -2,7 +2,7 @@
 
 > Thin Capacitor IAP orchestrator. Server-side validation via [Attesto](https://attesto.nossdev.com).
 
-**Status: 0.2.0 — published.** API may have breaking changes through the 0.x line as it's exercised in production apps. Pin the minor version (`^0.2.0`) and watch the [CHANGELOG](./CHANGELOG.md).
+**Status: `5.x` — the Capacitor 5 maintenance line on the `@latest` dist-tag.** Renumbered from `0.4.x` to track the Capacitor major (same code, new number). The Capacitor 7+ line is `7.x` on the `@next` dist-tag (still prerelease — see [Migration](https://iap.nossdev.com/migration/)). Pin the minor (`^5.0.0`) and watch the [CHANGELOG](./CHANGELOG.md).
 
 ```bash
 npm install @nosslabs/iap cordova-plugin-purchase
@@ -75,10 +75,10 @@ It does **not**: talk to Attesto directly, define entitlement business logic, ma
 
 ## Capacitor support matrix
 
-| `@nosslabs/iap` | Capacitor | Plugin | Status |
-|---|---|---|---|
-| 0.x | 5.x | `cordova-plugin-purchase ^13.x` | **Current** |
-| 1.x | 7.x | TBD (Capacitor-native plugin) | Roadmap |
+| `@nosslabs/iap` | Capacitor | Native plugin | dist-tag | Status |
+|---|---|---|---|---|
+| 5.x | 5.x | `cordova-plugin-purchase ^13.x` | `@latest` | **Current (this branch)** |
+| 7.x | 7.x (also runs on 8.x) | `@capgo/native-purchases` | `@next` | Prerelease |
 
 ## Optional peer dependency
 

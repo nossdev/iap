@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [5.0.0] — 2026-05-14
+
+### Changed
+
+- **Renumbered the Capacitor 5 line from `0.x` to `5.x`** so the
+  library's major version tracks the Capacitor major it targets
+  (matching the convention `@capgo/native-purchases`, Ionic plugins,
+  and most platform-aligned ecosystems use). **No code changes vs
+  `0.4.0`** — the published tarball is functionally identical.
+  Consumers: bump your dependency `^0.4.0` → `^5.0.0`. Nothing else
+  needs to change.
+
+The Capacitor 7+ line is published on the `@next` dist-tag as `7.x`
+(currently `7.0.0-next.0` prerelease). See [Migration](https://iap.nossdev.com/migration/)
+when you're ready to move to Capacitor 7. The `5.x` line on this
+branch (`5.x`) continues to receive Capacitor-5 patches.
+
 ## [0.4.0] — 2026-05-08
 
 ### Added
