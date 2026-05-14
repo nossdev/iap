@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- **Capacitor:** 7.x (also runs on 8.x). For the Capacitor 5 line, install `@nosslabs/iap@latest` (the `0.x` releases) — see [Migration](/migration/).
+- **Capacitor:** 7.x (also runs on 8.x). For the Capacitor 5 line, install `@nosslabs/iap@latest` (the `5.x` releases) — see [Migration](/migration/).
 - **Platform versions:** iOS 15.0+ (StoreKit 2 requirement), Android API 21+ (Google Play Billing 7.x)
 - **Node:** 18+ for tooling
 - **Backend:** any HTTP/JSON service you control (or a custom [`BackendAdapter`](/api/backend-adapter) for non-HTTP transports)
@@ -15,7 +15,7 @@ If your app needs to support iOS < 15, this library is not for you.
 npm install @nosslabs/iap@next
 ```
 
-(The `1.x` line ships on the `@next` dist-tag while it's a prerelease. `@nosslabs/iap@latest` is the Capacitor 5 `0.x` line.)
+(The `7.x` line ships on the `@next` dist-tag while it's a prerelease. `@nosslabs/iap@latest` is the Capacitor 5 `5.x` line.)
 
 ## Install the native plugin
 

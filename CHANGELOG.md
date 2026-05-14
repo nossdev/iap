@@ -5,15 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
-## [1.0.0-next.0] — 2026-05-12
+## [7.0.0-next.0] — 2026-05-14
 
 First release of the **Capacitor 7+** line, published on the `@next`
-npm dist-tag. The Capacitor 5 line continues on `@latest` (the `0.x`
-releases) from the `main` branch — see [Migration](https://iap.nossdev.com/migration/).
+npm dist-tag. The Capacitor 5 line continues as `5.x` on `@latest`
+(from the `5.x` branch) — see [Migration](https://iap.nossdev.com/migration/).
+
+Numbering: the library's major version tracks the Capacitor major it
+targets (the convention `@capgo/native-purchases` and Ionic plugins
+use). What was framed as `1.0.0-next.0` during development is published
+as `7.0.0-next.0` for the same reason `5.0.0` superseded `0.4.0` on
+the maintenance line — same code, version aligned with the platform.
 
 ### Changed
 
-- **BREAKING: dropped Capacitor 5 support.** The `1.x` line targets
+- **BREAKING: dropped Capacitor 5 support.** The `7.x` line targets
   **Capacitor 7+** (also runs on Capacitor 8) via
   [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases),
   replacing `cordova-plugin-purchase`. The native adapter now lives at
@@ -38,7 +44,8 @@ releases) from the `main` branch — see [Migration](https://iap.nossdev.com/mig
 ### Unchanged
 
 - Public API surface: `createIAP`, the `IAP` interface, all events, all
-  `IAPErrorCode` values, and every public type are identical to `0.4.0`.
+  `IAPErrorCode` values, and every public type are identical to `5.0.0`
+  (= `0.4.0` code).
 - The full `0.2`–`0.4` feature set carries forward: the options-object
   `purchase()` signature, optional `appUserId` pre-attachment, the
   `INVALID_APP_USER_ID` / `APP_USER_ID_FETCH_FAILED` error codes, the

@@ -2,7 +2,7 @@
 
 > Thin Capacitor IAP orchestrator. Server-side validation via [Attesto](https://attesto.nossdev.com).
 
-**Status: `1.0.0-next.0` — prerelease on the `@next` dist-tag** (the Capacitor 7+ line, built on `@capgo/native-purchases`). The Capacitor 5 line (`cordova-plugin-purchase`) continues on `@latest` / the `main` branch. API may have breaking changes through the 1.x prerelease line; watch the [CHANGELOG](./CHANGELOG.md).
+**Status: `7.0.0-next.0` — prerelease on the `@next` dist-tag** (the Capacitor 7+ line, built on `@capgo/native-purchases`). The Capacitor 5 line (`cordova-plugin-purchase`) continues as `5.x` on `@latest` (from the `5.x` branch). API may have breaking changes through the 7.x prerelease line; watch the [CHANGELOG](./CHANGELOG.md).
 
 ```bash
 npm install @nosslabs/iap@next @capgo/native-purchases
@@ -77,8 +77,8 @@ It does **not**: talk to Attesto directly, define entitlement business logic, ma
 
 | `@nosslabs/iap` | Capacitor | Native plugin | dist-tag | Status |
 |---|---|---|---|---|
-| 1.x | 7.x (also runs on 8.x) | `@capgo/native-purchases 7.16.x` (or `^8` on Cap 8) | `@next` | **Current (prerelease)** |
-| 0.x | 5.x | `cordova-plugin-purchase ^13.x` | `@latest` | Maintenance |
+| 7.x | 7.x (also runs on 8.x) | `@capgo/native-purchases 7.16.x` (or `^8` on Cap 8) | `@next` | **Current (prerelease)** |
+| 5.x | 5.x | `cordova-plugin-purchase ^13.x` | `@latest` | Maintenance |
 
 ## Optional peer dependency
 

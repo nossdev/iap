@@ -35,7 +35,7 @@ export default defineConfig({
       { text: 'API', link: '/api/', activeMatch: '/api/' },
       { text: 'Migration', link: '/migration/', activeMatch: '/migration/' },
       {
-        text: 'v1.0.0-next',
+        text: 'v7.0.0-next',
         items: [
           { text: 'Changelog', link: 'https://github.com/nossdev/iap/blob/main/CHANGELOG.md' },
           { text: 'npm', link: 'https://www.npmjs.com/package/@nosslabs/iap' },
@@ -100,7 +100,7 @@ export default defineConfig({
       '/migration/': [
         {
           text: 'Migration',
-          items: [{ text: '0.x (Cap 5) → 1.x (Cap 7+)', link: '/migration/' }],
+          items: [{ text: '5.x (Cap 5) → 7.x (Cap 7+)', link: '/migration/' }],
         },
       ],
     },
