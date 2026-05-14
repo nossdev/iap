@@ -35,10 +35,29 @@ export default defineConfig({
       { text: 'API', link: '/api/', activeMatch: '/api/' },
       { text: 'Migration', link: '/migration/', activeMatch: '/migration/' },
       {
-        text: 'v7.0.0-next',
+        // Version switcher. "next" = the in-dev latest Capacitor major (today
+        // v7, prerelease on `@next`); older Capacitor majors are pinned by
+        // number. The label stays "next" intentionally — it mirrors the npm
+        // dist-tag and rotates meaning (v7 today → v8 when Cap-8 dev starts).
+        // The page-path is NOT preserved across versions; clicking lands on
+        // the chosen version's index. See the "Versioning + branch model"
+        // memory for the rollover recipe.
+        text: 'next',
         items: [
-          { text: 'Changelog', link: 'https://github.com/nossdev/iap/blob/main/CHANGELOG.md' },
-          { text: 'npm', link: 'https://www.npmjs.com/package/@nosslabs/iap' },
+          {
+            text: 'Version',
+            items: [
+              { text: 'next (v7)', link: '/' },
+              { text: 'v5 (Capacitor 5)', link: '/v5/' },
+            ],
+          },
+          {
+            text: 'Resources',
+            items: [
+              { text: 'Changelog', link: 'https://github.com/nossdev/iap/blob/main/CHANGELOG.md' },
+              { text: 'npm', link: 'https://www.npmjs.com/package/@nosslabs/iap' },
+            ],
+          },
         ],
       },
     ],
@@ -101,6 +120,64 @@ export default defineConfig({
         {
           text: 'Migration',
           items: [{ text: '5.x (Cap 5) → 7.x (Cap 7+)', link: '/migration/' }],
+        },
+      ],
+
+      // ─── v5 (Capacitor 5) docs — frozen snapshot of the 5.x branch ───
+      // Mirrors the structure above but with /v5/ prefixes. Maintained
+      // manually; cherry-pick from the 5.x branch when a doc fix lands
+      // there. The Cap-5 line is in maintenance, so churn is rare.
+      '/v5/guide/': [
+        {
+          text: 'Introduction',
+          items: [
+            { text: 'What is @nosslabs/iap?', link: '/v5/guide/' },
+            { text: 'Getting started', link: '/v5/guide/getting-started' },
+            { text: 'Installation', link: '/v5/guide/installation' },
+            { text: 'Configuration', link: '/v5/guide/configuration' },
+          ],
+        },
+        {
+          text: 'Concepts',
+          items: [
+            { text: 'Architecture', link: '/v5/guide/architecture' },
+            { text: 'Safety guarantees', link: '/v5/guide/safety-guarantees' },
+            { text: 'Backend contract', link: '/v5/guide/backend-contract' },
+            { text: 'Events', link: '/v5/guide/events' },
+            { text: 'Error handling', link: '/v5/guide/error-handling' },
+          ],
+        },
+        {
+          text: 'Operations',
+          items: [{ text: 'Testing on sandbox', link: '/v5/guide/testing' }],
+        },
+      ],
+      '/v5/recipes/': [
+        {
+          text: 'Frameworks',
+          items: [
+            { text: 'Vue + Quasar', link: '/v5/recipes/vue-quasar' },
+            { text: 'React', link: '/v5/recipes/react' },
+            { text: 'Pinia store', link: '/v5/recipes/pinia-store' },
+          ],
+        },
+        {
+          text: 'Patterns',
+          items: [{ text: 'Optimistic grant', link: '/v5/recipes/optimistic-grant' }],
+        },
+      ],
+      '/v5/api/': [
+        {
+          text: 'Reference',
+          items: [
+            { text: 'Overview', link: '/v5/api/' },
+            { text: 'createIAP()', link: '/v5/api/create-iap' },
+            { text: 'IAP instance', link: '/v5/api/iap-instance' },
+            { text: 'Types', link: '/v5/api/types' },
+            { text: 'Errors', link: '/v5/api/errors' },
+            { text: 'BackendAdapter', link: '/v5/api/backend-adapter' },
+            { text: 'Events reference', link: '/v5/api/events-reference' },
+          ],
         },
       ],
     },
