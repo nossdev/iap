@@ -198,6 +198,36 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
     products: Object.freeze([...(config.products ?? [])]) as ConfiguredProduct[],
   };
 
+  // Refresh implementation lives outside the returned object literal so
+  // internal callers (the app-resume listener, the TTL microtask) can invoke
+  // it directly without going through `this.refresh()` — that pattern would
+  // break if a consumer destructured `initialize` from the iap object. The
+  // public `refresh` method below just delegates to this function.
+  async function refreshEntitlements(): Promise<void> {
+    requireInitialized(state);
+    const previous = state.entitlements;
+    const fetched = await state.backend.getEntitlements();
+    const next = freezeAll(fetched);
+
+    // Persist + replace state in a single transition. If save() fails the
+    // in-memory state still reflects what the backend returned (best-effort
+    // cache; the next session will re-fetch on its own refresh).
+    try {
+      state.cachedAt = await state.cache.save(next);
+    } catch (error) {
+      state.logger.warn(
+        'Failed to persist refreshed entitlements; in-memory state still updated.',
+        error,
+      );
+    }
+
+    state.entitlements = next;
+    // L3: skip the emit when content is unchanged.
+    if (!entitlementsEqual(previous, next)) {
+      state.emitter.emit('entitlements-changed', { entitlements: next, previous });
+    }
+  }
+
   return {
     async initialize() {
       if (state.destroyed) {
@@ -340,7 +370,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
             // Best-effort: warn-and-swallow so a transient backend hiccup
             // doesn't poison subsequent foreground events.
             try {
-              await this.refresh();
+              await refreshEntitlements();
             } catch (error) {
               state.logger.warn('refreshOnResume: refresh() failed.', error);
             }
@@ -363,7 +393,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
           // before the microtask drained, refresh() would throw NOT_INITIALIZED
           // and emit a confusing warn. Quietly skip instead.
           if (!state.initialized || state.destroyed) return;
-          this.refresh().catch((error) => {
+          refreshEntitlements().catch((error) => {
             state.logger.warn('TTL background refresh failed.', error);
           });
         });
@@ -373,30 +403,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       state.emitter.emit('ready', undefined);
     },
 
-    async refresh() {
-      requireInitialized(state);
-      const previous = state.entitlements;
-      const fetched = await state.backend.getEntitlements();
-      const next = freezeAll(fetched);
-
-      // Persist + replace state in a single transition. If save() fails the
-      // in-memory state still reflects what the backend returned (best-effort
-      // cache; the next session will re-fetch on its own refresh).
-      try {
-        state.cachedAt = await state.cache.save(next);
-      } catch (error) {
-        state.logger.warn(
-          'Failed to persist refreshed entitlements; in-memory state still updated.',
-          error,
-        );
-      }
-
-      state.entitlements = next;
-      // L3: skip the emit when content is unchanged.
-      if (!entitlementsEqual(previous, next)) {
-        state.emitter.emit('entitlements-changed', { entitlements: next, previous });
-      }
-    },
+    refresh: refreshEntitlements,
 
     async destroy() {
       if (state.destroyed) return;

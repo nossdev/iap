@@ -22,8 +22,12 @@ interface EventMap<TEntitlement extends EntitlementBase = EntitlementBase> {
   'restore-started':      undefined;
   'restore-completed':    { restored: number; entitlements: TEntitlement[] };
   'entitlements-changed': { entitlements: TEntitlement[]; previous: TEntitlement[] };
-  'price-stale':          { productId: string; lastFetchedAt: number };
-  error:                  { error: IAPError };
+  'recovery-dropped-permanent': {
+    productId: string;
+    token: string;       // unmasked — treat as sensitive
+    error: string;
+    message?: string;
+  };
 }
 ```
 

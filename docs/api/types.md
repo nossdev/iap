@@ -142,6 +142,17 @@ interface AppUserIdFetcherContext {
 
 Pre-attach value supplied to `iap.purchase({ appUserId })`. Travels through StoreKit / Play Billing and surfaces on Attesto's verify response and outbound webhook payload as a top-level `appUserId` field — lets the integrator's backend join on user identity directly.
 
+Both `AppUserId` and `AppUserIdFetcherContext` are exported from the package root, so a separately-defined fetcher can be typed explicitly:
+
+```typescript
+import type { AppUserIdFetcherContext } from '@nosslabs/iap';
+
+const myFetcher = async ({ authHeaders }: AppUserIdFetcherContext) => {
+  const r = await fetch('/api/iap/uuid', { method: 'POST', headers: authHeaders });
+  return (await r.json()).uuid;
+};
+```
+
 | Form                  | Behavior                                                                                                                                                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `string`              | Validated as a UUID v4 then passed to native. Use when the caller already has the UUID (cached locally / app state).                                                                                                            |

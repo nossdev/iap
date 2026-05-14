@@ -1285,7 +1285,7 @@ Open and tracked:
 
 ## 18. Capacitor 7 migration
 
-✅ **Done (2026-05-12 / -14).** The `7.x` line is the Capacitor 7+ line built on `@capgo/native-purchases`, published as `7.0.0-next.N` prereleases on the `@next` npm dist-tag (was framed as `1.0.0-next.0` during development before the Capacitor-aligned renumber landed). The Capacitor 5 line lives on the `5.x` maintenance branch as `5.x` releases on `@latest` (renumbered from `0.4.x`, same code). `main` is now the in-dev Capacitor major (currently `7.x`). The notes below record what was done.
+✅ **Done — graduated to `7.0.0` GA (2026-05-14).** The `7.x` line is the Capacitor 7+ line built on `@capgo/native-purchases`. Sequence: `7.0.0-next.0` shipped on the `@next` dist-tag for a brief soak (was framed as `1.0.0-next.0` during development before the Capacitor-aligned renumber landed); a polish pass addressed reviewer-pair findings (dropped never-emitted `'price-stale'` and `'error'` events from `EventMap`; exported `AppUserIdFetcherContext`; iOS `"Cannot find product for id"` mapping; `refresh()` detach-safety); then `7.0.0` cut from `main`, moving `@latest` from `5.0.0` → `7.0.0`. The Capacitor 5 line lives on the `5.x` maintenance branch as `5.x` releases (pin `^5` to stay there). `main` is the in-dev Capacitor major (currently `7.x`). The notes below record what was done.
 
 **What shipped:**
 

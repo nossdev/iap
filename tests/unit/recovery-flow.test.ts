@@ -208,7 +208,7 @@ describe('RecoveryOrchestrator — failure paths', () => {
     const acknowledgeSpy = vi.fn(async () => {
       throw new IAPError({
         code: IAPErrorCode.STORE_ERROR,
-        message: 'cdv finish failed',
+        message: 'acknowledge failed',
         recoverable: true,
       });
     });
@@ -662,7 +662,7 @@ describe('RecoveryOrchestrator — permanent failure classification', () => {
     const acknowledgeSpy = vi.fn(async () => {
       throw new IAPError({
         code: IAPErrorCode.STORE_ERROR,
-        message: 'cdv finish failed',
+        message: 'acknowledge failed',
         recoverable: true,
       });
     });

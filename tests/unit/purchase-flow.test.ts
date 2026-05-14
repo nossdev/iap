@@ -456,7 +456,7 @@ describe('PurchaseOrchestrator — defensive paths post-backend-success', () => 
     const acknowledgeSpy = vi.fn(async () => {
       throw new IAPError({
         code: IAPErrorCode.STORE_ERROR,
-        message: 'cdv finish() failed',
+        message: 'acknowledge() failed',
         recoverable: true,
       });
     });

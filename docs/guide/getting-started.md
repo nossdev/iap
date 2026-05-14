@@ -12,7 +12,7 @@ If you're missing any of these, the [Backend contract](/guide/backend-contract) 
 ## 1. Install
 
 ```bash
-npm install @nosslabs/iap@next @capgo/native-purchases
+npm install @nosslabs/iap @capgo/native-purchases
 npx cap sync
 ```
 

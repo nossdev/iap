@@ -35,13 +35,13 @@ export default defineConfig({
       { text: 'API', link: '/api/', activeMatch: '/api/' },
       { text: 'Migration', link: '/migration/', activeMatch: '/migration/' },
       {
-        // Version switcher. "next" = the in-dev latest Capacitor major (today
-        // v7, prerelease on `@next`); older Capacitor majors are pinned by
-        // number. The label stays "next" intentionally — it mirrors the npm
-        // dist-tag and rotates meaning (v7 today → v8 when Cap-8 dev starts).
-        // The page-path is NOT preserved across versions; clicking lands on
-        // the chosen version's index. See the "Versioning + branch model"
-        // memory for the rollover recipe.
+        // Version switcher. "next" = the current latest Capacitor major
+        // (today v7, on `@latest`); older Capacitor majors are pinned by
+        // number. The label stays "next" intentionally — it rotates
+        // meaning at each Capacitor major rollover (v7 today → v8 when
+        // Cap-8 dev starts). The page-path is NOT preserved across
+        // versions; clicking lands on the chosen version's index. See
+        // the "Versioning + branch model" memory for the rollover recipe.
         text: 'next',
         items: [
           {

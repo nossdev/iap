@@ -17,7 +17,6 @@ export interface EventMap<TEntitlement extends EntitlementBase = EntitlementBase
   'restore-started': undefined;
   'restore-completed': { restored: number; entitlements: TEntitlement[] };
   'entitlements-changed': { entitlements: TEntitlement[]; previous: TEntitlement[] };
-  'price-stale': { productId: string; lastFetchedAt: number };
   /**
    * Recovery classified an `unfinished_transactions` entry as permanently
    * invalid (per `options.permanentErrorCodes`) and removed it from
@@ -36,7 +35,6 @@ export interface EventMap<TEntitlement extends EntitlementBase = EntitlementBase
     error: string;
     message?: string;
   };
-  error: { error: IAPError };
 }
 
 export type EventName<TEntitlement extends EntitlementBase = EntitlementBase> =

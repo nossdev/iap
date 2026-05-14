@@ -341,6 +341,38 @@ describe('createIAP — entitlement cache', () => {
     expect(payload.previous).toEqual([]);
   });
 
+  // Regression: refresh() used to be a method body that the internal
+  // app-resume / TTL-microtask callbacks invoked via `this.refresh()`,
+  // which broke if a consumer destructured `refresh` from the instance
+  // (`this` becomes undefined in strict mode). The implementation now
+  // lives in a closed-over function, so the public method can be called
+  // detached.
+  it('refresh() is callable detached from the IAP instance', async () => {
+    const customAdapter = {
+      verifyApple: async () => {
+        throw new Error('not used here');
+      },
+      verifyGoogle: async () => {
+        throw new Error('not used here');
+      },
+      getEntitlements: async () => [
+        { key: 'pro', productId: 'pro_monthly', expiresAt: '2026-12-01T00:00:00Z' },
+      ],
+      restore: async () => {
+        throw new Error('not used here');
+      },
+    };
+    const iap = createIAP({
+      products: validConfig.products,
+      backend: { adapter: customAdapter, timeoutMs: 5000, retries: 0 },
+      storage: { type: 'memory', namespace: 'refresh_detached' },
+    });
+    await iap.initialize();
+    const { refresh } = iap;
+    await expect(refresh()).resolves.toBeUndefined();
+    expect(iap.hasEntitlement('pro')).toBe(true);
+  });
+
   it('destroy() is idempotent', async () => {
     const iap = createIAP({
       ...validConfig,

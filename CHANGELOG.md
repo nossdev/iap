@@ -5,6 +5,71 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [7.0.0] — 2026-05-14
+
+**GA of the Capacitor 7+ line.** `@latest` on npm moves from `5.0.0`
+(Cap-5 maintenance) to `7.0.0` (Cap-7+). Cap-5 consumers stay on
+`5.x` — `^5` ranges don't auto-resolve to `7.x`. The `5.x` maintenance
+branch continues to receive patches.
+
+### Changed (BREAKING, vs `5.0.0` — bundled with the Cap-5→Cap-7 swap)
+
+- **EventMap pruning.** Removed two events from the public
+  `EventMap` that were declared but never emitted in any prior
+  release: `'price-stale'` and `'error'`. Subscriptions to either
+  never fired, so no runtime behavior changes — only consumers who
+  had `iap.on('price-stale', …)` or `iap.on('error', …)` in their
+  TypeScript code need to remove those calls. The
+  `'recovery-dropped-permanent'` event (introduced in 0.4 / `5.0.0`)
+  remains.
+- `IAPErrorOptions` is now file-local (was wrongly exported from
+  `src/lib/errors.ts` but never re-exported through `src/index.ts`,
+  so no consumer had access to it). No package-root-exported symbol
+  changes.
+
+### Added
+
+- **`AppUserIdFetcherContext`** is now re-exported from the package
+  root, so a separately-defined async fetcher can be typed
+  explicitly:
+
+  ```ts
+  import type { AppUserIdFetcherContext } from '@nosslabs/iap';
+
+  const fetchUuid = async ({ authHeaders }: AppUserIdFetcherContext) => {
+    const r = await fetch('/api/iap/uuid', { method: 'POST', headers: authHeaders });
+    return (await r.json()).uuid;
+  };
+  ```
+
+### Fixed (since `7.0.0-next.0`)
+
+- **iOS `Cannot find product for id <id>` now maps to
+  `PRODUCT_NOT_FOUND`** (previously fell through to `STORE_ERROR`).
+  The capgo plugin uses two different messages for the same
+  semantic on iOS vs Android; the adapter now handles both.
+- **`refresh()` is safe to detach from the IAP instance.** Internal
+  callbacks no longer reference `this.refresh()`, so
+  `const { refresh } = iap;` works without a strict-mode `this`
+  binding error. Regression test added.
+
+### Notes
+
+- Adapter JSDoc for `getOwnedTransactions()` now documents an iOS
+  quirk worth knowing: `@capgo/native-purchases`'s `getPurchases()`
+  bundles `Transaction.currentEntitlements` *plus* `Transaction.all`
+  (historical + revoked subscriptions). Android-side PENDING
+  purchases are filtered out (`purchaseState !== '1'`); iOS-side
+  historical transactions are not filtered and pass through to the
+  backend's `/restore` endpoint. Attesto evaluates each receipt and
+  returns per-transaction validity, so this is the documented
+  contract.
+- Android user-cancellation reminder (carried from `7.0.0-next.0`):
+  Google Play Billing collapses user-cancel and other billing
+  errors into the same plugin rejection, so an Android cancel
+  surfaces as `status: 'failed'` rather than `'cancelled'`. iOS
+  still distinguishes reliably.
+
 ## [7.0.0-next.0] — 2026-05-14
 
 First release of the **Capacitor 7+** line, published on the `@next`

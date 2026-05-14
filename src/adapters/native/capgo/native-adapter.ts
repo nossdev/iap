@@ -25,7 +25,15 @@ import type { NativeAdapter, NativePurchaseOptions } from '../types.js';
  *   under the hood it calls `Transaction.finish()`. Stateless: no transaction
  *   object to retain, so this adapter holds no internal state and needs no
  *   long-lived listeners.
- * - `getPurchases()` returns owned transactions on both platforms.
+ * - `getPurchases()` returns owned transactions, but with a platform quirk
+ *   worth knowing: on iOS it bundles `Transaction.currentEntitlements`
+ *   *plus* `Transaction.all` (full history including expired/revoked
+ *   subscriptions); on Android it returns Google Play's owned set, and
+ *   {@link CapgoNativeAdapter.getOwnedTransactions} filters out PENDING
+ *   purchases (`purchaseState !== '1'`). The library passes whatever
+ *   survives that filter to `backend.restore()`; the backend is the source
+ *   of truth for "is this receipt currently valid" and is expected to
+ *   tolerate historical iOS entries gracefully.
  */
 export class CapgoNativeAdapter implements NativeAdapter {
   async isAvailable(): Promise<boolean> {
@@ -98,9 +106,10 @@ export class CapgoNativeAdapter implements NativeAdapter {
     return (
       result.purchases
         // Drop Android PENDING purchases (purchaseState '0'); iOS has no
-        // purchaseState. A pending Play purchase isn't owned yet — sending it to
-        // the backend's /restore would only get rejected. Mirrors the cdv
-        // adapter's `state === 'approved'` filter.
+        // purchaseState. A pending Play purchase isn't owned yet — sending
+        // it to the backend's /restore would only get rejected. (iOS-side
+        // expired/revoked subs are NOT filtered here — they're part of
+        // `Transaction.all` per the class-level JSDoc; the backend decides.)
         .filter((tx) => tx.purchaseState === undefined || tx.purchaseState === '1')
         .map((tx) => normalizeTransaction(tx, inferProductType(tx)))
     );
@@ -125,6 +134,9 @@ export class CapgoNativeAdapter implements NativeAdapter {
     try {
       await NativePurchases.manageSubscriptions();
     } catch (error) {
+      // No `recoverable: true` here (unlike acknowledge()): this is a UI
+      // navigation action, not a transaction-lifecycle step, so there's
+      // nothing for the recovery loop to retry.
       throw new IAPError({
         code: IAPErrorCode.STORE_ERROR,
         message: 'Failed to open the native subscription management UI.',
@@ -201,12 +213,15 @@ function mapToPluginPurchaseType(type: ProductType): PURCHASE_TYPE {
  * Translate a `purchaseProduct()` rejection into a coded {@link IAPError} so
  * the purchase orchestrator can route it to the right `PurchaseResult` status.
  *
- * `@capgo/native-purchases` rejects with plain message strings — the only
- * signals available:
- * - iOS: `"User cancelled"`, `"Transaction pending"`, `"Product not found"`.
- * - Android: `"Purchase is pending"`, `"Product not found"`. Note Android does
- *   NOT distinguish user-cancel from other billing errors — both surface as
- *   `"Purchase is not purchased"`, which falls through to `STORE_ERROR`.
+ * `@capgo/native-purchases` rejects with plain message strings — the
+ * signals we can distinguish (verified against the plugin's native source):
+ * - iOS: `"User cancelled"`, `"Transaction pending"`,
+ *   `"Cannot find product for id <id>"`.
+ * - Android: `"Purchase is pending"`, `"Product not found"`. Note Android
+ *   does NOT distinguish user-cancel from other billing errors — both
+ *   surface as `"Purchase is not purchased"`, which falls through to
+ *   `STORE_ERROR`. The error-handling docs note this asymmetry for
+ *   consumer UX (treat Android `failed` similarly to `cancelled`).
  */
 function mapPurchaseError(error: unknown, productId: string): IAPError {
   if (error instanceof IAPError) return error;
@@ -227,7 +242,9 @@ function mapPurchaseError(error: unknown, productId: string): IAPError {
       cause: error,
     });
   }
-  if (lower.includes('product not found')) {
+  // iOS uses `"Cannot find product for id <id>"`; Android uses
+  // `"Product not found"`. Match both shapes.
+  if (lower.includes('product not found') || lower.includes('cannot find product')) {
     return new IAPError({
       code: IAPErrorCode.PRODUCT_NOT_FOUND,
       message: `Product "${productId}" was not found in the store catalog.`,

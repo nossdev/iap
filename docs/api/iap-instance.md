@@ -205,7 +205,7 @@ const unsubscribe = iap.on('entitlements-changed', ({ entitlements }) => {
 unsubscribe();
 ```
 
-Available events: `ready`, `purchase-started`, `purchase-success`, `purchase-cancelled`, `purchase-pending`, `purchase-failed`, `verification-failed`, `restore-started`, `restore-completed`, `entitlements-changed`, `price-stale`, `error`.
+Available events: `ready`, `purchase-started`, `purchase-success`, `purchase-cancelled`, `purchase-pending`, `purchase-failed`, `verification-failed`, `restore-started`, `restore-completed`, `entitlements-changed`, `recovery-dropped-permanent`.
 
 See [Events guide](/guide/events) and [`EventMap`](/api/events-reference) for full payload definitions.
 

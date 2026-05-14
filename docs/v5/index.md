@@ -38,5 +38,5 @@ features:
 ---
 
 ::: tip You're viewing the **`5.x` (Capacitor 5)** docs
-This is the maintenance line for Capacitor 5 apps using `cordova-plugin-purchase`. Published on the npm `@latest` dist-tag. For Capacitor 7+, switch via the version dropdown above or jump straight to the [current docs (v7)](/) — `@nosslabs/iap@next`.
+This is the maintenance line for Capacitor 5 apps using `cordova-plugin-purchase`. To install: `npm install @nosslabs/iap@^5`. For Capacitor 7+ (now on `@latest`), switch via the version dropdown above or jump straight to the [current docs (v7)](/).
 :::

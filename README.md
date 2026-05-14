@@ -2,10 +2,10 @@
 
 > Thin Capacitor IAP orchestrator. Server-side validation via [Attesto](https://attesto.nossdev.com).
 
-**Status: `7.0.0-next.0` — prerelease on the `@next` dist-tag** (the Capacitor 7+ line, built on `@capgo/native-purchases`). The Capacitor 5 line (`cordova-plugin-purchase`) continues as `5.x` on `@latest` (from the `5.x` branch). API may have breaking changes through the 7.x prerelease line; watch the [CHANGELOG](./CHANGELOG.md).
+**Status: `7.0.0` — GA on `@latest`** (the Capacitor 7+ line, built on `@capgo/native-purchases`). The Capacitor 5 line (`cordova-plugin-purchase`) continues as `5.x` from the `5.x` branch — `^5` ranges still resolve to `5.x`. See the [CHANGELOG](./CHANGELOG.md) for the GA delta and [Migration](https://iap.nossdev.com/migration/) for upgrading from `5.x`.
 
 ```bash
-npm install @nosslabs/iap@next @capgo/native-purchases
+npm install @nosslabs/iap @capgo/native-purchases
 npx cap sync
 ```
 
@@ -77,8 +77,8 @@ It does **not**: talk to Attesto directly, define entitlement business logic, ma
 
 | `@nosslabs/iap` | Capacitor | Native plugin | dist-tag | Status |
 |---|---|---|---|---|
-| 7.x | 7.x (also runs on 8.x) | `@capgo/native-purchases 7.16.x` (or `^8` on Cap 8) | `@next` | **Current (prerelease)** |
-| 5.x | 5.x | `cordova-plugin-purchase ^13.x` | `@latest` | Maintenance |
+| 7.x | 7.x (also runs on 8.x) | `@capgo/native-purchases 7.16.x` (or `^8` on Cap 8) | `@latest` | **Current** |
+| 5.x | 5.x | `cordova-plugin-purchase ^13.x` | (pinned via `^5`) | Maintenance |
 
 ## Optional peer dependency
 

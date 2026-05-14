@@ -27,6 +27,7 @@ export type {
 
 export type {
   AppUserId,
+  AppUserIdFetcherContext,
   PurchaseOptions,
   PurchaseResult,
   RestoreResult,

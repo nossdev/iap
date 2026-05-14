@@ -2,8 +2,8 @@
 
 `@nosslabs/iap` has two lines, **each numbered to match the Capacitor major it targets**:
 
-- **`7.x`** — **Capacitor 7+** (also runs on Capacitor 8), built on [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases). Currently a prerelease on the `@next` dist-tag.
-- **`5.x`** — **Capacitor 5**, built on `cordova-plugin-purchase`. On the `@latest` dist-tag; in maintenance.
+- **`7.x`** — **Capacitor 7+** (also runs on Capacitor 8), built on [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases). The current line, on `@latest`.
+- **`5.x`** — **Capacitor 5**, built on `cordova-plugin-purchase`. In maintenance — pin `^5` to stay on this line; `^5` ranges do not resolve to `7.x`.
 
 The public API surface (`createIAP`, the `IAP` interface, events, error codes, types) is the **same on both lines** — moving between them is a peer-dependency swap, not a code rewrite.
 
@@ -14,7 +14,7 @@ The public API surface (`createIAP`, the `IAP` interface, events, error codes, t
 
    ```bash
    npm uninstall cordova-plugin-purchase
-   npm install @nosslabs/iap@next @capgo/native-purchases
+   npm install @nosslabs/iap @capgo/native-purchases
    # On Capacitor 8 you may instead pin: @capgo/native-purchases@^8
    ```
 3. **Upgrade the Capacitor peer deps** you already have to v7+ (`@capacitor/core`, `@capacitor/preferences`, and the optional `@capacitor/app`).
@@ -52,8 +52,8 @@ Everything else (config, events, error codes, return shape) is unchanged. The op
 
 | Library version | Capacitor major | Native plugin | dist-tag | Status |
 |---|---|---|---|---|
-| 7.0.x (prerelease) | 7 (also 8) | `@capgo/native-purchases` 7.16.x (or `^8` on Cap 8) | `@next` | **Current (prerelease)** |
-| 5.0.x | 5 | `cordova-plugin-purchase` ^13.x | `@latest` | Maintenance |
+| 7.0.x | 7 (also 8) | `@capgo/native-purchases` 7.16.x (or `^8` on Cap 8) | `@latest` | **Current** |
+| 5.0.x | 5 | `cordova-plugin-purchase` ^13.x | (pin via `^5`) | Maintenance |
 | 0.2.x – 0.4.x | 5 | `cordova-plugin-purchase` ^13.x | — | Superseded by `5.0.0` (same code, renumbered) |
 | 0.1.x | 5 | `cordova-plugin-purchase` ^13.x | — | Superseded |
 

@@ -117,7 +117,7 @@ export function errorHint(code: IAPErrorCode): string {
   return HINTS[code];
 }
 
-export interface IAPErrorOptions {
+interface IAPErrorOptions {
   code: IAPErrorCode;
   message: string;
   cause?: unknown;

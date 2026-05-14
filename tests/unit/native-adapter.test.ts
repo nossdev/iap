@@ -269,7 +269,11 @@ describe('CapgoNativeAdapter', () => {
       ['User cancelled', IAPErrorCode.USER_CANCELLED],
       ['Transaction pending', IAPErrorCode.PURCHASE_PENDING],
       ['Purchase is pending', IAPErrorCode.PURCHASE_PENDING],
+      // Android: "Product not found"
       ['Product not found', IAPErrorCode.PRODUCT_NOT_FOUND],
+      // iOS: "Cannot find product for id <id>"
+      ['Cannot find product for id com.example.premium', IAPErrorCode.PRODUCT_NOT_FOUND],
+      // Android non-cancel billing failure (collapsed by Play Billing)
       ['Purchase is not purchased', IAPErrorCode.STORE_ERROR],
     ])('maps "%s" → %s', async (pluginMessage, expectedCode) => {
       nativePurchasesMock.purchaseProduct.mockRejectedValue(new Error(pluginMessage));
@@ -355,7 +359,7 @@ describe('CapgoNativeAdapter', () => {
     expect(nativePurchasesMock.manageSubscriptions).toHaveBeenCalledOnce();
   });
 
-  it('manageSubscriptions() wraps plugin failures as a STORE_ERROR', async () => {
+  it('manageSubscriptions() wraps plugin failures as a non-recoverable STORE_ERROR', async () => {
     nativePurchasesMock.manageSubscriptions.mockRejectedValue(new Error('cannot open'));
     try {
       await new CapgoNativeAdapter().manageSubscriptions();
@@ -363,6 +367,9 @@ describe('CapgoNativeAdapter', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(IAPError);
       expect((error as IAPError).code).toBe(IAPErrorCode.STORE_ERROR);
+      // UI navigation action, not a tx-lifecycle step — `recoverable` must
+      // stay false so the recovery loop never retries it.
+      expect((error as IAPError).recoverable).toBe(false);
     }
   });
 

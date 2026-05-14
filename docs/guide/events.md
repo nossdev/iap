@@ -123,27 +123,6 @@ This is the event you wire to your Pinia / React / Svelte store. See [Vue + Quas
 
 The library de-duplicates: identical entitlement lists do NOT emit. If you must observe every refresh attempt regardless of change, listen for the underlying transitions (`purchase-success`, `restore-completed`) instead.
 
-### `price-stale`
-
-```typescript
-iap.on('price-stale', ({ productId, lastFetchedAt }) => {
-  // Currently informational; auto-refetch ships in v0.2.
-});
-```
-
-Emitted when `iap.getProducts()` returns a product whose native price was cached longer than `productPriceCacheTtlMs` ago (default 24h). For v0.1, this is a passive signal — your UI can choose to call `iap.getProducts()` again or display a warning. v0.2 will auto-refetch.
-
-### `error`
-
-```typescript
-iap.on('error', ({ error }) => {
-  // error: IAPError
-  Sentry.captureException(error);
-});
-```
-
-A catch-all for errors that don't surface through a Promise rejection — primarily background-recovery failures during `initialize()` (where rejecting the init promise would be unhelpful). Wire to your error reporter; do NOT use for purchase-flow errors (those go through `iap.purchase()`'s discriminated union).
-
 ## Ordering guarantees
 
 Within a single flow, events fire in deterministic order:

@@ -34,10 +34,11 @@ export const useIAPStore = defineStore('iap', () => {
       entitlements.value = iap.getEntitlements();
       isReady.value = true;
     }),
-    iap.on('error', ({ error }) => {
-      lastError.value = error.message;
-    }),
   );
+
+  // Note: purchase / verification failures are surfaced via PurchaseResult's
+  // discriminated union (see the purchase() action below). For a centralized
+  // capture, subscribe to `purchase-failed` and `verification-failed` here too.
 
   onScopeDispose(() => {
     for (const fn of unsubscribers) fn();

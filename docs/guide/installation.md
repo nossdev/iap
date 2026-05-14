@@ -12,10 +12,10 @@ If your app needs to support iOS < 15, this library is not for you.
 ## Install the package
 
 ```bash
-npm install @nosslabs/iap@next
+npm install @nosslabs/iap
 ```
 
-(The `7.x` line ships on the `@next` dist-tag while it's a prerelease. `@nosslabs/iap@latest` is the Capacitor 5 `5.x` line.)
+(`@nosslabs/iap@latest` is the `7.x` (Capacitor 7+) line. For Capacitor 5, pin `@nosslabs/iap@^5` — `^5` ranges resolve to the maintenance `5.x` line, not `7.x`.)
 
 ## Install the native plugin
 
