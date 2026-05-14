@@ -9,7 +9,7 @@ run = """
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-  echo 'Usage: mise run publish <version>     (e.g., mise run publish 0.1.0 or 0.1.0-rc.1)' >&2
+  echo 'Usage: mise run publish <version>     (e.g., mise run publish 7.0.0-next.0 from main, or 5.0.1 from the 5.x branch)' >&2
   exit 64
 fi
 
@@ -28,10 +28,33 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-# Hard-fail off main — releases should always cut from main so the tag matches what CI validated.
+# Branch policy (Capacitor-aligned versioning, see memory
+# "Versioning + branch model — Capacitor-aligned"):
+# - `main` = current in-dev Capacitor major; accepts stable AND prerelease.
+# - `<major>.x` = maintenance branch (e.g. `5.x`, `7.x`); accepts stable
+#   releases whose major matches the branch (e.g. `5.0.1` from `5.x`).
+# - Prereleases (version contains `-`) come from `main` only.
+# `release.yml` auto-publishes `*-*` versions on the `@next` dist-tag.
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-if [[ "$BRANCH" != 'main' ]]; then
-  echo "Error: currently on '$BRANCH'. Publish from 'main'." >&2
+IS_PRERELEASE=false
+[[ "$VERSION" == *-* ]] && IS_PRERELEASE=true
+VERSION_MAJOR="${VERSION%%.*}"
+
+if [[ "$BRANCH" == 'main' ]]; then
+  :  # the in-dev major lives here; both stable and prerelease are fine
+elif [[ "$BRANCH" =~ ^[0-9]+[.]x$ ]]; then
+  if [[ "$IS_PRERELEASE" == 'true' ]]; then
+    echo "Error: prereleases must be cut from 'main', not the '$BRANCH' maintenance branch." >&2
+    exit 1
+  fi
+  MAINT_MAJOR="${BRANCH%.x}"
+  if [[ "$MAINT_MAJOR" != "$VERSION_MAJOR" ]]; then
+    echo "Error: on '$BRANCH' but $VERSION targets major $VERSION_MAJOR (expected ${MAINT_MAJOR}.y.z)." >&2
+    exit 1
+  fi
+  echo "→ Publishing stable $VERSION from the '$BRANCH' maintenance branch."
+else
+  echo "Error: on '$BRANCH'. Publish from 'main' (any version) or '<major>.x' (matching stable only)." >&2
   exit 1
 fi
 
@@ -55,8 +78,8 @@ git commit -m "chore(release): v$VERSION"
 echo "→ Tagging v$VERSION"
 git tag -a "v$VERSION" -m "Release $VERSION"
 
-echo '→ Pushing main + tag to origin'
-git push origin main
+echo "→ Pushing $BRANCH + tag to origin"
+git push origin "$BRANCH"
 git push origin "v$VERSION"
 
 echo ''
