@@ -192,6 +192,17 @@ describe('createIAP — lifecycle', () => {
     expect(iap.getEntitlements()).toEqual([]);
     expect(iap.getEntitlement('premium')).toBeNull();
   });
+
+  it('getStorefront() before initialize() throws NOT_INITIALIZED', async () => {
+    const iap = createIAP(validConfig);
+    await expect(iap.getStorefront()).rejects.toBeInstanceOf(IAPError);
+  });
+
+  it('getStorefront() resolves null on web after initialize()', async () => {
+    const iap = createIAP(validConfig);
+    await iap.initialize();
+    expect(await iap.getStorefront()).toBeNull();
+  });
 });
 
 describe('createIAP — entitlement cache', () => {

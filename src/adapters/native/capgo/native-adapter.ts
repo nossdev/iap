@@ -5,10 +5,25 @@ import {
   type Transaction as PluginTransaction,
 } from '@capgo/native-purchases';
 import { IAPError, IAPErrorCode } from '../../../lib/errors.js';
+import { toAlpha2 } from '../../../lib/iso-country.js';
 import { getPlatform } from '../../../lib/platform.js';
 import type { Product, ProductType } from '../../../types/product.js';
+import type { Storefront } from '../../../types/storefront.js';
 import type { NativeTransaction, Platform } from '../../../types/transaction.js';
 import type { NativeAdapter, NativePurchaseOptions } from '../types.js';
+
+/** Raw storefront shape the (future) plugin `getStorefront` resolves to. */
+type NativeStorefront = { countryCode?: string; storefrontId?: string };
+
+/**
+ * The plugin surface for `getStorefront`, declared locally because the
+ * installed `@capgo/native-purchases` (v7.16.2) does not yet expose it. The
+ * optional method doubles as a capability check: on plugin builds without it,
+ * `typeof np.getStorefront !== 'function'` and the adapter returns `null`.
+ */
+type StorefrontCapablePlugin = {
+  getStorefront?: () => Promise<NativeStorefront>;
+};
 
 /**
  * Capacitor 7+ adapter built against `@capgo/native-purchases@7.16.2`
@@ -145,9 +160,43 @@ export class CapgoNativeAdapter implements NativeAdapter {
     }
   }
 
+  /**
+   * Read the current storefront from the native plugin — which is expected to
+   * source it from StoreKit 2 `Storefront.current` on iOS (alpha-3) and
+   * `getBillingConfigAsync()` on Android (alpha-2) — normalizing `countryCode`
+   * to alpha-2. Silent like {@link CapgoNativeAdapter.isAvailable}: any
+   * unavailability — older plugin, native rejection, or empty country —
+   * resolves to `null` rather than throwing.
+   */
+  async getStorefront(): Promise<Storefront | null> {
+    const np = NativePurchases as typeof NativePurchases & StorefrontCapablePlugin;
+    if (typeof np.getStorefront !== 'function') return null;
+
+    try {
+      return normalizeStorefront(await np.getStorefront());
+    } catch {
+      return null;
+    }
+  }
+
   async dispose(): Promise<void> {
     // No-op: this adapter owns no long-lived listeners or timers.
   }
+}
+
+function normalizeStorefront(raw: NativeStorefront): Storefront | null {
+  const code = raw?.countryCode?.trim();
+  if (!code) return null;
+
+  const platform: Platform = getPlatform() === 'android' ? 'google' : 'apple';
+  return {
+    // alpha-2 when recognized; otherwise the uppercased raw code as a
+    // best-effort fallback (see `Storefront.countryCode`).
+    countryCode: toAlpha2(code) ?? code.toUpperCase(),
+    countryCodeRaw: code,
+    storefrontId: raw.storefrontId,
+    platform,
+  };
 }
 
 function normalizeProduct(p: PluginProduct, type: ProductType): Product {

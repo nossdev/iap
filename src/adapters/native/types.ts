@@ -1,4 +1,5 @@
 import type { Product, ProductType } from '../../types/product.js';
+import type { Storefront } from '../../types/storefront.js';
 import type { NativeTransaction } from '../../types/transaction.js';
 
 export interface NativePurchaseOptions {
@@ -42,6 +43,16 @@ export interface NativeAdapter {
 
   /** Open the platform's native subscription management UI. */
   manageSubscriptions?(): Promise<void>;
+
+  /**
+   * Read the current storefront (country the user's store account is
+   * registered to). Resolves `null` when unavailable — on web, when the
+   * installed native plugin predates storefront support, or when the store
+   * reports an empty country (e.g. EU alternative distribution).
+   *
+   * Optional: adapters may omit it. Read live; do not cache.
+   */
+  getStorefront?(): Promise<Storefront | null>;
 
   /**
    * Tear down any long-lived listeners or timers the adapter owns.

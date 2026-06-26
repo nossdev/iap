@@ -1,5 +1,6 @@
 import { IAPError, IAPErrorCode } from '../../../lib/errors.js';
 import type { Product, ProductType } from '../../../types/product.js';
+import type { Storefront } from '../../../types/storefront.js';
 import type { NativeTransaction } from '../../../types/transaction.js';
 import type { NativeAdapter, NativePurchaseOptions } from '../types.js';
 
@@ -32,5 +33,10 @@ export class WebStubAdapter implements NativeAdapter {
       code: IAPErrorCode.PLATFORM_NOT_SUPPORTED,
       message: 'Subscription management is not supported on the web platform.',
     });
+  }
+
+  async getStorefront(): Promise<Storefront | null> {
+    // No App Store / Play storefront on web — entitlement queries still work.
+    return null;
   }
 }
