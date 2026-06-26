@@ -1,16 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let mockedPlatform: 'ios' | 'android' | 'web' = 'ios';
+// Whether the native plugin header advertises getStorefront. The adapter
+// detects availability via Capacitor.PluginHeaders (not `typeof`), because on a
+// real device the plugin Proxy fabricates a function for any name.
+let mockStorefrontRegistered = true;
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     getPlatform: () => mockedPlatform,
     isNativePlatform: () => mockedPlatform !== 'web',
+    get PluginHeaders() {
+      return [
+        {
+          name: 'NativePurchases',
+          methods: [
+            { name: 'getProducts' },
+            ...(mockStorefrontRegistered ? [{ name: 'getStorefront' }] : []),
+          ],
+        },
+      ];
+    },
   },
 }));
 
-// The installed @capgo/native-purchases (v7.16.2) does NOT expose getStorefront.
-// We add it to the mock so the capability-detection + normalization paths are
-// exercised; the "absent" case is covered by nulling it for one test.
+// The native plugin advertises getStorefront via the mocked header above, so the
+// normalization paths are exercised; the "absent" case flips mockStorefrontRegistered.
 const nativePurchasesMock = vi.hoisted(() => ({
   isBillingSupported: vi.fn(),
   getProducts: vi.fn(),
@@ -70,6 +84,7 @@ describe('WebStubAdapter.getStorefront', () => {
 describe('CapgoNativeAdapter.getStorefront', () => {
   beforeEach(() => {
     mockedPlatform = 'ios';
+    mockStorefrontRegistered = true;
     nativePurchasesMock.getStorefront.mockReset();
   });
 
@@ -130,19 +145,22 @@ describe('CapgoNativeAdapter.getStorefront', () => {
     expect(sf).toMatchObject({ countryCode: 'XYZ', countryCodeRaw: 'xyz', platform: 'apple' });
   });
 
+  it('returns null when the native value is missing entirely', async () => {
+    nativePurchasesMock.getStorefront.mockResolvedValue(undefined);
+    expect(await new CapgoNativeAdapter().getStorefront()).toBeNull();
+  });
+
   it('returns null (silently) when the plugin call rejects', async () => {
     nativePurchasesMock.getStorefront.mockRejectedValue(new Error('no bridge'));
     expect(await new CapgoNativeAdapter().getStorefront()).toBeNull();
   });
 
-  it('returns null when the installed plugin lacks getStorefront (older capgo)', async () => {
-    const saved = nativePurchasesMock.getStorefront;
-    // Simulate an older @capgo/native-purchases build with no such method.
-    (nativePurchasesMock as { getStorefront?: unknown }).getStorefront = undefined;
-    try {
-      expect(await new CapgoNativeAdapter().getStorefront()).toBeNull();
-    } finally {
-      nativePurchasesMock.getStorefront = saved;
-    }
+  it('returns null WITHOUT crossing the bridge when the native plugin lacks getStorefront', async () => {
+    // Older @capgo/native-purchases builds don't register the method, so the
+    // Capacitor plugin header omits it. The adapter must short-circuit rather
+    // than call the Proxy-fabricated function (which would throw natively).
+    mockStorefrontRegistered = false;
+    expect(await new CapgoNativeAdapter().getStorefront()).toBeNull();
+    expect(nativePurchasesMock.getStorefront).not.toHaveBeenCalled();
   });
 });

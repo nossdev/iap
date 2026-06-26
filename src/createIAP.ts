@@ -122,9 +122,11 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
    * locale).
    *
    * `countryCode` is normalized to ISO 3166-1 alpha-2 across platforms (raw
-   * native code preserved on `countryCodeRaw`). Resolves `null` on web, when
-   * the installed `@capgo/native-purchases` predates storefront support, or
-   * when the store reports an empty country (EU alternative distribution).
+   * native code preserved on `countryCodeRaw`). Resolves `null` when no
+   * storefront is available — on web, when the installed
+   * `@capgo/native-purchases` doesn't register the native method, when the
+   * native call fails, or when the store reports an empty country (e.g. EU
+   * alternative distribution).
    *
    * Read live — do not cache. Treat the value as a UX/targeting hint; for
    * compliance- or entitlement-sensitive enforcement, trust the server-side

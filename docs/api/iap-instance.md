@@ -183,7 +183,8 @@ interface Storefront {
 Resolves `null` when no storefront is available:
 
 - on **web**;
-- when the installed `@capgo/native-purchases` predates storefront support (see [Requirements](#requirements) below);
+- when the installed `@capgo/native-purchases` build doesn't register the native `getStorefront` method (see [Requirements](#requirements) below);
+- when the native call fails;
 - when the store reports an **empty** country (e.g. EU alternative distribution).
 
 ::: warning Read live; treat as a UX hint
@@ -200,7 +201,7 @@ if (sf?.countryCode === 'US') {
 
 ### Requirements
 
-`getStorefront()` is backed by `@capgo/native-purchases`' native storefront bridge. On builds that don't expose it yet, the method resolves `null` on device — upgrade the plugin to a version that includes `getStorefront` to get real values. The orchestrator-side API, normalization, and web behavior are available regardless.
+`getStorefront()` is backed by `@capgo/native-purchases`' native storefront bridge. Availability is detected from the Capacitor plugin header, so on builds that don't register the native method the call resolves `null` cleanly (no bridge call, no native error) — upgrade the plugin to a version that includes `getStorefront` to get real values, and it lights up automatically with no API change. The orchestrator-side API, normalization, and web behavior are available regardless.
 
 ## `hasEntitlement(key)`
 

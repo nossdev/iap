@@ -25,7 +25,7 @@ export interface Storefront {
    * if you need certainty about the format.
    */
   countryCode: string;
-  /** Raw native value: alpha-3 on iOS (`'USA'`), alpha-2 on Android (`'US'`). */
+  /** Raw native value (whitespace-trimmed): alpha-3 on iOS (`'USA'`), alpha-2 on Android (`'US'`). */
   countryCodeRaw: string;
   /** Apple-defined storefront identifier (iOS only); `undefined` on Android. */
   storefrontId?: string;

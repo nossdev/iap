@@ -75,6 +75,25 @@ interface ConfiguredProduct {
 
 The shape of a single SKU manifest entry. Consumers either pass an array of these to `createIAP({ products: [...] })`, or have their backend return them via [`BackendAdapter.listProducts()`](/api/backend-adapter#listproducts-optional) — see [Backend contract → `products`](/guide/backend-contract#products-optional).
 
+## `Storefront`
+
+```typescript
+interface Storefront {
+  /** ISO 3166-1 alpha-2 (normalized), e.g. "US". Falls back to the uppercased
+   *  raw value if an unrecognized code can't be mapped. */
+  countryCode: string;
+  /** Raw native value (whitespace-trimmed): alpha-3 on iOS ("USA"), alpha-2 on
+   *  Android ("US"). */
+  countryCodeRaw: string;
+  /** Apple-defined storefront identifier (iOS only); undefined on Android. */
+  storefrontId?: string;
+  /** Store the value came from. */
+  platform: 'apple' | 'google';
+}
+```
+
+Returned by [`iap.getStorefront()`](/api/iap-instance#getstorefront). `countryCode` is normalized to a single scheme (alpha-2) so you compare one consistent value across platforms; `countryCodeRaw` preserves the native format. Read it live (don't cache) and treat it as a UX/targeting hint — for compliance or entitlement decisions, trust the server-side signed storefront.
+
 ## `NativeTransaction`
 
 ```typescript

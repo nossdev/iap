@@ -195,7 +195,9 @@ describe('createIAP — lifecycle', () => {
 
   it('getStorefront() before initialize() throws NOT_INITIALIZED', async () => {
     const iap = createIAP(validConfig);
-    await expect(iap.getStorefront()).rejects.toBeInstanceOf(IAPError);
+    await expect(iap.getStorefront()).rejects.toMatchObject({
+      code: IAPErrorCode.NOT_INITIALIZED,
+    });
   });
 
   it('getStorefront() resolves null on web after initialize()', async () => {

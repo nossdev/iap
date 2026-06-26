@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- `iap.getStorefront(): Promise<Storefront | null>` — reads the user's App
+  Store / Google Play storefront (the country their store account is registered
+  to). Returns the new exported `Storefront` type, with `countryCode` normalized
+  to ISO 3166-1 alpha-2 across platforms (iOS reports alpha-3, Android alpha-2);
+  the raw native value is preserved on `countryCodeRaw`, plus the Apple
+  `storefrontId` (iOS only) and `platform`. Resolves `null` on web, when the
+  installed `@capgo/native-purchases` build doesn't register the native
+  `getStorefront` method, or when the storefront is unavailable (e.g. EU
+  alternative distribution). Read it live and treat it as a UX/targeting hint —
+  for compliance/entitlement decisions, trust the server-side signed storefront.
+
 ## [7.0.0] — 2026-05-14
 
 **GA of the Capacitor 7+ line.** `@latest` on npm moves from `5.0.0`
