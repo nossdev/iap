@@ -18,6 +18,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   alternative distribution). Read it live and treat it as a UX/targeting hint —
   for compliance/entitlement decisions, trust the server-side signed storefront.
 
+### Changed
+
+- Anchored the `7.x` line to **Capacitor 7**: peer dependencies narrowed to
+  `@capacitor/*: ^7.0.0` and `@capgo/native-purchases: ^7.16.2` (dropping the
+  `^8.0.0` allowances). The `^7.16.2` range admits the Capacitor-7 capgo build
+  that adds native `getStorefront`. Capacitor-8 support will ship in
+  `@nosslabs/iap` v8. (`getStorefront()` itself still degrades gracefully on
+  capgo builds that predate the native method.)
+
 ## [7.0.0] — 2026-05-14
 
 **GA of the Capacitor 7+ line.** `@latest` on npm moves from `5.0.0`
