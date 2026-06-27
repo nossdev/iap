@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Force the web platform so initialize() stays simple (no recovery/resume), and
 // inject a fake native adapter via selectNativeAdapter so we can assert the
@@ -7,17 +7,23 @@ vi.mock('@capacitor/core', () => ({
   Capacitor: { getPlatform: () => 'web', isNativePlatform: () => false },
 }));
 
-const mocks = vi.hoisted(() => ({ getStorefront: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getStorefront: vi.fn(), includeGetStorefront: true }));
 
 vi.mock('../../src/adapters/native/index.js', () => ({
-  selectNativeAdapter: vi.fn(async () => ({
-    isAvailable: vi.fn().mockResolvedValue(true),
-    getProducts: vi.fn().mockResolvedValue([]),
-    purchaseProduct: vi.fn(),
-    getOwnedTransactions: vi.fn().mockResolvedValue([]),
-    acknowledge: vi.fn().mockResolvedValue(undefined),
-    getStorefront: mocks.getStorefront,
-  })),
+  selectNativeAdapter: vi.fn(async () => {
+    const adapter: Record<string, unknown> = {
+      isAvailable: vi.fn().mockResolvedValue(true),
+      getProducts: vi.fn().mockResolvedValue([]),
+      purchaseProduct: vi.fn(),
+      getOwnedTransactions: vi.fn().mockResolvedValue([]),
+      acknowledge: vi.fn().mockResolvedValue(undefined),
+    };
+    // Omit getStorefront entirely to exercise the optional-method short-circuit.
+    if (mocks.includeGetStorefront) {
+      adapter.getStorefront = mocks.getStorefront;
+    }
+    return adapter;
+  }),
 }));
 
 import { createIAP } from '../../src/createIAP.js';
@@ -43,6 +49,11 @@ const config = {
 };
 
 describe('createIAP.getStorefront — delegation to the native adapter', () => {
+  beforeEach(() => {
+    mocks.includeGetStorefront = true;
+    mocks.getStorefront.mockReset();
+  });
+
   it('returns the native adapter Storefront verbatim after initialize()', async () => {
     const sf: Storefront = {
       countryCode: 'US',
@@ -62,6 +73,13 @@ describe('createIAP.getStorefront — delegation to the native adapter', () => {
   it('returns null when the adapter reports no storefront', async () => {
     mocks.getStorefront.mockResolvedValue(null);
     const iap = createIAP({ ...config, storage: { type: 'memory', namespace: 'sf_null' } });
+    await iap.initialize();
+    expect(await iap.getStorefront()).toBeNull();
+  });
+
+  it('resolves null when the native adapter does not implement getStorefront', async () => {
+    mocks.includeGetStorefront = false;
+    const iap = createIAP({ ...config, storage: { type: 'memory', namespace: 'sf_no_method' } });
     await iap.initialize();
     expect(await iap.getStorefront()).toBeNull();
   });
