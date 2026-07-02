@@ -10,6 +10,7 @@ interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   purchase(opts: PurchaseOptions): Promise<PurchaseResult<TEntitlement>>;
   restorePurchases(): Promise<RestoreResult<TEntitlement>>;
   getProducts(): Promise<Product[]>;
+  getStorefront(): Promise<Storefront | null>;
   hasEntitlement(key: string): boolean;
   getEntitlements(): TEntitlement[];
   getEntitlement(key: string): TEntitlement | null;
