@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import {
   NativePurchases,
   PURCHASE_TYPE,
@@ -5,15 +6,54 @@ import {
   type Transaction as PluginTransaction,
 } from '@capgo/native-purchases';
 import { IAPError, IAPErrorCode } from '../../../lib/errors.js';
+import { toAlpha2 } from '../../../lib/iso-country.js';
 import { getPlatform } from '../../../lib/platform.js';
 import type { Product, ProductType } from '../../../types/product.js';
+import type { Storefront } from '../../../types/storefront.js';
 import type { NativeTransaction, Platform } from '../../../types/transaction.js';
 import type { NativeAdapter, NativePurchaseOptions } from '../types.js';
 
+/** Raw storefront shape the plugin `getStorefront` resolves to. */
+type NativeStorefront = { countryCode?: string; storefrontId?: string };
+
 /**
- * Capacitor 7+ adapter built against `@capgo/native-purchases@7.16.2`
- * (also runs on Capacitor 8). Captured plugin surface:
- * `docs/internal/plugin-v7-api.md`.
+ * The plugin surface for `getStorefront`, declared locally because some
+ * installed `@capgo/native-purchases` builds predate it. Availability is
+ * detected via the Capacitor plugin header (see {@link nativeStorefrontRegistered}),
+ * NOT by inspecting this optional method: on a device `registerPlugin` returns
+ * a Proxy that fabricates a function for any property name, so a `typeof
+ * np.getStorefront === 'function'` check is always true and would not detect
+ * an older plugin.
+ */
+type StorefrontCapablePlugin = {
+  getStorefront?: () => Promise<NativeStorefront>;
+};
+
+/** Minimal shape of the Capacitor plugin-header registry we read. */
+type CapacitorPluginHeaders = {
+  PluginHeaders?: ReadonlyArray<{ name: string; methods?: ReadonlyArray<{ name: string }> }>;
+};
+
+/**
+ * Whether the *native* `@capgo/native-purchases` build actually registered a
+ * `getStorefront` method. Reads the Capacitor plugin header (the list the
+ * native bridge injects) so older plugins resolve `null` without crossing the
+ * bridge (which would log a native "not implemented" error on every call), and
+ * the method lights up automatically once capgo ships it.
+ */
+function nativeStorefrontRegistered(): boolean {
+  const headers = (Capacitor as CapacitorPluginHeaders).PluginHeaders;
+  return (
+    headers
+      ?.find((h) => h.name === 'NativePurchases')
+      ?.methods?.some((m) => m.name === 'getStorefront') ?? false
+  );
+}
+
+/**
+ * Capacitor 7 adapter for the `@capgo/native-purchases` 7.16.x line (this is
+ * the `7.x` line of `@nosslabs/iap`; Capacitor 8 support lands in v8). Captured
+ * plugin surface: `docs/internal/plugin-v7-api.md`.
  *
  * Plugin contract (relevant bits):
  * - `purchaseProduct({ ..., autoAcknowledgePurchases: false })` defers finishing on
@@ -145,9 +185,43 @@ export class CapgoNativeAdapter implements NativeAdapter {
     }
   }
 
+  /**
+   * Read the current storefront from the native plugin — which is expected to
+   * source it from StoreKit 2 `Storefront.current` on iOS (alpha-3) and
+   * `getBillingConfigAsync()` on Android (alpha-2) — normalizing `countryCode`
+   * to alpha-2. Silent like {@link CapgoNativeAdapter.isAvailable}: any
+   * unavailability — older plugin (no native method registered), native
+   * rejection, or empty country — resolves to `null` rather than throwing.
+   */
+  async getStorefront(): Promise<Storefront | null> {
+    if (!nativeStorefrontRegistered()) return null;
+    const np = NativePurchases as typeof NativePurchases & StorefrontCapablePlugin;
+    try {
+      const raw = await np.getStorefront?.();
+      return raw ? normalizeStorefront(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
   async dispose(): Promise<void> {
     // No-op: this adapter owns no long-lived listeners or timers.
   }
+}
+
+function normalizeStorefront(raw: NativeStorefront): Storefront | null {
+  const code = raw?.countryCode?.trim();
+  if (!code) return null;
+
+  const platform: Platform = getPlatform() === 'android' ? 'google' : 'apple';
+  return {
+    // alpha-2 when recognized; otherwise the uppercased raw code as a
+    // best-effort fallback (see `Storefront.countryCode`).
+    countryCode: toAlpha2(code) ?? code.toUpperCase(),
+    countryCodeRaw: code,
+    storefrontId: raw.storefrontId,
+    platform,
+  };
 }
 
 function normalizeProduct(p: PluginProduct, type: ProductType): Product {

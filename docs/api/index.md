@@ -38,6 +38,7 @@ import {
   type ConfiguredProduct,
   type Product,
   type ProductType,
+  type Storefront,
   type EntitlementBase,
   type DefaultEntitlement,
   type NativeTransaction,

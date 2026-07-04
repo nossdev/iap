@@ -14,6 +14,8 @@ export type {
 
 export type { ConfiguredProduct, Product, ProductType } from './types/product.js';
 
+export type { Storefront } from './types/storefront.js';
+
 export type {
   EntitlementBase,
   DefaultEntitlement,

@@ -10,6 +10,7 @@ interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   purchase(opts: PurchaseOptions): Promise<PurchaseResult<TEntitlement>>;
   restorePurchases(): Promise<RestoreResult<TEntitlement>>;
   getProducts(): Promise<Product[]>;
+  getStorefront(): Promise<Storefront | null>;
   hasEntitlement(key: string): boolean;
   getEntitlements(): TEntitlement[];
   getEntitlement(key: string): TEntitlement | null;
@@ -160,6 +161,57 @@ Products configured in `createIAP({ products })` but not yet ingested by the pla
 ::: warning Always render `priceString`
 Apple and Google's developer agreements require displaying the localized price from the native API, not a hardcoded one. Rendering "$4.99" when the user's region shows €4.99 is a reviewability risk.
 :::
+
+## `getStorefront()`
+
+```typescript
+getStorefront(): Promise<Storefront | null>
+```
+
+Returns the user's **storefront** — the country their App Store / Google Play account is registered to. This is the platform-blessed signal for region-dependent UI: regional offers/pricing, and gating external-payment links whose eligibility the OS itself keys to storefront country (**not** device locale or region).
+
+```typescript
+interface Storefront {
+  countryCode: string;      // ISO 3166-1 alpha-2 (normalized), e.g. "US"
+  countryCodeRaw: string;   // raw native: "USA" on iOS (alpha-3), "US" on Android (alpha-2)
+  storefrontId?: string;    // Apple storefront id (iOS only); undefined on Android
+  platform: 'apple' | 'google';
+}
+```
+
+`countryCode` is normalized to ISO 3166-1 **alpha-2** across platforms (iOS's native code is alpha-3, Android's is alpha-2), so you compare one consistent value. The raw native code is kept on `countryCodeRaw`.
+
+Resolves `null` when no storefront is available:
+
+- on **web**;
+- when the installed `@capgo/native-purchases` build doesn't register the native `getStorefront` method (see [Requirements](#requirements) below);
+- when the native call fails;
+- when the store reports an **empty** country (e.g. EU alternative distribution).
+
+::: warning Read live; treat as a UX hint
+Call `getStorefront()` each time you need it — **do not cache** it (the user can change their store region). The client value is a UX/targeting hint and can be unreliable: TestFlight has historically reported `"USA"` regardless of account region. For compliance- or entitlement-sensitive decisions, trust the **server-side signed storefront** your backend verifies (App Store Server API `storefront` / Play Developer API `regionCode`) — which pairs naturally with Attesto receipt validation.
+:::
+
+```typescript
+// Show an external-payment link only where the storefront allows it.
+const sf = await iap.getStorefront();
+if (sf?.countryCode === 'US') {
+  showExternalCheckoutLink();
+}
+```
+
+### Requirements
+
+`getStorefront()` is backed by `@capgo/native-purchases`' native storefront bridge, which was added in these plugin versions:
+
+| Capacitor | `@capgo/native-purchases` | Install |
+| --- | --- | --- |
+| 8 | `>= 8.5.0` | the default `latest` tag |
+| 7 | `>= 7.19.1` | `npm i @capgo/native-purchases@lts-v7` |
+
+On **Capacitor 7**, install from the **`lts-v7`** dist-tag — npm's `latest` points at the 8.x (Capacitor 8) line, so a plain `npm i @capgo/native-purchases` would pull an incompatible major.
+
+Availability is detected from the Capacitor plugin header, so on older plugin builds that don't register the native method the call resolves `null` cleanly (no bridge call, no native error) — upgrade the plugin and it lights up automatically with no API change. The orchestrator-side API, normalization, and web behavior are available regardless.
 
 ## `hasEntitlement(key)`
 

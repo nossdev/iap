@@ -28,6 +28,7 @@ import type { EntitlementBase } from './types/entitlement.js';
 import type { EventName, EventPayload, Unsubscribe } from './types/events.js';
 import type { ConfiguredProduct, Product } from './types/product.js';
 import type { PurchaseOptions, PurchaseResult, RestoreResult } from './types/results.js';
+import type { Storefront } from './types/storefront.js';
 
 export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   initialize(): Promise<void>;
@@ -112,6 +113,26 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
    * yet ingested by the store are silently skipped (no error).
    */
   getProducts(): Promise<Product[]>;
+
+  /**
+   * Read the current storefront — the country the user's App Store / Google
+   * Play account is registered to. Use it to drive region-dependent UI:
+   * regional offers/pricing, and gating external-payment links whose
+   * eligibility the platform itself keys to storefront country (not device
+   * locale).
+   *
+   * `countryCode` is normalized to ISO 3166-1 alpha-2 across platforms (raw
+   * native code preserved on `countryCodeRaw`). Resolves `null` when no
+   * storefront is available — on web, when the installed
+   * `@capgo/native-purchases` doesn't register the native method, when the
+   * native call fails, or when the store reports an empty country (e.g. EU
+   * alternative distribution).
+   *
+   * Read live — do not cache. Treat the value as a UX/targeting hint; for
+   * compliance- or entitlement-sensitive enforcement, trust the server-side
+   * signed storefront from your backend instead.
+   */
+  getStorefront(): Promise<Storefront | null>;
 
   hasEntitlement(key: string): boolean;
   /** Returns a defensive shallow copy. Each entitlement is frozen. */
@@ -470,6 +491,14 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         });
       }
       return state.adapter.getProducts(state.products.map((p) => ({ id: p.id, type: p.type })));
+    },
+
+    async getStorefront() {
+      requireInitialized(state);
+      // Adapter is guaranteed set once initialized (see getProducts()); the
+      // `?.` on getStorefront covers adapters that don't implement the
+      // optional method, and `?? null` keeps the contract total.
+      return state.adapter?.getStorefront?.() ?? null;
     },
 
     hasEntitlement(key) {

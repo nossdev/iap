@@ -86,7 +86,7 @@ await iap.initialize();
 4. Schedules a background refresh if cache exceeds TTL
 5. Emits `ready`
 
-After `initialize()` returns, all read methods (`hasEntitlement`, `getEntitlements`, `getEntitlement`, `getProducts`) are safe to call.
+After `initialize()` returns, all read methods (`hasEntitlement`, `getEntitlements`, `getEntitlement`, `getProducts`, `getStorefront`) are safe to call.
 
 ## 4. Buy something
 
