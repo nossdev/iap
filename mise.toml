@@ -28,6 +28,19 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
+# Guard: package-lock.json must already reflect package.json, or the release
+# workflow's `npm ci` will fail — as v7.1.0 did, when a peerDependency change
+# wasn't mirrored into the lockfile. Regenerate the lock and diff it; a change
+# means the committed lock was stale.
+echo '→ Verifying package-lock.json is in sync with package.json'
+npm install --package-lock-only --ignore-scripts >/dev/null 2>&1
+if ! git diff --quiet -- package-lock.json; then
+  echo 'Error: package-lock.json was out of sync with package.json (it has just' >&2
+  echo '       been regenerated). Review the diff, commit the lockfile, re-run.' >&2
+  git --no-pager diff --stat -- package-lock.json >&2
+  exit 1
+fi
+
 # Branch policy (Capacitor-aligned versioning, see memory
 # "Versioning + branch model — Capacitor-aligned"):
 # - `main` = current in-dev Capacitor major; accepts stable AND prerelease.
