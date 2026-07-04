@@ -207,15 +207,11 @@ if (sf?.countryCode === 'US') {
 | Capacitor | `@capgo/native-purchases` | Install |
 | --- | --- | --- |
 | 8 | `>= 8.5.0` | the default `latest` tag |
-| 7 | `>= 7.19.0` | `npm i @capgo/native-purchases@lts-v7` |
+| 7 | `>= 7.19.1` | `npm i @capgo/native-purchases@lts-v7` |
 
 On **Capacitor 7**, install from the **`lts-v7`** dist-tag — npm's `latest` points at the 8.x (Capacitor 8) line, so a plain `npm i @capgo/native-purchases` would pull an incompatible major.
 
 Availability is detected from the Capacitor plugin header, so on older plugin builds that don't register the native method the call resolves `null` cleanly (no bridge call, no native error) — upgrade the plugin and it lights up automatically with no API change. The orchestrator-side API, normalization, and web behavior are available regardless.
-
-::: tip Capacitor 7 peer-dependency warning
-As of `7.19.0`, the `lts-v7` line declares a `@capacitor/core >= 8.0.0` peer dependency, so `npm`/`yarn` may print a peer-dependency **warning** on a Capacitor 7 project. It's harmless — the plugin is Capacitor-7 compatible and works at runtime; pass `--legacy-peer-deps` if a strict install fails.
-:::
 
 ## `hasEntitlement(key)`
 
