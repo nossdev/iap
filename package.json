@@ -1,6 +1,6 @@
 {
   "name": "@nosslabs/iap",
-  "version": "7.1.0",
+  "version": "8.0.0",
   "description": "Thin Capacitor IAP orchestrator that pairs with Attesto for receipt validation",
   "license": "MIT",
   "author": "nossdev",
@@ -23,7 +23,7 @@
   ],
   "keywords": [
     "capacitor",
-    "capacitor-7",
+    "capacitor-8",
     "capgo",
     "native-purchases",
     "iap",
@@ -58,10 +58,10 @@
     "prepublishOnly": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "peerDependencies": {
-    "@capacitor/app": "^7.0.0",
-    "@capacitor/core": "^7.0.0",
-    "@capacitor/preferences": "^7.0.0",
-    "@capgo/native-purchases": "^7.16.2"
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/preferences": "^8.0.0",
+    "@capgo/native-purchases": "^8.0.0"
   },
   "peerDependenciesMeta": {
     "@capacitor/app": {
@@ -73,10 +73,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@capacitor/app": "^7.1.2",
-    "@capacitor/core": "^7.6.4",
-    "@capacitor/preferences": "^7.0.4",
-    "@capgo/native-purchases": "7.16.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/preferences": "^8.0.1",
+    "@capgo/native-purchases": "8.6.5",
     "@vitest/coverage-v8": "^1.6.1",
     "jsdom": "^29.1.0",
     "tsup": "^8.5.1",

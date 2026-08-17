@@ -5,8 +5,8 @@ import { WebStubAdapter } from './web/web-stub.js';
 /**
  * Select the appropriate native adapter for the runtime platform.
  *
- * - iOS / Android → capgo adapter wrapping `@capgo/native-purchases` (^7.16.2,
- *   the Capacitor 7 line), loaded via dynamic import so web builds don't pull
+ * - iOS / Android → capgo adapter wrapping `@capgo/native-purchases` (^8.0.0,
+ *   the Capacitor 8 line), loaded via dynamic import so web builds don't pull
  *   the plugin's ESM in (and don't pay its native-registration side effects on
  *   page load).
  * - web → no-op stub (purchases reject with PLATFORM_NOT_SUPPORTED).
