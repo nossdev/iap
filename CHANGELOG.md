@@ -5,7 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
-## [8.0.0] — 2026-08-17
+## [8.0.0-next.0] — 2026-08-17
+
+**First release of the Capacitor 8 line, on the `@next` npm dist-tag.** The
+Capacitor 7 line continues as `7.x` on `@latest` (and on the new `@latest-7`
+dist-tag); `@latest` stays at `7.1.0` until the 8.x line graduates. Install the
+candidate with `npm install @nosslabs/iap@next`.
+
+Note that `@next` previously pointed at `7.0.0-next.0`, a Capacitor 7
+prerelease; it now moves to the Capacitor 8 line. `7.0.0-next.0` remains
+installable by exact version.
 
 **Opens the Capacitor 8 line.** Same library, next platform major: the peer
 range moves from Capacitor 7 to Capacitor 8, and nothing else changes. Cap-7
@@ -15,10 +24,28 @@ consumers stay on `7.x` — `^7` ranges don't auto-resolve to `8.x`.
 
 - **Anchored the `8.x` line to Capacitor 8.** Peer dependencies moved to
   `@capacitor/core`, `@capacitor/preferences` and (optional) `@capacitor/app`
-  at `^8.0.0`, and `@capgo/native-purchases` at `^8.0.0`. The Cap-7 ranges
+  at `>=8.0.0` — the forward-open range that upstream `@capacitor/*` plugins
+  and `@capgo/native-purchases` themselves declare — and
+  `@capgo/native-purchases` at `^8.0.0`, which stays a caret because the
+  adapter binds to its method signatures. The Cap-7 ranges
   (`@capacitor/*: ^7.0.0`, `@capgo/native-purchases: ^7.16.2`) are dropped —
   they were the only thing blocking a clean `npm install` in a Capacitor 8 app.
   Upgrading is a peer-dep bump plus `npx cap sync`.
+- **`VERSION` is now typed `string` rather than the literal `"0.1.0"`.** It is
+  injected from `package.json` at build time instead of being hard-coded, so
+  it finally reports the version that is actually installed.
+
+### Fixed
+
+- **CommonJS consumers can type-check again.** The `exports` map declared a
+  single top-level `types` entry, so `require()` resolved the CommonJS bundle
+  against ESM declarations and `tsc` failed with TS1479 under
+  `moduleResolution: node16`/`nodenext`. `types` is now nested per condition,
+  with `require` pointing at the `dist/index.d.cts` the build already emitted.
+  Affects `7.1.0` and earlier too.
+- **`VERSION` no longer reports `0.1.0`.** It was hard-coded and never updated
+  by any publish step, so error reports from every released build
+  misattributed their version.
 
 ### Notes
 
