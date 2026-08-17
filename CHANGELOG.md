@@ -5,6 +5,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [8.0.0] — 2026-08-17
+
+**Opens the Capacitor 8 line.** Same library, next platform major: the peer
+range moves from Capacitor 7 to Capacitor 8, and nothing else changes. Cap-7
+consumers stay on `7.x` — `^7` ranges don't auto-resolve to `8.x`.
+
+### Changed (BREAKING, vs `7.1.0` — peer range only)
+
+- **Anchored the `8.x` line to Capacitor 8.** Peer dependencies moved to
+  `@capacitor/core`, `@capacitor/preferences` and (optional) `@capacitor/app`
+  at `^8.0.0`, and `@capgo/native-purchases` at `^8.0.0`. The Cap-7 ranges
+  (`@capacitor/*: ^7.0.0`, `@capgo/native-purchases: ^7.16.2`) are dropped —
+  they were the only thing blocking a clean `npm install` in a Capacitor 8 app.
+  Upgrading is a peer-dep bump plus `npx cap sync`.
+
+### Notes
+
+- **No runtime API changes.** `createIAP({ ... })` config, the `IAP` instance
+  surface, the event map, the error codes and the backend contract are all
+  byte-for-byte what `7.1.0` shipped. Nothing in `src/` needed a call-site fix:
+  every `@capgo/native-purchases` method this library calls
+  (`isBillingSupported`, `getProducts`, `purchaseProduct`, `getPurchases`,
+  `acknowledgePurchase`, `manageSubscriptions`, `getStorefront`) keeps its
+  `7.16.2` signature in `8.6.5`. The plugin's v8 additions — `consumePurchase()`,
+  `presentOfferCodeRedeemSheet()`, the `billingPlanType` purchase option, the
+  `onlyCurrentEntitlements` filter on `getPurchases()`, and the StoreKit
+  commitment/renewal metadata on `Product` and `Transaction` — are all optional
+  and none are consumed.
+- **`getStorefront()` keeps its capability probe.** The plugin declares
+  `getStorefront()` on its TypeScript interface as of `8.5.0`, but the peer
+  range also admits `8.0.0`–`8.4.x`, which don't register the native method. The
+  adapter therefore still gates on the Capacitor plugin header rather than the
+  declared type, and still resolves `null` when the method is absent — including
+  for the plugin's own "storefront unavailable" signal, an empty `countryCode`.
+
 ## [7.1.0] — 2026-07-04
 
 ### Added

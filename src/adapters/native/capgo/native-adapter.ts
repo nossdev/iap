@@ -51,9 +51,11 @@ function nativeStorefrontRegistered(): boolean {
 }
 
 /**
- * Capacitor 7 adapter for the `@capgo/native-purchases` 7.16.x line (this is
- * the `7.x` line of `@nosslabs/iap`; Capacitor 8 support lands in v8). Captured
- * plugin surface: `docs/internal/plugin-v7-api.md`.
+ * Capacitor 8 adapter for the `@capgo/native-purchases` `^8` line (this is the
+ * `8.x` line of `@nosslabs/iap`; Cap-7 consumers stay on `7.x`). The v8 plugin
+ * is additive over the 7.16.x surface captured in
+ * `docs/internal/plugin-v7-api.md` — every method below keeps its 7.16.2
+ * signature — so that capture still describes what this adapter calls.
  *
  * Plugin contract (relevant bits):
  * - `purchaseProduct({ ..., autoAcknowledgePurchases: false })` defers finishing on
