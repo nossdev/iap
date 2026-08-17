@@ -58,9 +58,9 @@
     "prepublishOnly": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "peerDependencies": {
-    "@capacitor/app": "^8.0.0",
-    "@capacitor/core": "^8.0.0",
-    "@capacitor/preferences": "^8.0.0",
+    "@capacitor/app": ">=8.0.0",
+    "@capacitor/core": ">=8.0.0",
+    "@capacitor/preferences": ">=8.0.0",
     "@capgo/native-purchases": "^8.0.0"
   },
   "peerDependenciesMeta": {
