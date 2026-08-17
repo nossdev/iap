@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsup';
+import { version } from './package.json';
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -10,6 +11,9 @@ export default defineConfig({
   splitting: false,
   treeshake: true,
   minify: false,
+  define: {
+    __PKG_VERSION__: JSON.stringify(version),
+  },
   outExtension({ format }) {
     return format === 'cjs' ? { js: '.cjs' } : { js: '.js' };
   },

@@ -1,5 +1,6 @@
 /**
- * Library version. Updated by the publish workflow to match `package.json`.
+ * Library version, injected at build time from `package.json` (see the
+ * `define` in tsup.config.ts, mirrored in vitest.config.ts).
  * Read at runtime by the logger so error reports include the version.
  */
-export const VERSION = '0.1.0';
+export const VERSION: string = __PKG_VERSION__;

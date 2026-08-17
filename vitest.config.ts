@@ -1,6 +1,14 @@
 import { defineConfig } from 'vitest/config';
+import { version } from './package.json';
+
+// The `define` below mirrors tsup.config.ts. Vitest imports `src/` directly
+// rather than the bundled output, so without it `__PKG_VERSION__` would be
+// undefined under test.
 
 export default defineConfig({
+  define: {
+    __PKG_VERSION__: JSON.stringify(version),
+  },
   test: {
     globals: true,
     // jsdom (not node): @capacitor/preferences' web fallback reads
