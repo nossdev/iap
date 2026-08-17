@@ -2,7 +2,7 @@
 
 This page walks you from zero to a working sandbox purchase in under 30 minutes. It assumes you already have:
 
-- A Capacitor 7+ app (also runs on Capacitor 8)
+- A Capacitor 7 app (for Capacitor 8, see the release candidate note under [Install](#_1-install))
 - Products configured in App Store Connect (sandbox testers OK) and/or Google Play Console (license testers OK)
 - A backend you can deploy a few new endpoints to (or you can implement them as a [custom `BackendAdapter`](/api/backend-adapter))
 - An [Attesto](https://attesto.nossdev.com) tenant with API key
@@ -12,9 +12,18 @@ If you're missing any of these, the [Backend contract](/guide/backend-contract) 
 ## 1. Install
 
 ```bash
-npm install @nosslabs/iap @capgo/native-purchases
+npm install @nosslabs/iap @capgo/native-purchases@lts-v7
 npx cap sync
 ```
+
+Pin the plugin to `lts-v7` — npm's `latest` for `@capgo/native-purchases` now
+points at its `8.x` line, which requires Capacitor 8.
+
+::: tip On Capacitor 8?
+Install the release candidate instead:
+`npm install @nosslabs/iap@next @capgo/native-purchases@^8`. Everything else on
+this page is identical — the API is unchanged between the two lines.
+:::
 
 ::: tip Optional: app-resume listener
 If you want the library to automatically refresh entitlements when your app returns from background (the default), also install `@capacitor/app`:

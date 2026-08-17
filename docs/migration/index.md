@@ -1,23 +1,49 @@
 # Migration
 
-`@nosslabs/iap` has two lines, **each numbered to match the Capacitor major it targets**:
+`@nosslabs/iap` has three lines, **each numbered to match the Capacitor major it targets**:
 
-- **`7.x`** — **Capacitor 7+** (also runs on Capacitor 8), built on [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases). The current line, on `@latest`.
-- **`5.x`** — **Capacitor 5**, built on `cordova-plugin-purchase`. In maintenance — pin `^5` to stay on this line; `^5` ranges do not resolve to `7.x`.
+- **`8.x`** — **Capacitor 8**, built on [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) `^8`. In **release candidate** on the `@next` dist-tag — see [7.x → 8.x](#_7-x-capacitor-7-8-x-capacitor-8) below.
+- **`7.x`** — **Capacitor 7**, built on `@capgo/native-purchases` `lts-v7`. The current line, on `@latest` (also `@latest-7`).
+- **`5.x`** — **Capacitor 5**, built on `cordova-plugin-purchase`. In maintenance — pin `^5` to stay on this line (also `@latest-5`); `^5` ranges do not resolve to `7.x`.
 
-The public API surface (`createIAP`, the `IAP` interface, events, error codes, types) is the **same on both lines** — moving between them is a peer-dependency swap, not a code rewrite.
+Each line's peer range is scoped to its own Capacitor major, so `^5`, `^7` and
+`^8` ranges each stay on their own line and never cross-resolve.
 
-## 5.x (Capacitor 5) → 7.x (Capacitor 7+)
+The public API surface (`createIAP`, the `IAP` interface, events, error codes, types) is the **same on all three lines** — moving between them is a peer-dependency swap, not a code rewrite.
 
-1. **Upgrade Capacitor** to 7 (or 8) per the [Capacitor migration guide](https://capacitorjs.com/docs/updating/7-0). This is usually the bulk of the work and is orthogonal to IAP.
+## 7.x (Capacitor 7) → 8.x (Capacitor 8)
+
+The `8.x` line is currently a **release candidate** on the `@next` dist-tag.
+`@latest` stays on `7.x` until it graduates.
+
+1. **Upgrade Capacitor** to 8 per the [Capacitor 8 migration guide](https://capacitorjs.com/docs/updating/8-0). This is the bulk of the work and is orthogonal to IAP. Capacitor 8 requires **Node 22+**, **iOS 15+**, and **Android `minSdk` 24**.
+2. **Bump `@nosslabs/iap` and the native plugin:**
+
+   ```bash
+   npm install @nosslabs/iap@next @capgo/native-purchases@^8
+   ```
+3. **Upgrade the Capacitor peer deps** you already have to v8 (`@capacitor/core`, `@capacitor/preferences`, and the optional `@capacitor/app`).
+4. **Run `npx cap sync`.**
+5. **No changes to your code.** The `createIAP({ ... })` config, the `IAP` instance surface, the event map, the error codes and the backend contract are byte-for-byte what `7.1.0` shipped. This upgrade is a peer-dependency bump, nothing more.
+
+`getStorefront()` requires `@capgo/native-purchases` **>= 8.5.0** — earlier `8.x`
+releases don't register the native method, and the library resolves `null`
+rather than failing.
+
+## 5.x (Capacitor 5) → 7.x (Capacitor 7)
+
+1. **Upgrade Capacitor** to 7 per the [Capacitor migration guide](https://capacitorjs.com/docs/updating/7-0). This is usually the bulk of the work and is orthogonal to IAP.
 2. **Swap the native plugin and bump `@nosslabs/iap`:**
 
    ```bash
    npm uninstall cordova-plugin-purchase
-   npm install @nosslabs/iap @capgo/native-purchases
-   # On Capacitor 8 you may instead pin: @capgo/native-purchases@^8
+   npm install @nosslabs/iap @capgo/native-purchases@lts-v7
    ```
-3. **Upgrade the Capacitor peer deps** you already have to v7+ (`@capacitor/core`, `@capacitor/preferences`, and the optional `@capacitor/app`).
+
+   Install the plugin from the `lts-v7` dist-tag — npm's `latest` for
+   `@capgo/native-purchases` now points at its `8.x` line, which requires
+   Capacitor 8.
+3. **Upgrade the Capacitor peer deps** you already have to v7 (`@capacitor/core`, `@capacitor/preferences`, and the optional `@capacitor/app`).
 4. **Run `npx cap sync`** so the new plugin's native source is linked.
 5. **No changes to your `createIAP({ ... })` config or any consumer code.** Same `purchase()`/`restore()`/`refresh()`/`getEntitlements()` API, same events, same error codes, same return shapes.
 
@@ -25,7 +51,7 @@ The whole 0.2–0.4 feature set (carried forward into `5.0.0` and now `7.x`) is 
 
 ### Why a new plugin
 
-`cordova-plugin-purchase` reaches the device through Capacitor's Cordova compatibility bridge, which is the path Capacitor is steadily de-emphasising. `@capgo/native-purchases` is a first-class Capacitor plugin (StoreKit 2 on iOS, Google Play Billing 7 on Android) and — crucially — supports `autoAcknowledgePurchases: false` on **both** platforms, so the library's "never grant before the backend confirms" guarantee holds with no iOS-specific finish-before-verify race. The plugin-version specifics are isolated behind the `NativeAdapter` interface (`src/adapters/native/capgo/native-adapter.ts`) — the same boundary that lets the library run on web via the web-stub adapter.
+`cordova-plugin-purchase` reaches the device through Capacitor's Cordova compatibility bridge, which is the path Capacitor is steadily de-emphasising. `@capgo/native-purchases` is a first-class Capacitor plugin (StoreKit 2 on iOS, Google Play Billing on Android) and — crucially — supports `autoAcknowledgePurchases: false` on **both** platforms, so the library's "never grant before the backend confirms" guarantee holds with no iOS-specific finish-before-verify race. The plugin-version specifics are isolated behind the `NativeAdapter` interface (`src/adapters/native/capgo/native-adapter.ts`) — the same boundary that lets the library run on web via the web-stub adapter.
 
 ## Coming from `0.1.x` (historical — `purchase()` signature)
 
@@ -52,8 +78,9 @@ Everything else (config, events, error codes, return shape) is unchanged. The op
 
 | Library version | Capacitor major | Native plugin | dist-tag | Status |
 |---|---|---|---|---|
-| 7.0.x | 7 (also 8) | `@capgo/native-purchases` 7.16.x (or `^8` on Cap 8) | `@latest` | **Current** |
-| 5.0.x | 5 | `cordova-plugin-purchase` ^13.x | (pin via `^5`) | Maintenance |
+| 8.0.x | 8 | `@capgo/native-purchases` `^8` | `@next` | **Release candidate** |
+| 7.1.x | 7 | `@capgo/native-purchases` `lts-v7` | `@latest`, `@latest-7` | **Current** |
+| 5.0.x | 5 | `cordova-plugin-purchase` ^13.x | `@latest-5` (pin via `^5`) | Maintenance |
 | 0.2.x – 0.4.x | 5 | `cordova-plugin-purchase` ^13.x | — | Superseded by `5.0.0` (same code, renumbered) |
 | 0.1.x | 5 | `cordova-plugin-purchase` ^13.x | — | Superseded |
 
@@ -65,7 +92,7 @@ Capacitor 6 is not a separate target — Cap 5 → 7 is the supported upgrade pa
 - The Cap 5 → 7 upgrade has many breaking changes orthogonal to IAP; bundling IAP into it would have gated the product launch.
 - `cordova-plugin-purchase` was the only deferred-finish-capable plugin that worked on the Cap 5 bridge — MIT-licensed and production-tested.
 
-The Capacitor 5 line stays on the `5.x` branch (as `5.x` releases on `@latest`) and continues to receive patches for Capacitor 5 consumers. `main` is now the in-dev `7.x` line.
+The Capacitor 5 line stays on the `5.x` branch (as `5.x` releases, reachable via `^5` or the `@latest-5` dist-tag) and continues to receive patches for Capacitor 5 consumers. The Capacitor 7 line likewise lives on the `7.x` branch, on `@latest` and `@latest-7`. `main` is now the in-dev `8.x` line.
 
 ## Reporting issues with the upgrade path
 

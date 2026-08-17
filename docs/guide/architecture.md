@@ -25,7 +25,7 @@
 │ @capgo/native-purchases  │    │ Your backend (HTTP/JSON) │
 │   (native iOS/Android)   │    │   - /verify/apple        │
 │   - StoreKit 2 (iOS)     │    │   - /verify/google       │
-│   - Play Billing 7       │    │   - /entitlements        │
+│   - Play Billing         │    │   - /entitlements        │
 │                          │    │   - /restore             │
 └──────────────────────────┘    └──────────────────────────┘
                                               │
@@ -55,7 +55,7 @@
 
 ### Native plugin (`@capgo/native-purchases`)
 
-- Bridges to StoreKit 2 (iOS 15+) and Google Play Billing 7 (Android API 21+).
+- Bridges to StoreKit 2 (iOS 15+) and Google Play Billing (Android API 21+ on the `7.x` line, 24+ on `8.x`).
 - Hands the library a transaction with a token (Apple `transactionId` or Google `purchaseToken`).
 - Honours **deferred finish** on both platforms — with `autoAcknowledgePurchases: false` the transaction stays open until we explicitly call `acknowledgePurchase()`. Critical for the safety guarantee, with no iOS-specific finish-before-verify race.
 

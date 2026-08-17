@@ -7,12 +7,18 @@ Captured 2026-04-28 from `node_modules/@capgo/native-purchases/dist/esm/definiti
 | Plugin range | Capacitor peer |
 |---|---|
 | `7.13.0` – `7.16.2` | `>=7.0.0` (works on Cap 7 + 8) |
-| `7.17.0` – `7.18.0` | `>=8.0.0` (Cap 8 only — labeled "lts-v7" but requires Cap 8) |
+| `7.17.0` – `7.18.0` | `>=8.0.0` (Cap 8 only — a regression; these briefly carried the `lts-v7` tag) |
+| `7.19.1` – `7.19.3` | `>=7.0.0` (Cap-7 compatible again; `lts-v7` currently resolves here) |
 | `8.x` | `>=8.0.0` |
 | `6.0.x` | `^6.0.0` (Cap 6) |
 | `0.0.x` (last 0.0.72) | `^5.0.0` (Cap 5 — versioning was 0.0.x for Cap 5 line) |
 
-**The `7.x` line of `@nosslabs/iap` targets v7.16.2** (last v7 release that's actually Cap-7-compatible). Its peer dep was historically `7.16.x || ^8.0.0`, narrowed to `^7.16.2` for the `7.1.0` release; Cap 7 consumers should install from the plugin's `lts-v7` dist-tag. The `8.x` line of `@nosslabs/iap` requires `@capgo/native-purchases@^8`.
+**The `7.x` line of `@nosslabs/iap` declares `^7.16.2`**, which admits the whole
+Cap-7-compatible range including `7.19.x`. Its peer dep was historically
+`7.16.x || ^8.0.0`, narrowed to `^7.16.2` for the `7.1.0` release. Cap 7
+consumers should install from the plugin's `lts-v7` dist-tag, which currently
+resolves to `7.19.3` (peer `>=7.0.0`). The `8.x` line of `@nosslabs/iap`
+requires `@capgo/native-purchases@^8`.
 
 ## Confirmed methods
 
@@ -114,4 +120,8 @@ interface Transaction {
 
 ✅ Event listeners (`transactionUpdated`, `transactionVerificationFailed`) on iOS are useful for handling out-of-band StoreKit updates (e.g., subscription renewal), but **not wired by the 7.x adapter** — recovery replays from the `unfinished_transactions` store and `refreshOnResume` reconciles server-side renewals. They'd surface as a future additive optional `NativeAdapter` method.
 
-⚠️ **Cap 7 plugin was just deprecated** — v7.16.2 is the last v7 release that actually works on Cap 7 (later 7.x releases require Cap 8). If a critical bug shows up, we fork-and-patch.
+⚠️ **Cap-7 support wobbled but was restored.** `7.17.0`–`7.18.0` shipped a
+`>=8.0.0` peer, briefly making the `lts-v7` tag Cap-8-only. `7.19.1` and
+`7.19.3` reverted to `>=7.0.0`, and `lts-v7` now resolves to `7.19.3`. Recheck
+`npm view @capgo/native-purchases@lts-v7 peerDependencies` before relying on the
+tag; if it regresses again, pin `7.19.3` explicitly or fork-and-patch.

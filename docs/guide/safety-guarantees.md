@@ -8,7 +8,7 @@ This page documents the correctness guarantees `@nosslabs/iap` makes — and the
 
 ### Why this matters
 
-Both StoreKit 2 and Google Play Billing 7 use **deferred finish** semantics: a transaction stays in the user's purchase queue until your code explicitly acknowledges it. If your app crashes, the network drops, or the user kills the process between "store says paid" and "your backend says verified", the transaction remains in the queue.
+Both StoreKit 2 and Google Play Billing use **deferred finish** semantics: a transaction stays in the user's purchase queue until your code explicitly acknowledges it. If your app crashes, the network drops, or the user kills the process between "store says paid" and "your backend says verified", the transaction remains in the queue.
 
 Naive clients call `finish()` immediately on receiving the transaction. That's wrong: you've told the store "we got it" before your backend even saw the receipt. If your backend later rejects the receipt (replay, sandbox/prod mismatch, fraud signal), the user already paid — but you have no record and no recovery hook.
 

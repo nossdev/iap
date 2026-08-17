@@ -3,8 +3,8 @@
 ## Requirements
 
 - **Capacitor:** 7.x. For the Capacitor 8 line, see the release candidate below. For the Capacitor 5 line, install `@nosslabs/iap@^5` (the `5.x` releases) — see [Migration](/migration/).
-- **Platform versions:** iOS 15.0+ (StoreKit 2 requirement), Android API 21+ (Google Play Billing 7.x)
-- **Node:** 18+ for tooling
+- **Platform versions:** iOS 15.0+ (StoreKit 2 requirement). Android API 21+ on the `7.x` line (Google Play Billing 7.x); **API 24+** on the `8.x` line, which ships Google Play Billing 8.x.
+- **Node:** 18+ for tooling on the `7.x` line; Capacitor 8 requires **Node 22+**.
 - **Backend:** any HTTP/JSON service you control (or a custom [`BackendAdapter`](/api/backend-adapter) for non-HTTP transports)
 
 If your app needs to support iOS < 15, this library is not for you.
@@ -19,20 +19,28 @@ npm install @nosslabs/iap
 
 ::: tip Capacitor 8
 The Capacitor 8 line is in release candidate on the `@next` dist-tag:
-`npm install @nosslabs/iap@next @capgo/native-purchases`. `@latest` stays on
-the `7.x` line until it graduates.
+
+```bash
+npm install @nosslabs/iap@next @capgo/native-purchases@^8
+```
+
+`@latest` stays on the `7.x` line until it graduates. Substitute `^8` for
+`lts-v7`, and `@capacitor/*@^8` for `@capacitor/*@^7`, everywhere below — the
+library's own API is identical on both lines. See [Migration](/migration/).
 :::
 
 ## Install the native plugin
 
-`@nosslabs/iap` wraps [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) — a free, MIT-licensed, StoreKit 2 / Google Play Billing 7 plugin built as a first-class Capacitor plugin.
+`@nosslabs/iap` wraps [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) — a free, MIT-licensed, StoreKit 2 / Google Play Billing plugin built as a first-class Capacitor plugin. (Play Billing 7.x on the `lts-v7` line, 8.x on the `^8` line.)
 
 ```bash
-npm install @capgo/native-purchases
+npm install @capgo/native-purchases@lts-v7
 npx cap sync
 ```
 
-On Capacitor 7 install `@capgo/native-purchases@lts-v7` — npm's `latest` for that plugin now points at its 8.x (Capacitor 8) line, so an unqualified install pulls a version that requires Capacitor 8. On Capacitor 8 use `@capgo/native-purchases@^8`. `npx cap sync` is required so the iOS and Android native projects pick up the plugin code. Re-run it any time you add/update native dependencies.
+Pin the dist-tag rather than installing bare: npm's `latest` for that plugin now points at its 8.x (Capacitor 8) line, so an unqualified `npm install @capgo/native-purchases` in a Capacitor 7 app pulls a version that requires Capacitor 8. Use `@lts-v7` on Capacitor 7 and `@^8` on Capacitor 8.
+
+`npx cap sync` is required so the iOS and Android native projects pick up the plugin code. Re-run it any time you add/update native dependencies.
 
 ::: warning Don't skip `cap sync`
 A common cause of purchases silently failing (or `isAvailable()` returning `false`) is forgetting `npx cap sync` after installing `@capgo/native-purchases`. The plugin's native source files don't get linked otherwise.
@@ -40,10 +48,15 @@ A common cause of purchases silently failing (or `isAvailable()` returning `fals
 
 ## Install Capacitor peer dependencies
 
-If you don't already have these installed in your Capacitor 7 app, add them:
+If you don't already have these installed, add them — matching your Capacitor major:
 
 ```bash
-npm install @capacitor/core @capacitor/preferences
+# Capacitor 7
+npm install @capacitor/core@^7 @capacitor/preferences@^7
+
+# Capacitor 8
+npm install @capacitor/core@^8 @capacitor/preferences@^8
+
 npx cap sync
 ```
 

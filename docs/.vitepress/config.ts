@@ -20,7 +20,8 @@ export default defineConfig({
       'meta',
       {
         property: 'og:description',
-        content: 'In-app purchases for Capacitor 7+ with server-side validation via Attesto.',
+        content:
+          'In-app purchases for Capacitor 7 and 8 with server-side validation via Attesto.',
       },
     ],
     ['meta', { property: 'og:url', content: 'https://iap.nossdev.com/' }],
@@ -119,7 +120,10 @@ export default defineConfig({
       '/migration/': [
         {
           text: 'Migration',
-          items: [{ text: '5.x (Cap 5) → 7.x (Cap 7+)', link: '/migration/' }],
+          items: [
+            { text: '7.x (Cap 7) → 8.x (Cap 8)', link: '/migration/#_7-x-capacitor-7-8-x-capacitor-8' },
+            { text: '5.x (Cap 5) → 7.x (Cap 7)', link: '/migration/#_5-x-capacitor-5-7-x-capacitor-7' },
+          ],
         },
       ],
 
