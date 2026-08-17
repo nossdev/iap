@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- **Capacitor:** 7.x (also runs on 8.x). For the Capacitor 5 line, install `@nosslabs/iap@latest` (the `5.x` releases) — see [Migration](/migration/).
+- **Capacitor:** 7.x. For the Capacitor 8 line, see the release candidate below. For the Capacitor 5 line, install `@nosslabs/iap@^5` (the `5.x` releases) — see [Migration](/migration/).
 - **Platform versions:** iOS 15.0+ (StoreKit 2 requirement), Android API 21+ (Google Play Billing 7.x)
 - **Node:** 18+ for tooling
 - **Backend:** any HTTP/JSON service you control (or a custom [`BackendAdapter`](/api/backend-adapter) for non-HTTP transports)
@@ -15,7 +15,13 @@ If your app needs to support iOS < 15, this library is not for you.
 npm install @nosslabs/iap
 ```
 
-(`@nosslabs/iap@latest` is the `7.x` (Capacitor 7+) line. For Capacitor 5, pin `@nosslabs/iap@^5` — `^5` ranges resolve to the maintenance `5.x` line, not `7.x`.)
+(`@nosslabs/iap@latest` is the `7.x` (Capacitor 7) line, also reachable as `@latest-7`. For Capacitor 5, pin `@nosslabs/iap@^5` — `^5` ranges resolve to the maintenance `5.x` line, not `7.x`.)
+
+::: tip Capacitor 8
+The Capacitor 8 line is in release candidate on the `@next` dist-tag:
+`npm install @nosslabs/iap@next @capgo/native-purchases`. `@latest` stays on
+the `7.x` line until it graduates.
+:::
 
 ## Install the native plugin
 
@@ -26,7 +32,7 @@ npm install @capgo/native-purchases
 npx cap sync
 ```
 
-On Capacitor 7 install `@capgo/native-purchases@7.16.x`; on Capacitor 8 you can use `@capgo/native-purchases@^8`. `npx cap sync` is required so the iOS and Android native projects pick up the plugin code. Re-run it any time you add/update native dependencies.
+On Capacitor 7 install `@capgo/native-purchases@lts-v7` — npm's `latest` for that plugin now points at its 8.x (Capacitor 8) line, so an unqualified install pulls a version that requires Capacitor 8. On Capacitor 8 use `@capgo/native-purchases@^8`. `npx cap sync` is required so the iOS and Android native projects pick up the plugin code. Re-run it any time you add/update native dependencies.
 
 ::: warning Don't skip `cap sync`
 A common cause of purchases silently failing (or `isAvailable()` returning `false`) is forgetting `npx cap sync` after installing `@capgo/native-purchases`. The plugin's native source files don't get linked otherwise.
