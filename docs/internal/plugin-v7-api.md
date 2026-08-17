@@ -12,7 +12,7 @@ Captured 2026-04-28 from `node_modules/@capgo/native-purchases/dist/esm/definiti
 | `6.0.x` | `^6.0.0` (Cap 6) |
 | `0.0.x` (last 0.0.72) | `^5.0.0` (Cap 5 — versioning was 0.0.x for Cap 5 line) |
 
-**The `7.x` line of `@nosslabs/iap` targets v7.16.2** (last v7 release that's actually Cap-7-compatible). The peer dep is `7.16.x || ^8.0.0` — Cap 8 consumers can move to `@capgo/native-purchases@^8`; Cap 7 consumers stay on `7.16.x`.
+**The `7.x` line of `@nosslabs/iap` targets v7.16.2** (last v7 release that's actually Cap-7-compatible). Its peer dep was historically `7.16.x || ^8.0.0`, narrowed to `^7.16.2` for the `7.1.0` release; Cap 7 consumers should install from the plugin's `lts-v7` dist-tag. The `8.x` line of `@nosslabs/iap` requires `@capgo/native-purchases@^8`.
 
 ## Confirmed methods
 
