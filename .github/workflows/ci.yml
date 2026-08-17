@@ -37,7 +37,7 @@ jobs:
         run: npm run lint
 
       - name: Test
-        run: npm test
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
@@ -48,3 +48,27 @@ jobs:
           test -f dist/index.cjs
           test -f dist/index.d.ts
           test -f dist/index.d.cts
+
+      # Asserts on the built output, not the source. `__PKG_VERSION__` is
+      # substituted by tsup's `define`; if that define is ever removed, tsc,
+      # lint, vitest and the build all still pass (vitest has its own define,
+      # and the declared global satisfies tsc) but the bundle ships a bare
+      # identifier and throws `__PKG_VERSION__ is not defined` on import.
+      # This step is the only thing standing between that and a publish.
+      - name: Verify dist loads and reports the right version
+        run: |
+          node -e "
+            const { VERSION, createIAP } = require('./dist/index.cjs');
+            const { version } = require('./package.json');
+            if (typeof createIAP !== 'function') throw new Error('CJS: createIAP missing');
+            if (VERSION !== version) throw new Error(\`CJS: VERSION '\${VERSION}' != package.json '\${version}'\`);
+            console.log('CJS OK', VERSION);
+          "
+          node --input-type=module -e "
+            import { VERSION, createIAP } from './dist/index.js';
+            import { createRequire } from 'node:module';
+            const { version } = createRequire(import.meta.url)('./package.json');
+            if (typeof createIAP !== 'function') throw new Error('ESM: createIAP missing');
+            if (VERSION !== version) throw new Error(\`ESM: VERSION '\${VERSION}' != package.json '\${version}'\`);
+            console.log('ESM OK', VERSION);
+          "

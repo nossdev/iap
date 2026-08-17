@@ -52,10 +52,35 @@ jobs:
         run: npm run lint
 
       - name: Test
-        run: npm test
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
+
+      # Last gate before an irreversible publish. See the equivalent step in
+      # ci.yml for why asserting on the built output (not the source) is the
+      # only thing that catches a missing `__PKG_VERSION__` define.
+      - name: Verify dist loads and reports the right version
+        run: |
+          test -f dist/index.js
+          test -f dist/index.cjs
+          test -f dist/index.d.ts
+          test -f dist/index.d.cts
+          node -e "
+            const { VERSION, createIAP } = require('./dist/index.cjs');
+            const { version } = require('./package.json');
+            if (typeof createIAP !== 'function') throw new Error('CJS: createIAP missing');
+            if (VERSION !== version) throw new Error(\`CJS: VERSION '\${VERSION}' != package.json '\${version}'\`);
+            console.log('CJS OK', VERSION);
+          "
+          node --input-type=module -e "
+            import { VERSION, createIAP } from './dist/index.js';
+            import { createRequire } from 'node:module';
+            const { version } = createRequire(import.meta.url)('./package.json');
+            if (typeof createIAP !== 'function') throw new Error('ESM: createIAP missing');
+            if (VERSION !== version) throw new Error(\`ESM: VERSION '\${VERSION}' != package.json '\${version}'\`);
+            console.log('ESM OK', VERSION);
+          "
 
       - name: Check if version is already on npm
         id: published_check

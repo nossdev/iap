@@ -3,10 +3,18 @@ import { version as packageVersion } from '../../package.json';
 import { VERSION } from '../../src/version.js';
 
 describe('VERSION', () => {
-  // Guards the drift that shipped 0.1.0 to consumers while package.json was
-  // several majors ahead: VERSION is publicly re-exported and the logger
-  // stamps it onto error reports, so a stale value silently misattributes
-  // every bug report.
+  // NOTE ON WHAT THIS DOES AND DOES NOT PROVE.
+  //
+  // Both sides of this assertion derive from the same package.json: vitest.config.ts
+  // sets `__PKG_VERSION__` from it, and the test imports `version` from it. So this
+  // cannot catch drift in the *shipped* artifact — it only fails if the vitest
+  // `define` is missing entirely (ReferenceError).
+  //
+  // The real guard for the published bundle is the dist assertion in ci.yml and
+  // release.yml, which imports dist/index.{js,cjs} and compares VERSION against
+  // package.json. Without that, deleting the `define` in tsup.config.ts would ship
+  // a package that throws `__PKG_VERSION__ is not defined` on import, through a
+  // fully green typecheck/lint/test/build pipeline.
   it('matches the version in package.json', () => {
     expect(VERSION).toBe(packageVersion);
   });

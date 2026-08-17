@@ -44,8 +44,10 @@ consumers stay on `7.x` — `^7` ranges don't auto-resolve to `8.x`.
   with `require` pointing at the `dist/index.d.cts` the build already emitted.
   Affects `7.1.0` and earlier too.
 - **`VERSION` no longer reports `0.1.0`.** It was hard-coded and never updated
-  by any publish step, so error reports from every released build
-  misattributed their version.
+  by any publish step, so the value every released build exported was wrong.
+  (The `8.0.0-next.0` entry claimed this also corrupted logger error reports —
+  it did not. `src/lib/logger.ts` uses a fixed `[@nosslabs/iap]` prefix and has
+  never read `VERSION`. The export is for consumers only.)
 
 ### Notes
 
