@@ -2,44 +2,40 @@
 
 ## Requirements
 
-- **Capacitor:** 8.x. For the Capacitor 7 line, install `@nosslabs/iap@^7` — see the [v7 docs](/v7/). For the Capacitor 5 line, install `@nosslabs/iap@^5` — see the [v5 docs](/v5/) and [Migration](/migration/).
-- **Platform versions:** iOS 15.0+ (StoreKit 2 requirement). Android **API 24+** (Capacitor 8's minimum; the line ships Google Play Billing 8.x).
-- **Node:** 22+ (required by Capacitor 8).
-- **Backend:** any HTTP/JSON service you control (or a custom [`BackendAdapter`](/api/backend-adapter) for non-HTTP transports)
+- **Capacitor:** 7.x. For the Capacitor 8 line — the current line, on `@latest` — see the [current docs](/). For the Capacitor 5 line, install `@nosslabs/iap@^5` (the `5.x` releases) — see [Migration](/migration/).
+- **Platform versions:** iOS 15.0+ (StoreKit 2 requirement). Android API 21+ (Google Play Billing 7.x).
+- **Node:** 18+ for tooling.
+- **Backend:** any HTTP/JSON service you control (or a custom [`BackendAdapter`](/v7/api/backend-adapter) for non-HTTP transports)
 
 If your app needs to support iOS < 15, this library is not for you.
 
 ## Install the package
 
 ```bash
-npm install @nosslabs/iap
+npm install @nosslabs/iap@^7
 ```
 
-(`@nosslabs/iap@latest` is the `8.x` (Capacitor 8) line, also reachable as `@latest-8`. For Capacitor 7, pin `@nosslabs/iap@^7` — `^7` ranges resolve to the maintenance `7.x` line, not `8.x`. For Capacitor 5, pin `@nosslabs/iap@^5`.)
+**Pin the major.** `@nosslabs/iap@latest` is now the `8.x` (Capacitor 8) line, so a
+bare `npm install @nosslabs/iap` in a Capacitor 7 app installs a package whose
+peers require Capacitor 8. `^7` ranges resolve to this maintenance line, which is
+also reachable as the `@latest-7` dist-tag. (For Capacitor 5, pin `@nosslabs/iap@^5`.)
 
-::: tip Still on Capacitor 7?
-The `7.x` line stays supported on `@latest-7`:
-
-```bash
-npm install @nosslabs/iap@^7 @capgo/native-purchases@lts-v7
-```
-
-Below, use `@capgo/native-purchases@lts-v7` in place of the bare plugin
-install, and `@capacitor/*@^7` in place of `@capacitor/*@^8` — the library's
-own API is identical on both lines. Full instructions live in the
-[v7 docs](/v7/guide/installation).
+::: tip On Capacitor 8?
+The `8.x` line is current, on `@latest` — use the [current docs](/). The library's
+own API is identical on both lines; only the install command and the Capacitor
+peer range differ. See [Migration](/migration/).
 :::
 
 ## Install the native plugin
 
-`@nosslabs/iap` wraps [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) — a free, MIT-licensed, StoreKit 2 / Google Play Billing plugin built as a first-class Capacitor plugin. (Play Billing 8.x on the `8.x` line; 7.x on the `lts-v7` line.)
+`@nosslabs/iap` wraps [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) — a free, MIT-licensed, StoreKit 2 / Google Play Billing plugin built as a first-class Capacitor plugin. (Play Billing 7.x on the `lts-v7` line.)
 
 ```bash
-npm install @capgo/native-purchases
+npm install @capgo/native-purchases@lts-v7
 npx cap sync
 ```
 
-On Capacitor 8 the plugin's default `latest` tag is correct. On **Capacitor 7**, pin `@lts-v7` instead — `latest` points at the 8.x line, which requires Capacitor 8.
+Pin the dist-tag rather than installing bare: npm's `latest` for that plugin points at its 8.x (Capacitor 8) line, so an unqualified `npm install @capgo/native-purchases` in a Capacitor 7 app pulls a version that requires Capacitor 8.
 
 `npx cap sync` is required so the iOS and Android native projects pick up the plugin code. Re-run it any time you add/update native dependencies.
 
@@ -52,11 +48,9 @@ A common cause of purchases silently failing (or `isAvailable()` returning `fals
 If you don't already have these installed, add them — matching your Capacitor major:
 
 ```bash
-npm install @capacitor/core@^8 @capacitor/preferences@^8
+npm install @capacitor/core@^7 @capacitor/preferences@^7
 npx cap sync
 ```
-
-(On the `7.x` line, use `@^7` for both — see the [v7 docs](/v7/guide/installation).)
 
 `@capacitor/preferences` is what the library uses for the entitlement cache and unfinished-transaction storage. It's backed by `NSUserDefaults` on iOS, `SharedPreferences` on Android, and `localStorage` on web.
 
@@ -67,7 +61,7 @@ By default, `@nosslabs/iap` automatically calls `iap.refresh()` whenever the app
 To enable it, install `@capacitor/app`:
 
 ```bash
-npm install @capacitor/app
+npm install @capacitor/app@^7
 npx cap sync
 ```
 
@@ -132,5 +126,5 @@ Run with `tsx scripts/check-iap-install.ts` or similar. No errors → install is
 
 ## Next
 
-- [Configuration](/guide/configuration) — full options reference
-- [Getting started](/guide/getting-started) — first purchase walkthrough
+- [Configuration](/v7/guide/configuration) — full options reference
+- [Getting started](/v7/guide/getting-started) — first purchase walkthrough

@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: "@nosslabs/iap"
-  text: "In-app purchases for Capacitor 7 and 8"
+  text: "In-app purchases for Capacitor 8"
   tagline: "Thin orchestrator. Server-side validation via Attesto."
   image:
     src: /iap-logo.svg

@@ -2,35 +2,34 @@
 
 This page walks you from zero to a working sandbox purchase in under 30 minutes. It assumes you already have:
 
-- A Capacitor 8 app (on Capacitor 7? see the [v7 docs](/v7/); on Capacitor 5, the [v5 docs](/v5/))
+- A Capacitor 7 app (on Capacitor 8? see the [current docs](/) — the `8.x` line)
 - Products configured in App Store Connect (sandbox testers OK) and/or Google Play Console (license testers OK)
-- A backend you can deploy a few new endpoints to (or you can implement them as a [custom `BackendAdapter`](/api/backend-adapter))
+- A backend you can deploy a few new endpoints to (or you can implement them as a [custom `BackendAdapter`](/v7/api/backend-adapter))
 - An [Attesto](https://attesto.nossdev.com) tenant with API key
 
-If you're missing any of these, the [Backend contract](/guide/backend-contract) and [Testing on sandbox](/guide/testing) pages cover them.
+If you're missing any of these, the [Backend contract](/v7/guide/backend-contract) and [Testing on sandbox](/v7/guide/testing) pages cover them.
 
 ## 1. Install
 
 ```bash
-npm install @nosslabs/iap @capgo/native-purchases
+npm install @nosslabs/iap@^7 @capgo/native-purchases@lts-v7
 npx cap sync
 ```
 
-Both packages' `latest` tags are the Capacitor 8 line, so no pinning is needed
-on Capacitor 8.
+Pin both. npm's `latest` now points at the `8.x` (Capacitor 8) line for
+`@nosslabs/iap` *and* for `@capgo/native-purchases`, so an unpinned install in a
+Capacitor 7 app pulls packages that require Capacitor 8.
 
-::: tip Still on Capacitor 7?
-Install the maintenance line instead:
-`npm install @nosslabs/iap@^7 @capgo/native-purchases@lts-v7`, and follow the
-[v7 docs](/v7/). Everything else on this page is identical — the library API is
-unchanged between the two lines.
+::: tip On Capacitor 8?
+Use the [current docs](/) instead. The library API is identical between the two
+lines — only the install command and the Capacitor peer range differ.
 :::
 
 ::: tip Optional: app-resume listener
 If you want the library to automatically refresh entitlements when your app returns from background (the default), also install `@capacitor/app`:
 
 ```bash
-npm install @capacitor/app
+npm install @capacitor/app@^7
 npx cap sync
 ```
 
@@ -208,7 +207,7 @@ const unsubscribe = iap.on('entitlements-changed', ({ entitlements, previous }) 
 unsubscribe();
 ```
 
-See [Vue + Quasar recipe](/recipes/vue-quasar) and [React recipe](/recipes/react) for full reactive store wiring.
+See [Vue + Quasar recipe](/v7/recipes/vue-quasar) and [React recipe](/v7/recipes/react) for full reactive store wiring.
 
 ## 7. Restore on a new device
 
@@ -232,7 +231,7 @@ async function onRestoreClick() {
 
 ## What's next
 
-- [Backend contract](/guide/backend-contract) — implement the four endpoints in your backend (Attesto handles the receipt validation)
-- [Configuration](/guide/configuration) — full schema reference
-- [Error handling](/guide/error-handling) — all `IAPErrorCode` values and remediation hints
-- [Testing on sandbox](/guide/testing) — sandbox tester accounts on iOS + Google license testers on Android
+- [Backend contract](/v7/guide/backend-contract) — implement the four endpoints in your backend (Attesto handles the receipt validation)
+- [Configuration](/v7/guide/configuration) — full schema reference
+- [Error handling](/v7/guide/error-handling) — all `IAPErrorCode` values and remediation hints
+- [Testing on sandbox](/v7/guide/testing) — sandbox tester accounts on iOS + Google license testers on Android
