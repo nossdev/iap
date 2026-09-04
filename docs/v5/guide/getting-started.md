@@ -12,7 +12,7 @@ If you're missing any of these, the [Backend contract](/v5/guide/backend-contrac
 ## 1. Install
 
 ```bash
-npm install @nosslabs/iap cordova-plugin-purchase
+npm install @nosslabs/iap@^5 cordova-plugin-purchase
 npx cap sync
 ```
 
@@ -20,7 +20,7 @@ npx cap sync
 If you want the library to automatically refresh entitlements when your app returns from background (the default), also install `@capacitor/app`:
 
 ```bash
-npm install @capacitor/app
+npm install @capacitor/app@^5
 npx cap sync
 ```
 

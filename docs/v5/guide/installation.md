@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- **Capacitor:** 5.x (the v0.1 line; Cap 6/7/8 support is roadmap — see [Migration](/migration/))
+- **Capacitor:** 5.x (the `5.x` line). Capacitor 7 and 8 are supported on the `7.x` and `8.x` lines — see [Migration](/migration/).
 - **Platform versions:** iOS 15.0+ (StoreKit 2 requirement), Android API 21+ (Google Play Billing 7.x)
 - **Node:** 18+ for tooling
 - **Backend:** any HTTP/JSON service you control (or a custom [`BackendAdapter`](/v5/api/backend-adapter) for non-HTTP transports)
@@ -12,7 +12,7 @@ If your app needs to support iOS < 15, this library is not for you.
 ## Install the package
 
 ```bash
-npm install @nosslabs/iap
+npm install @nosslabs/iap@^5
 ```
 
 ## Install the native plugin
@@ -35,7 +35,7 @@ A common cause of `BILLING_NOT_AVAILABLE` errors is forgetting `npx cap sync` af
 If you don't already have these installed in your Capacitor 5 app, add them:
 
 ```bash
-npm install @capacitor/core @capacitor/preferences
+npm install @capacitor/core@^5 @capacitor/preferences@^5
 npx cap sync
 ```
 
@@ -48,7 +48,7 @@ By default, `@nosslabs/iap` automatically calls `iap.refresh()` whenever the app
 To enable it, install `@capacitor/app`:
 
 ```bash
-npm install @capacitor/app
+npm install @capacitor/app@^5
 npx cap sync
 ```
 
