@@ -1,6 +1,6 @@
 # API reference
 
-Hand-curated reference for v0.1.x. Auto-generated docs ship in v0.2 (TypeDoc).
+Hand-curated reference for the `5.x` (Capacitor 5) line.
 
 ## Modules
 

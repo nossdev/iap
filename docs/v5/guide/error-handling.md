@@ -191,7 +191,7 @@ It DOES throw on:
 
 These are programming errors / pre-flight failures, not user-flow errors — surface them in dev, silence them in production (the user can't fix them).
 
-## Permanent vs transient classification (recovery)
+## Permanent vs transient classification (recovery) {#permanent-vs-transient-classification}
 
 When recovery runs at `initialize()` time, every entry in the
 unfinished-transactions list is re-verified with your backend. The

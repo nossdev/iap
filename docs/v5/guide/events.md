@@ -127,11 +127,11 @@ The library de-duplicates: identical entitlement lists do NOT emit. If you must 
 
 ```typescript
 iap.on('price-stale', ({ productId, lastFetchedAt }) => {
-  // Currently informational; auto-refetch ships in v0.2.
+  // Informational only — prices are not auto-refetched on expiry.
 });
 ```
 
-Emitted when `iap.getProducts()` returns a product whose native price was cached longer than `productPriceCacheTtlMs` ago (default 24h). For v0.1, this is a passive signal — your UI can choose to call `iap.getProducts()` again or display a warning. v0.2 will auto-refetch.
+Emitted when `iap.getProducts()` returns a product whose native price was cached longer than `productPriceCacheTtlMs` ago (default 24h). This is a passive signal — your UI can choose to call `iap.getProducts()` again or display a warning. The library does not auto-refetch.
 
 ### `error`
 

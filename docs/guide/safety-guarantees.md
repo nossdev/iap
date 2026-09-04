@@ -43,7 +43,7 @@ if (response.valid) {
 
 If step 3 throws or step 4's `valid` is false, the transaction stays in `unfinished_transactions` for retry.
 
-## 2. At-least-once recovery
+## 2. At-least-once recovery {#at-least-once-recovery}
 
 **Every transaction the native side hands us is verified at least once, even across crashes.**
 
