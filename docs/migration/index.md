@@ -2,25 +2,25 @@
 
 `@nosslabs/iap` has three lines, **each numbered to match the Capacitor major it targets**:
 
-- **`8.x`** — **Capacitor 8**, built on [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) `^8`. In **release candidate** on the `@next` dist-tag — see [7.x → 8.x](#_7-x-capacitor-7-8-x-capacitor-8) below.
-- **`7.x`** — **Capacitor 7**, built on `@capgo/native-purchases` `lts-v7`. The current line, on `@latest` (also `@latest-7`).
-- **`5.x`** — **Capacitor 5**, built on `cordova-plugin-purchase`. In maintenance — pin `^5` to stay on this line (also `@latest-5`); `^5` ranges do not resolve to `7.x`.
+- **`8.x`** — **Capacitor 8**, built on [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) `^8`. The current line, on `@latest` (also `@latest-8`) — see [7.x → 8.x](#v7-to-v8) below.
+- **`7.x`** — **Capacitor 7**, built on `@capgo/native-purchases` `lts-v7`. In maintenance — pin `^7` to stay on this line (also `@latest-7`). Docs: [v7](/v7/).
+- **`5.x`** — **Capacitor 5**, built on `cordova-plugin-purchase`. In maintenance — pin `^5` to stay on this line (also `@latest-5`). Docs: [v5](/v5/).
 
 Each line's peer range is scoped to its own Capacitor major, so `^5`, `^7` and
 `^8` ranges each stay on their own line and never cross-resolve.
 
 The public API surface (`createIAP`, the `IAP` interface, events, error codes, types) is the **same on all three lines** — moving between them is a peer-dependency swap, not a code rewrite.
 
-## 7.x (Capacitor 7) → 8.x (Capacitor 8)
+## 7.x (Capacitor 7) → 8.x (Capacitor 8) {#v7-to-v8}
 
-The `8.x` line is currently a **release candidate** on the `@next` dist-tag.
-`@latest` stays on `7.x` until it graduates.
+The `8.x` line is the current line, on `@latest`. If you install
+`@nosslabs/iap` without a range you get it — pin `^7` to stay on Capacitor 7.
 
 1. **Upgrade Capacitor** to 8 per the [Capacitor 8 migration guide](https://capacitorjs.com/docs/updating/8-0). This is the bulk of the work and is orthogonal to IAP. Capacitor 8 requires **Node 22+**, **iOS 15+**, and **Android `minSdk` 24**.
 2. **Bump `@nosslabs/iap` and the native plugin:**
 
    ```bash
-   npm install @nosslabs/iap@next @capgo/native-purchases@^8
+   npm install @nosslabs/iap @capgo/native-purchases
    ```
 3. **Upgrade the Capacitor peer deps** you already have to v8 (`@capacitor/core`, `@capacitor/preferences`, and the optional `@capacitor/app`).
 4. **Run `npx cap sync`.**
@@ -30,19 +30,32 @@ The `8.x` line is currently a **release candidate** on the `@next` dist-tag.
 releases don't register the native method, and the library resolves `null`
 rather than failing.
 
-## 5.x (Capacitor 5) → 7.x (Capacitor 7)
+## 5.x (Capacitor 5) → 7.x (Capacitor 7) {#v5-to-v7}
 
 1. **Upgrade Capacitor** to 7 per the [Capacitor migration guide](https://capacitorjs.com/docs/updating/7-0). This is usually the bulk of the work and is orthogonal to IAP.
 2. **Swap the native plugin and bump `@nosslabs/iap`:**
 
    ```bash
    npm uninstall cordova-plugin-purchase
-   npm install @nosslabs/iap @capgo/native-purchases@lts-v7
+   npm install @nosslabs/iap@^7 @capgo/native-purchases@lts-v7
    ```
 
-   Install the plugin from the `lts-v7` dist-tag — npm's `latest` for
-   `@capgo/native-purchases` now points at its `8.x` line, which requires
-   Capacitor 8.
+   Both packages are pinned here: npm's `latest` for `@nosslabs/iap` *and* for
+   `@capgo/native-purchases` is now the Capacitor 8 line, so an unpinned install
+   would land you on Capacitor 8 rather than 7.
+
+   ::: tip Going straight from Capacitor 5 to Capacitor 8?
+   Upgrade Capacitor to 8 rather than 7 in step 1, drop both pins in step 2, and
+   use `@^8` in step 3:
+
+   ```bash
+   npm uninstall cordova-plugin-purchase
+   npm install @nosslabs/iap @capgo/native-purchases
+   ```
+
+   Then read [7.x → 8.x](#v7-to-v8) for the Capacitor 8 platform minimums
+   (Node 22+, iOS 15+, Android `minSdk` 24).
+   :::
 3. **Upgrade the Capacitor peer deps** you already have to v7 (`@capacitor/core`, `@capacitor/preferences`, and the optional `@capacitor/app`).
 4. **Run `npx cap sync`** so the new plugin's native source is linked.
 5. **No changes to your `createIAP({ ... })` config or any consumer code.** Same `purchase()`/`restore()`/`refresh()`/`getEntitlements()` API, same events, same error codes, same return shapes.
@@ -78,8 +91,8 @@ Everything else (config, events, error codes, return shape) is unchanged. The op
 
 | Library version | Capacitor major | Native plugin | dist-tag | Status |
 |---|---|---|---|---|
-| 8.0.x | 8 | `@capgo/native-purchases` `^8` | `@next` | **Release candidate** |
-| 7.1.x | 7 | `@capgo/native-purchases` `lts-v7` | `@latest`, `@latest-7` | **Current** |
+| 8.0.x | 8 | `@capgo/native-purchases` `^8` | `@latest`, `@latest-8` | **Current** |
+| 7.1.x | 7 | `@capgo/native-purchases` `lts-v7` | `@latest-7` (pin via `^7`) | Maintenance |
 | 5.0.x | 5 | `cordova-plugin-purchase` ^13.x | `@latest-5` (pin via `^5`) | Maintenance |
 | 0.2.x – 0.4.x | 5 | `cordova-plugin-purchase` ^13.x | — | Superseded by `5.0.0` (same code, renumbered) |
 | 0.1.x | 5 | `cordova-plugin-purchase` ^13.x | — | Superseded |
@@ -92,7 +105,7 @@ Capacitor 6 is not a separate target — Cap 5 → 7 is the supported upgrade pa
 - The Cap 5 → 7 upgrade has many breaking changes orthogonal to IAP; bundling IAP into it would have gated the product launch.
 - `cordova-plugin-purchase` was the only deferred-finish-capable plugin that worked on the Cap 5 bridge — MIT-licensed and production-tested.
 
-The Capacitor 5 line stays on the `5.x` branch (as `5.x` releases, reachable via `^5` or the `@latest-5` dist-tag) and continues to receive patches for Capacitor 5 consumers. The Capacitor 7 line likewise lives on the `7.x` branch, on `@latest` and `@latest-7`. `main` is now the in-dev `8.x` line.
+The Capacitor 5 line stays on the `5.x` branch (as `5.x` releases, reachable via `^5` or the `@latest-5` dist-tag) and continues to receive patches for Capacitor 5 consumers. The Capacitor 7 line likewise lives on the `7.x` branch, reachable via `^7` or the `@latest-7` dist-tag. `main` is the `8.x` line, now current on `@latest`.
 
 ## Reporting issues with the upgrade path
 

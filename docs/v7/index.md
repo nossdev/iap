@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: "@nosslabs/iap"
-  text: "In-app purchases for Capacitor 5"
+  text: "In-app purchases for Capacitor 7"
   tagline: "Thin orchestrator. Server-side validation via Attesto."
   image:
     src: /iap-logo.svg
@@ -11,7 +11,7 @@ hero:
   actions:
     - theme: brand
       text: Get Started
-      link: /v5/guide/getting-started
+      link: /v7/guide/getting-started
     - theme: alt
       text: View on GitHub
       link: https://github.com/nossdev/iap
@@ -37,6 +37,6 @@ features:
     details: Web platform is no-op for purchases (rejects with PLATFORM_NOT_SUPPORTED). Cached entitlement reads still work for dev workflows.
 ---
 
-::: tip You're viewing the **`5.x` (Capacitor 5)** docs
-This is the maintenance line for Capacitor 5 apps using `cordova-plugin-purchase`. To install: `npm install @nosslabs/iap@^5`. For Capacitor 8 — now on `@latest` — switch via the version dropdown above or jump straight to the [current docs (v8)](/). For Capacitor 7, see the [v7 docs](/v7/).
+::: tip You're viewing the **`7.x` (Capacitor 7)** docs
+This is the maintenance line for Capacitor 7 apps. To install: `npm install @nosslabs/iap@^7 @capgo/native-purchases@lts-v7` (the `@latest-7` dist-tag tracks it). For Capacitor 8 — now on `@latest` — switch via the version dropdown above or jump straight to the [current docs (v8)](/). For Capacitor 5, see the [v5 docs](/v5/).
 :::

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress';
+import { buildNav } from './versions';
 
 export default defineConfig({
   title: '@nosslabs/iap',
@@ -21,7 +22,7 @@ export default defineConfig({
       {
         property: 'og:description',
         content:
-          'In-app purchases for Capacitor 7 and 8 with server-side validation via Attesto.',
+          'In-app purchases for Capacitor 8 with server-side validation via Attesto.',
       },
     ],
     ['meta', { property: 'og:url', content: 'https://iap.nossdev.com/' }],
@@ -30,38 +31,12 @@ export default defineConfig({
   themeConfig: {
     logo: '/iap-logo.svg',
 
-    nav: [
-      { text: 'Guide', link: '/guide/getting-started', activeMatch: '/guide/' },
-      { text: 'Recipes', link: '/recipes/vue-quasar', activeMatch: '/recipes/' },
-      { text: 'API', link: '/api/', activeMatch: '/api/' },
-      { text: 'Migration', link: '/migration/', activeMatch: '/migration/' },
-      {
-        // Version switcher. "next" = the current latest Capacitor major
-        // (today v7, on `@latest`); older Capacitor majors are pinned by
-        // number. The label stays "next" intentionally — it rotates
-        // meaning at each Capacitor major rollover (v7 today → v8 when
-        // Cap-8 dev starts). The page-path is NOT preserved across
-        // versions; clicking lands on the chosen version's index. See
-        // the "Versioning + branch model" memory for the rollover recipe.
-        text: 'next',
-        items: [
-          {
-            text: 'Version',
-            items: [
-              { text: 'next (v7)', link: '/' },
-              { text: 'v5 (Capacitor 5)', link: '/v5/' },
-            ],
-          },
-          {
-            text: 'Resources',
-            items: [
-              { text: 'Changelog', link: 'https://github.com/nossdev/iap/blob/main/CHANGELOG.md' },
-              { text: 'npm', link: 'https://www.npmjs.com/package/@nosslabs/iap' },
-            ],
-          },
-        ],
-      },
-    ],
+    // Seeded from the shared version table. `theme/Layout.vue` re-derives
+    // this per route at runtime (so "Guide / Recipes / API" stay inside the
+    // version being read) and OVERWRITES whatever is set here — both call
+    // buildNav() from ./versions.ts so they cannot drift. Edit the VERSIONS
+    // table there, never this line.
+    nav: buildNav('/'),
 
     sidebar: {
       '/guide/': [
@@ -121,8 +96,66 @@ export default defineConfig({
         {
           text: 'Migration',
           items: [
-            { text: '7.x (Cap 7) → 8.x (Cap 8)', link: '/migration/#_7-x-capacitor-7-8-x-capacitor-8' },
-            { text: '5.x (Cap 5) → 7.x (Cap 7)', link: '/migration/#_5-x-capacitor-5-7-x-capacitor-7' },
+            { text: '7.x (Cap 7) → 8.x (Cap 8)', link: '/migration/#v7-to-v8' },
+            { text: '5.x (Cap 5) → 7.x (Cap 7)', link: '/migration/#v5-to-v7' },
+          ],
+        },
+      ],
+
+      // ─── v7 (Capacitor 7) docs — frozen snapshot of the 7.x branch ───
+      // Mirrors the structure above but with /v7/ prefixes. Maintained
+      // manually; cherry-pick from the 7.x branch when a doc fix lands
+      // there. The Cap-7 line is in maintenance, so churn is rare.
+      '/v7/guide/': [
+        {
+          text: 'Introduction',
+          items: [
+            { text: 'What is @nosslabs/iap?', link: '/v7/guide/' },
+            { text: 'Getting started', link: '/v7/guide/getting-started' },
+            { text: 'Installation', link: '/v7/guide/installation' },
+            { text: 'Configuration', link: '/v7/guide/configuration' },
+          ],
+        },
+        {
+          text: 'Concepts',
+          items: [
+            { text: 'Architecture', link: '/v7/guide/architecture' },
+            { text: 'Safety guarantees', link: '/v7/guide/safety-guarantees' },
+            { text: 'Backend contract', link: '/v7/guide/backend-contract' },
+            { text: 'Events', link: '/v7/guide/events' },
+            { text: 'Error handling', link: '/v7/guide/error-handling' },
+          ],
+        },
+        {
+          text: 'Operations',
+          items: [{ text: 'Testing on sandbox', link: '/v7/guide/testing' }],
+        },
+      ],
+      '/v7/recipes/': [
+        {
+          text: 'Frameworks',
+          items: [
+            { text: 'Vue + Quasar', link: '/v7/recipes/vue-quasar' },
+            { text: 'React', link: '/v7/recipes/react' },
+            { text: 'Pinia store', link: '/v7/recipes/pinia-store' },
+          ],
+        },
+        {
+          text: 'Patterns',
+          items: [{ text: 'Optimistic grant', link: '/v7/recipes/optimistic-grant' }],
+        },
+      ],
+      '/v7/api/': [
+        {
+          text: 'Reference',
+          items: [
+            { text: 'Overview', link: '/v7/api/' },
+            { text: 'createIAP()', link: '/v7/api/create-iap' },
+            { text: 'IAP instance', link: '/v7/api/iap-instance' },
+            { text: 'Types', link: '/v7/api/types' },
+            { text: 'Errors', link: '/v7/api/errors' },
+            { text: 'BackendAdapter', link: '/v7/api/backend-adapter' },
+            { text: 'Events reference', link: '/v7/api/events-reference' },
           ],
         },
       ],
