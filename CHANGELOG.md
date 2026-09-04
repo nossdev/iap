@@ -5,6 +5,61 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [8.0.0] — 2026-09-04
+
+**The Capacitor 8 line graduates to `@latest`.** `8.0.0-next.0` soaked on the
+`@next` dist-tag from 2026-08-17, was exercised against the iOS and Android
+store sandboxes, and reported no regressions; this promotes that same code to
+general availability. `@latest` moves from `7.1.0` to `8.0.0`.
+
+There are **no functional changes since `8.0.0-next.0`**; see that entry below
+for the full delta against `7.1.0`. In short, moving from `7.1.0` is a
+peer-dependency bump plus `npx cap sync`, with no consumer code changes: the
+`createIAP({ ... })` config, the `IAP` surface, the event map, the error codes
+and the backend contract are unchanged.
+
+**Staying on Capacitor 7?**
+A bare `npm install @nosslabs/iap` now resolves to the Capacitor 8 line. Pin
+`@nosslabs/iap@^7` (or the `@latest-7` dist-tag) with
+`@capgo/native-purchases@lts-v7` to stay on Capacitor 7. The `7.x` line
+continues from the `7.x` branch, and its documentation is archived at
+<https://iap.nossdev.com/v7/>.
+
+### Changed
+
+- **Dist-tags rearranged for the rollover.** `@latest` → `8.0.0` (applied by the
+  release workflow). The auxiliary pointers are applied by hand immediately
+  after publish: the new `@latest-8` pins the Capacitor 8 line, and `@next` is
+  re-pointed at `8.0.0` so it does not sit on a superseded prerelease.
+  `@latest-7` continues to track `7.1.0` and `@latest-5` tracks `5.0.0`.
+- **Corrected a stale doc comment on `VERSION`.** The published `8.0.0-next.0`
+  type declarations described `VERSION` as being "read at runtime by the logger
+  so error reports include the version". That was never true — `src/lib/logger.ts`
+  uses a fixed `[@nosslabs/iap]` prefix. `VERSION` is exported purely for
+  consumers to read. Consumer-visible only on IDE hover; no behaviour change.
+
+### Added
+
+- **Versioned documentation for the `7.x` line** at `/v7/`, a frozen snapshot
+  taken at `7.1.0` and reachable from the site's version switcher, mirroring the
+  existing `/v5/` archive. Install commands there pin `@^7` throughout, since
+  `@latest` no longer resolves to Capacitor 7.
+
+### Internal
+
+Not part of the published package; recorded for contributors.
+
+- **A release gate that loads the built bundle.** CI and the release workflow now
+  import `dist/index.cjs` and `dist/index.js` and assert that `VERSION` matches
+  `package.json`. The build-time `__PKG_VERSION__` define is otherwise
+  unguarded: removing it leaves typecheck, lint, tests and the build all green
+  while shipping a bundle that throws `ReferenceError` on import. CI also runs
+  `test:coverage` now, so the 80% thresholds are actually enforced.
+- **The docs version switcher is built from one shared table**
+  (`docs/.vitepress/versions.ts`). `theme/Layout.vue` overwrites `themeConfig.nav`
+  per route, so the copy in `config.ts` had been dead code — the `/v5/` archive
+  was reachable only because that override happened to hardcode it.
+
 ## [8.0.0-next.0] — 2026-08-17
 
 **First release of the Capacitor 8 line, on the `@next` npm dist-tag.** The

@@ -2,14 +2,14 @@
 
 > Thin Capacitor IAP orchestrator. Server-side validation via [Attesto](https://attesto.nossdev.com).
 
-**Status: `8.0.0-next.0` — the Capacitor 8 line, on `@next`** (built on `@capgo/native-purchases@^8`). `@latest` remains `7.1.0` (Capacitor 7) while the 8.x line soaks. The Capacitor 7 line continues as `7.x` (also on `@latest-7`) and the Capacitor 5 line (`cordova-plugin-purchase`) as `5.x` — `^7` and `^5` ranges still resolve to their own lines. See the [CHANGELOG](./CHANGELOG.md) for the `8.0.0-next.0` delta and [Migration](https://iap.nossdev.com/migration/).
+**Status: `8.0.0` — the Capacitor 8 line, on `@latest`** (built on `@capgo/native-purchases@^8`). The Capacitor 7 line continues in maintenance as `7.x` (pin `^7`, or the `@latest-7` dist-tag — [v7 docs](https://iap.nossdev.com/v7/)) and the Capacitor 5 line (`cordova-plugin-purchase`) as `5.x` (pin `^5` — [v5 docs](https://iap.nossdev.com/v5/)). `^7` and `^5` ranges resolve to their own lines and never cross-resolve. See the [CHANGELOG](./CHANGELOG.md) for the `8.0.0` delta and [Migration](https://iap.nossdev.com/migration/).
 
 ```bash
-# Capacitor 8 — release candidate, on @next
-npm install @nosslabs/iap@next @capgo/native-purchases
+# Capacitor 8 — the current @latest line
+npm install @nosslabs/iap @capgo/native-purchases
 
-# Capacitor 7 — the current @latest line
-npm install @nosslabs/iap @capgo/native-purchases@lts-v7
+# Capacitor 7 — maintenance; both pins are required
+npm install @nosslabs/iap@^7 @capgo/native-purchases@lts-v7
 
 npx cap sync
 ```
@@ -82,8 +82,8 @@ It does **not**: talk to Attesto directly, define entitlement business logic, ma
 
 | `@nosslabs/iap` | Capacitor | Native plugin | dist-tag | Status |
 |---|---|---|---|---|
-| 8.x | 8.x and later | `@capgo/native-purchases ^8` | `@next` | **Release candidate** — `8.0.0-next.0` |
-| 7.x | 7.x | `@capgo/native-purchases@lts-v7` | `@latest`, `@latest-7` | **Current** |
+| 8.x | 8.x | `@capgo/native-purchases ^8` | `@latest`, `@latest-8` | **Current** — `8.0.0` |
+| 7.x | 7.x | `@capgo/native-purchases@lts-v7` | `@latest-7` (pin via `^7`) | Maintenance |
 | 5.x | 5.x | `cordova-plugin-purchase ^13.x` | `@latest-5` (pin via `^5`) | Maintenance |
 
 ## Optional peer dependency
