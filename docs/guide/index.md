@@ -23,13 +23,13 @@ That's a lot of orchestration to get right. `@nosslabs/iap` encapsulates it once
 
 ## Design philosophy: thin wrapper, not a framework
 
-`@nosslabs/iap` is **not** RevenueCat-on-the-client. It does **one thing**: orchestrate the purchase + verification + entitlement-caching dance against a backend you control.
+`@nosslabs/iap` is **not** RevenueCat-on-the-client. It does **one thing**: orchestrate the purchase + verification + entitlement-caching dance — normally against a backend you control, or [on the device](./offline-and-no-backend.md) if you have no backend.
 
 ### What it DOES
 
 - Wrap `@capgo/native-purchases` for purchase + restore flows
-- POST to a configurable backend endpoint for verification
-- Acknowledge native transactions only **after** the backend confirms
+- POST to a configurable backend endpoint for verification — or verify on the device
+- Acknowledge native transactions only **after** verification confirms
 - Cache entitlements locally for instant UI reads
 - Emit events for UI reactivity (`entitlements-changed`, `purchase-success`, etc.)
 - Handle pending / interrupted transactions on app resume + launch

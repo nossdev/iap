@@ -14,6 +14,8 @@ interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
   hasEntitlement(key: string): boolean;
   getEntitlements(): TEntitlement[];
   getEntitlement(key: string): TEntitlement | null;
+  getEntitlementsVerifiedAt(): string | null;
+  reset(): Promise<void>;
   on<K extends EventName<TEntitlement>>(
     event: K,
     handler: (payload: EventPayload<K, TEntitlement>) => void,
@@ -46,7 +48,7 @@ After resolution, all read methods are safe.
 refresh(): Promise<void>
 ```
 
-Fetches `/entitlements` from your backend and replaces the local cache. Emits `entitlements-changed` if the new list differs from the previous (shallow compared).
+Fetches the current entitlements from the verification source — `/entitlements` on your backend, or the store itself in [local mode](/guide/offline-and-no-backend) and replaces the local cache. Emits `entitlements-changed` if the new list differs from the previous (shallow compared).
 
 Throws on transport failure (`BACKEND_UNAVAILABLE`, `BACKEND_TIMEOUT`, etc.). Doesn't auto-retry beyond the configured `retries` count.
 
@@ -237,6 +239,39 @@ getEntitlement(key: string): TEntitlement | null
 ```
 
 Returns the frozen entitlement matching `key`, or `null` if not found.
+
+::: tip In local mode these three skip expired entitlements
+With [local verification](/guide/offline-and-no-backend), there is no backend to re-ask, so the three reads filter out entitlements whose `expiresAt` has passed by the device clock (plus any `options.entitlementGraceMs`). A subscription that lapses while the app is backgrounded stops granting immediately rather than at the next refresh.
+
+**With a backend they do not filter**, deliberately: your backend is the authority on what is granted, and it may return an entitlement whose `expiresAt` has passed on purpose — that is what a store-side grace period or billing retry looks like. iap second-guessing it against the device clock would perform a downgrade your backend did not ask for, and a device with a fast clock would lock out a paying user. Filter on `expiresAt` yourself if you want that behaviour.
+
+In **neither** mode is an entitlement dropped because a refresh failed or the cache is stale. See [Offline and no-backend use](/guide/offline-and-no-backend).
+:::
+
+## `getEntitlementsVerifiedAt()`
+
+```typescript
+getEntitlementsVerifiedAt(): string | null
+```
+
+When the entitlements were last confirmed by the verification source — your backend, or the device in local mode. ISO 8601, or `null` if they have never been confirmed on this install.
+
+Exposed so an app can apply its own staleness tolerance. iap deliberately does not revoke on staleness: a cached entitlement stands until it expires, because a network error must never cost a paying user their access.
+
+## `reset()`
+
+```typescript
+reset(): Promise<void>
+```
+
+Erases everything iap has stored on this device: the entitlement cache, the unfinished-transaction queue and any pending-purchase marks. For a "delete everything" control.
+
+Two things it is not:
+
+- **Not `destroy()`.** That tears the instance down and deliberately *keeps* the cache, so a new instance sees the user's entitlements immediately. `reset()` is the opposite — the instance stays usable, and a `refresh()` repopulates from the verification source.
+- **Not a revocation.** The store still owns the purchase, because the user paid for it, and a restore will bring the entitlement back.
+
+Best-effort and non-throwing. Emits `entitlements-changed` carrying the real previous list, unless there was nothing to remove.
 
 ## `on(event, handler)`
 

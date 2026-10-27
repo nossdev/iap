@@ -111,6 +111,38 @@ const iap = createIAP({
 
 Configs that supply neither `products` nor a way for the backend to provide them throw `IAPError(INVALID_CONFIG)` at parse time. See [Backend contract → `products`](/guide/backend-contract#products-optional) for the response shape and the App-Store-Connect-pre-registration caveat.
 
+### No backend at all
+
+```typescript
+const iap = createIAP({
+  products: [{ id: 'household_yearly', type: 'subscription', androidPlanId: 'yearly' }],
+  android: { packageName: 'com.example.app' },
+  verification: {
+    mode: 'local',
+    entitlements: (purchase) => [
+      { key: 'household', productId: purchase.productId, expiresAt: purchase.expiresAt },
+    ],
+  },
+});
+```
+
+`verification` takes the place of `backend`. Read [Offline and no-backend use](/guide/offline-and-no-backend) first — on Android no cryptographic check is possible on the device.
+
+### What `createIAP()` rejects at parse time
+
+All of these throw `IAPError(INVALID_CONFIG)` synchronously:
+
+| Config | Why |
+|---|---|
+| Neither `backend` nor `verification` | Something has to verify a purchase before an entitlement is granted. |
+| Both `backend` and `verification` | Two answers to the same question, with no rule for which wins. |
+| `verification` without `entitlements` | iap cannot know what a product entitles anyone to, and there is no backend to ask. |
+| `verification` without `products` | There is no backend to curate a manifest either. |
+| `verification.appUserId` that is not a UUID | It would never match a purchase, so it would silently refuse every one. |
+| `products: []`, or duplicate product ids | |
+| `backend` with no `baseUrl`/`endpoints`/`getAuthHeaders` and no custom `adapter` | |
+| `products` omitted with no way for the backend to supply it | |
+
 ### Typed entitlements + custom logger
 
 ```typescript

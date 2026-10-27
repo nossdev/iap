@@ -55,6 +55,7 @@ export default defineConfig({
             { text: 'Architecture', link: '/guide/architecture' },
             { text: 'Safety guarantees', link: '/guide/safety-guarantees' },
             { text: 'The native layer', link: '/guide/native-layer' },
+            { text: 'Offline and no-backend use', link: '/guide/offline-and-no-backend' },
             { text: 'Backend contract', link: '/guide/backend-contract' },
             { text: 'Events', link: '/guide/events' },
             { text: 'Error handling', link: '/guide/error-handling' },

@@ -218,7 +218,7 @@ describe('pending purchases are reconciled', () => {
       } satisfies NativeTransaction,
     ]);
     (
-      config.backend.adapter as { verifyGoogle: ReturnType<typeof vi.fn> }
+      config.backend?.adapter as { verifyGoogle: ReturnType<typeof vi.fn> }
     ).verifyGoogle.mockResolvedValue({
       valid: true,
       entitlements: [{ key: 'household', productId: 'household_yearly', expiresAt: null }],

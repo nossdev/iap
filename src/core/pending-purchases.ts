@@ -167,6 +167,11 @@ export class PendingPurchasesStore {
     });
   }
 
+  /** Drop every pending mark. Used by `iap.reset()`. */
+  async clear(): Promise<void> {
+    return this.runExclusive(() => this.safeRemove());
+  }
+
   private async persist(entries: PendingEntry[]): Promise<void> {
     try {
       await this.storage.set(STORE_KEY, JSON.stringify(entries));

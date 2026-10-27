@@ -132,6 +132,37 @@ iap.on('purchase-success', ({ productId, transaction }) => {
 
 There's no `iap.on('did-something', ...)` escape hatch — unknown event names are a compile error. See [Events](/guide/events) for the full list.
 
+## 7. A failed refresh never downgrades anyone
+
+**The only things that take an entitlement away are an authoritative negative and an expiry.**
+A network error, a timeout, a 500, a DNS failure — none of them change the cached entitlements.
+`refresh()` throws and the previous state stands. A corrupt cache reads as empty rather than
+fatal.
+
+The asymmetry is deliberate: wrongly locking out a paying user is a support ticket and a
+refund, while wrongly serving a lapsed one costs a few hours of access.
+
+Expiry *is* enforced, on the device clock, so a subscription that lapses while the app is
+backgrounded stops granting access immediately rather than at the next successful refresh.
+`options.entitlementGraceMs` widens that deadline if you want a cushion for renewal latency.
+
+See [Offline and no-backend use](/guide/offline-and-no-backend) for the full treatment, and for
+running with no backend at all.
+
+## 8. Privacy
+
+- **No telemetry.** iap makes no network request of its own; the only requests are to the
+  backend you configured.
+- **No device identifiers**, in iap or in the native layer — [audited, and re-checked by a
+  test on every build](/guide/native-layer#privacy-no-device-identifiers).
+- **No generated user id.** iap never invents an `appUserId`; the only user-scoped value that
+  crosses the bridge is one you passed to `purchase()`.
+- **Erasable.** `iap.reset()` wipes everything iap stored on the device.
+
+Running with no backend at all? See [Offline and no-backend
+use](/guide/offline-and-no-backend), which also covers what the device can and cannot
+verify on its own.
+
 ## What we do NOT guarantee
 
 To be honest about the boundaries:

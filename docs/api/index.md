@@ -33,6 +33,7 @@ import {
   type BackendConfigInput,
   type StorageConfig,
   type OptionsConfig,
+  type VerificationConfig,
 
   // Domain types
   type ConfiguredProduct,
@@ -46,6 +47,21 @@ import {
   type Platform,
   type PurchaseResult,
   type RestoreResult,
+  type StorePurchase,
+  type SubscriptionOffer,
+  type SubscriptionOfferType,
+  type SubscriptionOfferPayment,
+  type SubscriptionRenewal,
+  type SubscriptionState,
+
+  // On-device verification (local mode)
+  verifyPurchaseOnDevice,
+  isExpired,
+  type LocallyVerifiedPurchase,
+  type LocalVerification,
+  type LocalVerificationError,
+  type LocalVerificationOptions,
+  type PurchaseAssurance,
 
   // Events
   type EventMap,

@@ -10,7 +10,11 @@ import {
   attachAppResumeListener,
 } from './core/app-resume-listener.js';
 import { attachTransactionWatch } from './core/attach-transaction-watch.js';
-import { EntitlementCache, entitlementsEqual } from './core/entitlement-cache.js';
+import {
+  EntitlementCache,
+  activeEntitlements,
+  entitlementsEqual,
+} from './core/entitlement-cache.js';
 import { PendingPurchasesStore } from './core/pending-purchases.js';
 import { PurchaseOrchestrator } from './core/purchase-flow.js';
 import { DEFAULT_PERMANENT_ERROR_CODES, RecoveryOrchestrator } from './core/recovery-flow.js';
@@ -138,11 +142,53 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
    */
   getStorefront(): Promise<Storefront | null>;
 
+  /**
+   * Whether an **active** entitlement with this key is held.
+   *
+   * Active means its `expiresAt` has not passed by the device clock, plus
+   * any `options.entitlementGraceMs`. An entitlement is never dropped
+   * because a refresh failed or the cache is old — only the store's own
+   * deadline, or an authoritative negative, takes one away.
+   */
   hasEntitlement(key: string): boolean;
-  /** Returns a defensive shallow copy. Each entitlement is frozen. */
+  /**
+   * The active entitlements, as a defensive shallow copy. Each is frozen.
+   * Expired ones are omitted — see {@link IAP.hasEntitlement}.
+   */
   getEntitlements(): TEntitlement[];
-  /** Returns a frozen entitlement reference, or null if missing. */
+  /** A frozen active entitlement, or null if missing or expired. */
   getEntitlement(key: string): TEntitlement | null;
+  /**
+   * When the entitlements were last confirmed by the verification source —
+   * your backend, or the device in local mode. ISO 8601, or `null` if they
+   * have never been confirmed on this install.
+   *
+   * Exposed so an app can decide for itself how much staleness it will
+   * tolerate. iap deliberately does not revoke on staleness: a cached
+   * entitlement stands until it expires, because a network error must never
+   * cost a paying user their access.
+   */
+  getEntitlementsVerifiedAt(): string | null;
+
+  /**
+   * Erase everything iap has stored on this device: the entitlement cache,
+   * the unfinished-transaction queue, and any pending-purchase marks.
+   *
+   * For a "delete everything" control. `destroy()` deliberately leaves the
+   * cache in place (a new instance should see the user's entitlements
+   * immediately); this is the opposite, and does not tear the instance down —
+   * the instance stays usable and a `refresh()` will repopulate from the
+   * verification source.
+   *
+   * Best-effort and non-throwing: a storage failure is logged, and the rest
+   * is still cleared. Emits `entitlements-changed` with an empty list, so a
+   * reactive UI follows.
+   *
+   * It does **not** revoke the purchase. The store still owns it, and a
+   * restore will bring the entitlement back — which is correct: the user
+   * paid.
+   */
+  reset(): Promise<void>;
 
   on<K extends EventName<TEntitlement>>(
     event: K,
@@ -191,7 +237,7 @@ interface IAPInternalState<TEntitlement extends EntitlementBase> {
 }
 
 export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase>(
-  input: IAPConfigInput,
+  input: IAPConfigInput<TEntitlement>,
 ): IAP<TEntitlement> {
   const config = parseConfig(input);
   const logger = resolveLogger(config.options.logLevel, config.options.logger);
@@ -199,7 +245,13 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
   const cache = new EntitlementCache<TEntitlement>(storage, logger);
   const unfinished = new UnfinishedTransactionsStore(storage, logger);
   const pending = new PendingPurchasesStore(storage, logger);
-  const backend = selectBackendAdapter<TEntitlement>({ config: config.backend, logger });
+  const backend = selectBackendAdapter<TEntitlement>({
+    config,
+    logger,
+    getNativeAdapter: () => state.adapter,
+    getProducts: () => state.products,
+    getCurrentEntitlements: () => state.entitlements,
+  });
   const emitter = new TypedEventEmitter<TEntitlement>();
 
   // Validate the static manifest eagerly so config typos surface synchronously.
@@ -319,7 +371,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
 
       // Lazy adapter construction — this is the dynamic-import boundary so
       // web builds don't pull in `@capgo/native-purchases`.
-      state.adapter = await selectNativeAdapter(state.logger);
+      state.adapter = await selectNativeAdapter(state.logger, state.config.android.packageName);
 
       // Now that the native adapter is resolved, wire the orchestrators.
       // Both share the same getter/setter triplet into createIAP's state.
@@ -328,7 +380,7 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
       // as `ctx.authHeaders`. Custom-adapter consumers don't have one
       // configured at the IAP-config level, so we resolve to `{}` for
       // them (their fetcher closes over their own auth state).
-      const configGetAuthHeaders = state.config.backend.getAuthHeaders;
+      const configGetAuthHeaders = state.config.backend?.getAuthHeaders;
       const getAuthHeaders: () => Promise<Record<string, string>> = configGetAuthHeaders
         ? async () => configGetAuthHeaders()
         : async () => ({});
@@ -373,6 +425,15 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
         isPurchaseInFlight: (productId) => state.orchestrator?.isInFlight(productId) ?? false,
         isActive: () => state.initialized && !state.destroyed,
       });
+
+      // Android cannot build a verify or restore request without it, and
+      // the failure would otherwise surface per-purchase as a STORE_ERROR
+      // long after startup.
+      if (platform === 'android' && !state.config.android.packageName) {
+        state.logger.warn(
+          "config.android.packageName is not set. Google verification and restore requests cannot be built without it, so purchases will fail with STORE_ERROR. Set it to your app's applicationId.",
+        );
+      }
 
       try {
         await state.adapter.isAvailable();
@@ -571,21 +632,90 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
     },
 
     hasEntitlement(key) {
-      return state.entitlements.some((e) => e.key === key);
+      return activeNow(state).some((e) => e.key === key);
     },
 
     getEntitlements() {
-      return [...state.entitlements];
+      return activeNow(state);
     },
 
     getEntitlement(key) {
-      return state.entitlements.find((e) => e.key === key) ?? null;
+      return activeNow(state).find((e) => e.key === key) ?? null;
+    },
+
+    getEntitlementsVerifiedAt() {
+      return state.cachedAt === null ? null : new Date(state.cachedAt).toISOString();
+    },
+
+    async reset() {
+      const previous = state.entitlements;
+      state.entitlements = [];
+      state.cachedAt = null;
+
+      // Each store swallows its own storage failures, so no try/catch here
+      // would ever fire — they are the three keys iap owns, cleared by name
+      // because the Preferences adapter can only remove keys it has seen
+      // this session (an empty set on a fresh launch).
+      await state.cache.clear();
+      await state.unfinished.clear();
+      await state.pending.clear();
+
+      // Then the namespace itself, for anything an older version wrote that
+      // the three stores no longer know about. This one *can* throw.
+      try {
+        await state.storage.clear();
+      } catch (error) {
+        state.logger.warn('reset(): failed to clear the storage namespace.', error);
+      }
+
+      // The real previous list, not an empty one: a consumer diffing
+      // `previous` against `entitlements` is the documented use, and on the
+      // one event that removes everything an empty `previous` would read as
+      // "nothing changed". Skipped entirely when there was nothing to
+      // remove, which is the emitter's de-duplication rule elsewhere.
+      if (previous.length > 0) {
+        state.emitter.emit('entitlements-changed', { entitlements: [], previous });
+      }
     },
 
     on(event, handler) {
       return state.emitter.on(event, handler);
     },
   };
+}
+
+/**
+ * The entitlements that are still active right now.
+ *
+ * Applied at the read boundary rather than when the cache is written,
+ * because expiry is a function of *when you ask*: an entitlement cached as
+ * valid at 23:59 is not valid at 00:01, with no refresh in between and no
+ * network to ask. Filtering on write would hand out a stale answer for the
+ * rest of the session.
+ */
+function activeNow<TEntitlement extends EntitlementBase>(
+  state: IAPInternalState<TEntitlement>,
+): TEntitlement[] {
+  // Local mode only, deliberately.
+  //
+  // With a backend, the backend is the authority on what is granted, and it
+  // may return an entitlement whose `expiresAt` has passed on purpose —
+  // that is exactly what a store-side grace period or billing retry looks
+  // like. Second-guessing it against the device clock would have iap
+  // perform the downgrade it promises never to, and a device with a fast
+  // clock would lock out a paying user even with the backend reachable.
+  //
+  // With no backend there is no other authority, and the deadline is the
+  // only thing that can revoke anything — so enforcing it locally is the
+  // whole point. A consumer who wants this in backend mode can filter on
+  // `expiresAt` themselves; `getEntitlementsVerifiedAt()` is there for it.
+  if (!state.config.verification) return [...state.entitlements];
+
+  return activeEntitlements(
+    state.entitlements,
+    Date.now(),
+    state.config.options.entitlementGraceMs,
+  );
 }
 
 function freezeAll<T extends object>(items: T[]): T[] {

@@ -117,7 +117,10 @@ Response shape and the App-Store-Connect-pre-registration caveat are documented 
 
 ## `backend`
 
-Required. Configures how the library talks to your server.
+Configures how the library talks to your server. **Required unless you set
+[`verification`](#verification) instead** — exactly one of the two must be present, because
+something has to answer whether a purchase is real before an entitlement is granted. Setting
+both is a config error.
 
 ### Default HTTP transport
 
@@ -196,12 +199,63 @@ All optional with documented defaults.
 |---|---|---|
 | `refreshOnResume` | `true` | Auto-call `iap.refresh()` when app returns from background. Requires optional `@capacitor/app`. |
 | `entitlementCacheTtlMs` | `3_600_000` (1h) | When the cache age exceeds this, `initialize()` schedules a background refresh after `ready`. Reads still return cached values immediately. |
+| `entitlementGraceMs` | `0` | Extra time past an entitlement's `expiresAt` during which it still counts, by the device clock. Only consulted in [local mode](./offline-and-no-backend.md), where there is no backend to decide. Set it because a renewal is not instantaneous. |
 | `recoverUnfinishedTransactions` | `true` | Run recovery for unfinished transactions during `initialize()`. Disable only for tests / web. |
 | `recoveryMaxBatch` | `50` | Cap on entries inspected per launch. Excess stays in storage for subsequent launches. |
 | `permanentErrorCodes` | `DEFAULT_PERMANENT_ERROR_CODES` | List of backend `valid:false` error codes that recovery treats as permanent (entry removed instead of retried). Default `['TRANSACTION_NOT_FOUND', 'PRODUCT_MISMATCH']`. REPLACES default when set; pass `[...DEFAULT_PERMANENT_ERROR_CODES, 'YOUR_CODE']` to extend or `[]` to disable. See [error handling § permanent vs transient](./error-handling#permanent-vs-transient-classification). |
 | `productPriceCacheTtlMs` | `86_400_000` (24h) | TTL for cached native product info (titles, prices). Currently informational — cached prices are not auto-refreshed on expiry. |
 | `logLevel` | `'info'` | One of `'silent' \| 'error' \| 'warn' \| 'info' \| 'debug'`. |
 | `logger` | console-backed | Implements `Logger` (error/warn/info/debug methods). Plug Sentry, Datadog, etc. |
+
+## `verification`
+
+For an app with **no backend at all**: verify purchases on the device instead.
+
+```typescript
+type VerificationConfig<TEntitlement> = {
+  mode: 'local';
+  /** Maps a verified purchase to the entitlements it grants. Required. */
+  entitlements: (purchase: LocallyVerifiedPurchase) => TEntitlement[];
+  /** Optional: every purchase must carry this binding, or it is refused. Must be a UUID. */
+  appUserId?: string;
+};
+```
+
+```typescript
+const iap = createIAP({
+  products: [{ id: 'household_yearly', type: 'subscription', androidPlanId: 'yearly' }],
+  verification: {
+    mode: 'local',
+    entitlements: (purchase) => [
+      { key: 'household', productId: purchase.productId, expiresAt: purchase.expiresAt },
+    ],
+  },
+});
+```
+
+`entitlements` is required because iap cannot know what a product entitles anyone to, and
+there is no backend to ask. `products` is also required in this mode — there is no backend to
+curate a manifest either.
+
+**Read [Offline and no-backend use](./offline-and-no-backend.md) before choosing this.** On
+Android no cryptographic check is possible on the device, so a passing verification there
+means "Play told this device it owns this".
+
+## `android`
+
+```typescript
+type AndroidConfig = {
+  /** Your app's applicationId, exactly as Play Console has it. */
+  packageName?: string;
+};
+```
+
+**Set this for any Android build that sells anything.** Google's verification APIs are keyed
+on the package name and the native plugin does not report it, so iap cannot derive it from a
+purchase — without it, Google verify and restore requests cannot be built and purchases fail
+with `STORE_ERROR`. `initialize()` warns on Android when it is missing.
+
+iOS ignores it.
 
 ## Generic `TEntitlement` type parameter
 

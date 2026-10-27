@@ -7,6 +7,76 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 
+- **Local verification — iap works with no backend at all.** `verification: { mode: 'local',
+  entitlements }` replaces the `backend` block and verifies purchases on the device. Exactly
+  one of the two is required; both is a config error.
+
+  Implemented as a `BackendAdapter`, which is the whole design: everything above that boundary
+  is **untouched**. The purchase flow, the acknowledge-only-after-verification ordering, the
+  at-least-once write before verifying, and the unfinished-transaction recovery all behave
+  identically and do not know which mode they are in. There is no second purchase path to keep
+  in step, and a purchase whose local check fails is never acknowledged — so the store keeps it
+  and recovery retries, which on Android is what prevents the 3-day auto-refund.
+
+  `refresh()` and `restorePurchases()` both ask the store what it owns, so they keep working
+  with no network.
+
+  **Be clear about the strength.** Every verified purchase carries an `assurance`:
+  `store-signed` on iOS, where StoreKit verified Apple's signature in native code before the
+  transaction reached the WebView, and `store-reported` on Android, where **no cryptographic
+  check is possible** — the native layer exposes neither Play's purchase signature nor the JSON
+  it is computed over, so the answer is the store's word. Neither resists a lying device.
+  Local mode is for an app whose alternative is no verification at all; it is not a substitute
+  for a server where being wrong is expensive.
+
+  The checks are exported as `verifyPurchaseOnDevice` for consumers who would rather write
+  their own adapter around them.
+
+- **Offline semantics, written down as guarantees** — [Offline and no-backend
+  use](https://iap.nossdev.com/guide/offline-and-no-backend). Most of this was already the
+  behaviour; it was never stated, so it could not be relied on.
+
+- **`options.entitlementGraceMs`** — extra time past `expiresAt` during which an entitlement
+  still counts. Defaults to `0`. Set it because a renewal is not instantaneous: a subscription
+  renewing at midnight may not have a fresh receipt for hours, and locking a paying user out in
+  that window is the worse error. On Android store-side grace and billing retry are
+  server-side only, so a backendless app cannot see them and this is its only cushion.
+
+- **`iap.getEntitlementsVerifiedAt()`** — when the entitlements were last confirmed, ISO 8601
+  or `null`. iap deliberately does not revoke on staleness, so this is for an app that wants to
+  be stricter than iap is.
+
+- **`iap.reset()`** — erase the entitlement cache, the unfinished-transaction queue and the
+  pending-purchase marks. For a "delete everything" control. Not `destroy()`, which keeps the
+  cache so the next instance reads it immediately; and not a revocation — the store still owns
+  the purchase, and a restore brings the entitlement back, which is correct because the user
+  paid.
+
+- **`BackendAdapter.verifyNative`**, optional. An adapter that can answer from the whole
+  transaction gets it whole, rather than the extracted `{ productId, token, type }` the HTTP
+  contract sends — an on-device check needs the binding, the subscription state and the expiry,
+  none of which survive that extraction. The HTTP adapter does not implement it, so nothing
+  about what goes over the wire changes.
+
+### Changed
+
+- **In local mode, `hasEntitlement()`, `getEntitlement()` and `getEntitlements()` return only
+  *active* entitlements** — ones whose `expiresAt` has not passed by the device clock, plus any
+  `entitlementGraceMs`. With no backend to re-ask, the deadline is the only thing that can
+  revoke anything, so enforcing it locally is the point.
+
+  **With a backend they do not filter**, deliberately: the backend is the authority on what is
+  granted, and it may return an entitlement whose `expiresAt` has passed on purpose — that is
+  what a store-side grace period or billing retry looks like. Second-guessing it against the
+  device clock would have iap perform a downgrade the backend did not ask for, and a device
+  with a fast clock would lock out a paying user even with the backend reachable. So this is
+  **not** a behaviour change for existing backend-mode consumers.
+
+  In neither mode is an entitlement dropped because a refresh failed or the cache is old.
+
+- **`backend` is now optional in `IAPConfig`**, since `verification` can take its place. Code
+  that reads `config.backend` needs a null check; code that passes one is unaffected.
+
 - **Introductory and promotional offers on `getProducts()`.** Each subscription now carries
   `introductoryOffer` and `promotionalOffers` as typed `SubscriptionOffer`s — offer type,
   payment mode (`free-trial` / `pay-up-front` / `pay-as-you-go`), the store's own localized
@@ -187,6 +257,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **Android purchases could never verify, and `restorePurchases()` always threw.** Google's
+  verification APIs are keyed on the app's package name, and the native layer does not report
+  it — so `verifyNativeTransaction` and the restore request builder both threw `STORE_ERROR`
+  for *every* Google transaction. Every Android purchase returned `verification_failed` and
+  every restore rejected.
+
+  This predates this release and shipped: it was never caught because every Google test
+  fixture hand-set the `packageName` field the real adapter never sets. Set
+  `config.android.packageName` to your applicationId; `initialize()` warns on Android when it
+  is missing, and the error messages now name the setting.
+
+- **A purchase whose acknowledgement failed stopped being tracked.** `purchase()` removed the
+  unfinished-transaction entry even when `acknowledge()` threw, on the reasoning that "a later
+  restore()/refresh() re-acks it" — but only `restore()` acknowledges, and nothing calls it
+  automatically. So a paid-for purchase was granted, left unacknowledged, and forgotten, right
+  up to Google's silent 3-day auto-refund. The entry is now retained for recovery to retry.
+
 - **Android would have reported every pending purchase as `cancelled` while it was still
   processing.** The pending-state check looked for Play `purchaseState === '0'`, following the
   plugin's own type declarations, which document `"0": Payment pending`. That is wrong: Play's
@@ -237,6 +324,51 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - **`reconcilePending()` ran inside `initialize()`**, so a tracked pending purchase delayed
   `ready` by a store round-trip plus a backend verify, uncapped. It runs just after `ready`
   now.
+
+The local-verification work in this release went through a review pass that found six ways it
+could grant or revoke wrongly. All are fixed, and all are worth naming because three of them
+broke the invariant this release advertises as untouched:
+
+- **Restore acknowledged transactions the local check had refused.** The adapter reported a
+  single consolidated `valid: true`, so the orchestrator acknowledged the whole owned set —
+  including purchases just declared invalid, which on Android finalises them and waives Play's
+  refund window. `RestoreResponse` gained an optional `verifiedTokens`, and only those are
+  acknowledged.
+
+- **Recovery re-granted exactly what a purchase had refused.** Recovery re-verifies from the
+  *stored entry*, which kept no binding, no expiry and no purchase state — so an on-device
+  check saw an amputated transaction and answered differently than it had at purchase time. A
+  refused expired subscription came back one launch later and was granted as *never
+  expiring*. The mirror case was as bad: with `verification.appUserId` set, a legitimate
+  purchase failed `BINDING_MISMATCH` forever, was never acknowledged, and Google refunded it.
+  The entry now persists what a verification needs.
+
+- **A successful purchase replaced the whole entitlement set with that one purchase's.** The
+  flows treat a verify response as consolidated, as a backend's is. Buying a consumable
+  silently revoked a subscription, in memory and on disk, until the next refresh. Local mode
+  now returns the consolidated set.
+
+- **An empty answer from the store wiped everything.** Play resolves its owned-purchases query
+  with an empty array when the query *fails* — disconnected service, signed-out account — so
+  "owns nothing" and "could not tell you" are identical. `refresh()` treated it as
+  authoritative and overwrote the cache, while stamping the entitlements as freshly confirmed.
+  Local mode now keeps the current set; a downgrade needs an expiry or an explicit revocation.
+
+- **iOS refunds and revocations passed the check.** `Transaction.all` retains revoked
+  transactions and the platform reports the fact locally — so a refunded non-expiring purchase
+  granted forever, having no expiry to fall back on. Now refused, with a `REVOKED` reason.
+
+- **The entitlement mapper's output was trusted blindly.** Unlike a backend response it went
+  through no schema, so a mapper returning a malformed object cached an entitlement that
+  `hasEntitlement` could never match and the next launch silently dropped — and one returning a
+  non-array threw a raw `TypeError` out of `purchase()` *after* acknowledging. Validated now;
+  a bad mapping grants nothing and logs.
+
+Smaller ones from the same pass: a duplicated entitlement key kept the first derived rather
+than the longest-lasting, so a live renewal lost to an older one inside the grace window; two
+lookup tables resolved inherited object properties; a numeric Play purchase state skipped its
+check; `reset()` emitted an empty `previous` on the one event that removes everything, and
+emitted at all when there was nothing to remove.
 
 ### Changed
 

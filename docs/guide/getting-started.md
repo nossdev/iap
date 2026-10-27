@@ -4,7 +4,7 @@ This page walks you from zero to a working sandbox purchase in under 30 minutes.
 
 - A Capacitor 8 app (on Capacitor 7? see the [v7 docs](/v7/); on Capacitor 5, the [v5 docs](/v5/))
 - Products configured in App Store Connect (sandbox testers OK) and/or Google Play Console (license testers OK)
-- A backend you can deploy a few new endpoints to (or you can implement them as a [custom `BackendAdapter`](/api/backend-adapter))
+- A backend you can deploy a few new endpoints to — or none at all, if you [verify on the device](./offline-and-no-backend.md) (or you can implement them as a [custom `BackendAdapter`](/api/backend-adapter))
 - An [Attesto](https://attesto.nossdev.com) tenant with API key
 
 If you're missing any of these, the [Backend contract](/guide/backend-contract) and [Testing on sandbox](/guide/testing) pages cover them.

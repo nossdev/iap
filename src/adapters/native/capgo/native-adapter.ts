@@ -44,8 +44,17 @@ import { getCapgoPendingProductIds, watchCapgoTransactions } from './watch-trans
  *   tolerate historical iOS entries gracefully.
  */
 export class CapgoNativeAdapter implements NativeAdapter {
-  /** Used only by the best-effort paths that swallow their own failures. */
-  constructor(private readonly logger: Logger) {}
+  /**
+   * @param logger used by the best-effort paths that swallow their failures.
+   * @param packageName the app's Android applicationId, from
+   *   `config.android.packageName`. Stamped onto every Google transaction
+   *   because the plugin does not report it and Google's verification
+   *   APIs are keyed on it.
+   */
+  constructor(
+    private readonly logger: Logger,
+    private readonly packageName?: string,
+  ) {}
 
   async isAvailable(): Promise<boolean> {
     try {
@@ -107,7 +116,7 @@ export class CapgoNativeAdapter implements NativeAdapter {
       throw mapPurchaseError(error, opts.productId);
     }
 
-    return normalizeTransaction(tx, opts.productType);
+    return normalizeTransaction(tx, opts.productType, this.packageName);
   }
 
   async getOwnedTransactions(): Promise<NativeTransaction[]> {
@@ -123,7 +132,7 @@ export class CapgoNativeAdapter implements NativeAdapter {
         // expired/revoked subs are NOT filtered here — they're part of
         // `Transaction.all` per the class-level JSDoc; the backend decides.)
         .filter((tx) => tx.purchaseState === undefined || tx.purchaseState === '1')
-        .map((tx) => normalizeTransaction(tx, inferProductType(tx)))
+        .map((tx) => normalizeTransaction(tx, inferProductType(tx), this.packageName))
     );
   }
 
@@ -178,7 +187,7 @@ export class CapgoNativeAdapter implements NativeAdapter {
   async watchTransactions(
     onUpdate: (transaction: NativeTransaction) => void,
   ): Promise<TransactionWatchHandle | null> {
-    return watchCapgoTransactions(onUpdate, this.logger);
+    return watchCapgoTransactions(onUpdate, this.logger, this.packageName);
   }
 
   /** Android only; `null` on iOS. See {@link getCapgoPendingProductIds}. */

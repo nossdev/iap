@@ -6,6 +6,7 @@ export { VERSION } from './version.js';
 export type {
   IAPConfig,
   IAPConfigInput,
+  VerificationConfig,
   BackendConfig,
   BackendConfigInput,
   StorageConfig,
@@ -67,4 +68,20 @@ export type {
   VerifyResponse,
 } from './adapters/backend/types.js';
 export { HttpBackendAdapter, HttpClient } from './adapters/backend/index.js';
+
+// On-device verification (local mode).
+//
+// `LocalVerificationAdapter` itself is deliberately NOT exported: its
+// options require a `NativeAdapter`, which is internal and which a consumer
+// has no way to obtain, so the export would be unusable. `verification:
+// { mode: 'local' }` is how you get one. These two are for a consumer who
+// would rather write their own `BackendAdapter` around the same checks.
+export { isExpired, verifyPurchaseOnDevice } from './core/local-verification.js';
+export type {
+  LocalVerification,
+  LocalVerificationError,
+  LocalVerificationOptions,
+  LocallyVerifiedPurchase,
+  PurchaseAssurance,
+} from './core/local-verification.js';
 export type { HttpRequest } from './adapters/backend/http-client.js';
