@@ -3,7 +3,7 @@
 All notable changes to `@nosslabs/iap` will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [8.1.0] — 2026-10-27
 
 ### Changed
 
