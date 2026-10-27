@@ -32,7 +32,7 @@ own API is identical on both lines. Full instructions live in the
 
 ## Install the native plugin
 
-`@nosslabs/iap` wraps [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) — a free, MIT-licensed, StoreKit 2 / Google Play Billing plugin built as a first-class Capacitor plugin. (Play Billing 8.x on the `8.x` line; 7.x on the `lts-v7` line.)
+`@nosslabs/iap` wraps [`@capgo/native-purchases`](https://github.com/Cap-go/capacitor-native-purchases) — a free, **MPL-2.0-licensed**, StoreKit 2 / Google Play Billing plugin built as a first-class Capacitor plugin. (Play Billing 8.x on the `8.x` line; 7.x on the `lts-v7` line.) iap uses it unmodified, so MPL's file-level copyleft imposes no obligation on your source — see [The native layer](/guide/native-layer) for the licence note, the Play Billing version and the device-identifier audit.
 
 ```bash
 npm install @capgo/native-purchases

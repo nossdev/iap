@@ -5,6 +5,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- **A documented audit of the native layer** — [The native layer](https://iap.nossdev.com/guide/native-layer)
+  records what `@capgo/native-purchases` guarantees and what it does not, so the boundary
+  that caps iap's feature set is written down rather than rediscovered. Audited against
+  `8.6.5`: Play Billing Library **8.3.0** (ahead of Google's Billing-8 requirement, so
+  nothing to upgrade), licence **MPL-2.0** used unmodified (no copyleft obligation
+  propagates to iap or its consumers), and **no device or advertising identifiers** in
+  either platform's native source, with an empty `AndroidManifest.xml` that declares no
+  permissions of its own.
+
+  Two caveats the page documents because a clean bill of health would have hidden them:
+  the Android plugin **writes purchase tokens to logcat in the clear**, ungated (it redacts
+  the account identifier, so this reads as an oversight) — iap masks tokens in its own logs,
+  but that rule stops at the bridge; and when `androidPlanId` matches no offer, the plugin
+  **falls back to the first available base plan instead of failing**, so a stale plan id
+  silently purchases something else.
+- **Regression guards over the installed plugin** (`tests/unit/native-plugin-contract.test.ts`).
+  They read the plugin's own Gradle file, `package.json`, native sources and type
+  declarations, so a bump that invalidates a documented guarantee fails CI instead of
+  quietly making the docs wrong. The known gaps — no Play purchase signature, no
+  `originalTransactionId` field, no intro-offer eligibility query — are asserted
+  *inverted*, so capgo adding one of them also fails, as the signal to light up the
+  matching iap capability.
+
+### Fixed
+
+- **The installation guide said `@capgo/native-purchases` is MIT-licensed. It is MPL-2.0.**
+  Corrected on both the `8.x` and the archived `v7` installation pages, which were the first
+  place a consumer would have read it. iap uses the plugin unmodified, so the correction
+  changes no obligation — but the stated licence is now the actual one. The stale
+  `Cap-go/native-purchases` repository links were refreshed to
+  `Cap-go/capacitor-native-purchases` on the same lines.
+
 ## [8.0.0] — 2026-09-04
 
 **The Capacitor 8 line graduates to `@latest`.** `8.0.0-next.0` soaked on the
