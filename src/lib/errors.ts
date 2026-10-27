@@ -38,6 +38,15 @@ export const IAPErrorCode = {
    */
   INVALID_APP_USER_ID: 'INVALID_APP_USER_ID',
   /**
+   * An argument to `purchase()` is unusable — as distinct from
+   * `INVALID_CONFIG`, which is `createIAP()` schema validation and never
+   * reaches a purchase. Raised for an `androidOfferToken` that is empty,
+   * that is given for a subscription (where the native layer would ignore
+   * it and could charge a different offer), or that the store reports as
+   * matching no current offer.
+   */
+  INVALID_PURCHASE_OPTIONS: 'INVALID_PURCHASE_OPTIONS',
+  /**
    * The async `appUserId` fetcher threw or rejected. Original error is
    * attached as `cause` so the caller can introspect (network failure,
    * backend 5xx, etc.).
@@ -105,6 +114,9 @@ const HINTS: Readonly<Record<IAPErrorCode, string>> = {
   // Storage
   STORAGE_ERROR:
     'Capacitor Preferences write failed. Check device storage availability; the in-memory state is still updated, only persistence failed.',
+
+  INVALID_PURCHASE_OPTIONS:
+    'An argument to purchase() is unusable. For androidOfferToken: it must be a non-empty token read from Product.androidOneTimeOffers on the *same* getProducts() call (they are per-query device tokens and go stale), and it is not accepted for a subscription at all — the native layer selects a subscription offer by base plan, so use androidPlanId there.',
 
   // appUserId pre-attach
   INVALID_APP_USER_ID:

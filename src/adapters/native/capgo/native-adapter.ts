@@ -142,6 +142,11 @@ export class CapgoNativeAdapter implements NativeAdapter {
         productIdentifier: opts.productId,
         productType: purchaseType,
         planIdentifier: opts.androidPlanId,
+        // Honoured by the plugin's one-time-purchase path only. Its
+        // subscription path never reads it — asserted by an inverted guard
+        // in `tests/unit/native-plugin-contract.test.ts` — which is why the
+        // core refuses one for a subscription rather than sending it here.
+        ...(opts.androidOfferToken !== undefined ? { offerToken: opts.androidOfferToken } : {}),
         appAccountToken: opts.appAccountToken,
         // `false` even for a consumable, and this is load-bearing.
         //

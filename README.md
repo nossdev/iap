@@ -84,7 +84,7 @@ It does **not**: talk to Attesto directly, manage user auth, or ship paywall UI.
 
 | `@nosslabs/iap` | Capacitor | Native plugin | dist-tag | Status |
 |---|---|---|---|---|
-| 8.x | 8.x | `@capgo/native-purchases ^8.2` | `@latest`, `@latest-8` | **Current** — `8.2.0` |
+| 8.x | 8.x | `@capgo/native-purchases ^8.2` | `@latest`, `@latest-8` | **Current** — `8.3.0` |
 | 7.x | 7.x | `@capgo/native-purchases@lts-v7` | `@latest-7` (pin via `^7`) | Maintenance |
 | 5.x | 5.x | `cordova-plugin-purchase ^13.x` | `@latest-5` (pin via `^5`) | Maintenance |
 

@@ -70,7 +70,8 @@ For the purchase flow specifically, the discriminated union from `iap.purchase()
 
 | Code | Recoverable | When it fires | What to do |
 |---|---|---|---|
-| `INVALID_CONFIG` | no | `createIAP({ ... })` — schema validation failed | Fix the config; re-read the field paths in the message |
+| `INVALID_CONFIG` | no | `createIAP({ ... })` — schema validation failed. Also at `initialize()` for a lazily-resolved dependency, e.g. `storage.type: 'preferences'` with `@capacitor/preferences` not installed | Fix the config; re-read the field paths in the message |
+| `INVALID_PURCHASE_OPTIONS` | no | An argument to `purchase()` is unusable — an empty `androidOfferToken`, one given for a subscription, or one the store reports as matching no current offer | Pass a token from `Product.androidOneTimeOffers` on a fresh `getProducts()`; use `androidPlanId` for subscriptions |
 | `NOT_INITIALIZED` | no | A method called before `initialize()` resolved | `await iap.initialize()` first |
 | `PLATFORM_NOT_SUPPORTED` | no | `purchase()` / `restorePurchases()` on web | Guard the UI behind `Capacitor.isNativePlatform()` |
 | `BILLING_NOT_AVAILABLE` | no | Store billing service unavailable (`@capgo/native-purchases` not linked, or no sandbox account) | Check `npx cap sync` ran; check device sandbox account |
@@ -176,7 +177,9 @@ Scenarios:
 - Native plugin missing → logs warning, sets web-stub mode, init succeeds.
 - Backend unreachable during background refresh → swallowed, emitted via `error` event, init succeeds.
 - Storage read fails → logs error, in-memory state is empty, init succeeds.
-- `INVALID_CONFIG` → throws at `createIAP()` call (synchronous), never reaches `initialize()`.
+- `INVALID_CONFIG` → usually throws at the `createIAP()` call (synchronous). One case reaches
+  `initialize()`: a dependency resolved lazily there, such as `storage.type: 'preferences'`
+  with `@capacitor/preferences` absent.
 
 So `await iap.initialize()` should very rarely throw in practice. The few cases that DO throw are coding errors (calling `initialize()` after `destroy()`).
 
@@ -190,7 +193,8 @@ On iOS, a user dismissing the StoreKit sheet reliably yields `status: 'cancelled
 
 It DOES throw on:
 
-- `INVALID_CONFIG` (productId not in `config.products`)
+- `PRODUCT_NOT_FOUND` (productId not in `config.products`)
+- `INVALID_PURCHASE_OPTIONS` (an unusable `androidOfferToken` — empty, or given for a subscription)
 - `NOT_INITIALIZED`
 - `ALREADY_IN_PROGRESS` (concurrent purchase for same productId; also raised by `reset()` while a purchase is in flight)
 - `PLATFORM_NOT_SUPPORTED` (web)

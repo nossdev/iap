@@ -130,7 +130,7 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
   constructor(private readonly deps: PurchaseOrchestratorDeps<TEntitlement>) {}
 
   async purchase(opts: PurchaseOptions): Promise<PurchaseResult<TEntitlement>> {
-    const { productId, appUserId } = opts;
+    const { productId, appUserId, androidOfferToken } = opts;
     if (this.inFlight.has(productId)) {
       throw new IAPError({
         code: IAPErrorCode.ALREADY_IN_PROGRESS,
@@ -143,6 +143,43 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
         code: IAPErrorCode.PRODUCT_NOT_FOUND,
         message: `Product "${productId}" is not in the configured catalog.`,
       });
+    }
+
+    // An unusable offer token is refused, not dropped. Both checks are
+    // pre-flight, like the other caller-bug throws, so neither reaches the
+    // event stream.
+    //
+    // `null` reads as "no offer chosen", not as a bad token:
+    // `Product.androidOfferToken` is `string | null`, and `null` there
+    // genuinely means the product has no specific offer — so it falls
+    // through to the store's own choice, exactly as omitting the option
+    // does. An **empty string** is different: it comes from a defensive
+    // `token ?? ''` on a catalog that moved, where the app did mean to
+    // name an offer, and silently falling back is the harm below.
+    if (androidOfferToken != null) {
+      // An empty token is the same harm as the subscription case below —
+      // the store falls back to an offer of its own choosing and the user
+      // is charged a price the app did not show. It arrives from
+      // `token ?? ''` on a catalog that refreshed, so it is a real shape,
+      // not a hypothetical one.
+      if (typeof androidOfferToken !== 'string' || androidOfferToken.trim() === '') {
+        throw new IAPError({
+          code: IAPErrorCode.INVALID_PURCHASE_OPTIONS,
+          message: `purchase({ androidOfferToken }) was given an empty token for "${productId}". Pass a token from Product.androidOneTimeOffers, or omit the option to let the store choose.`,
+        });
+      }
+
+      // The plugin reads `offerToken` only on its one-time-purchase path.
+      // Its subscription path matches `planIdentifier` against the base
+      // plan id, falls back to the *first* offer, and sets the token it
+      // chose itself — so a token passed for a subscription is silently
+      // dropped and the user can be charged a different offer's price.
+      if (product.type === 'subscription') {
+        throw new IAPError({
+          code: IAPErrorCode.INVALID_PURCHASE_OPTIONS,
+          message: `purchase({ androidOfferToken }) is not supported for the subscription "${productId}": the native layer selects a subscription's offer by base plan and would ignore the token, so a different offer could be charged. Use androidPlanId to choose the base plan.`,
+        });
+      }
     }
 
     // In flight from here, before the appUserId resolution below. That
@@ -175,7 +212,7 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
 
       this.deps.emitter.emit('purchase-started', { productId });
 
-      return await this.runFlow(product, resolvedAppUserId);
+      return await this.runFlow(product, { appUserId: resolvedAppUserId, androidOfferToken });
     } finally {
       this.inFlight.delete(productId);
     }
@@ -183,8 +220,10 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
 
   private async runFlow(
     product: ConfiguredProduct,
-    appUserId: string | undefined,
+    /** Named, because two optional strings in a row invite a transposition. */
+    opts: { appUserId: string | undefined; androidOfferToken: string | undefined },
   ): Promise<PurchaseResult<TEntitlement>> {
+    const { appUserId, androidOfferToken } = opts;
     const { nativeAdapter, logger } = this.deps;
     let nativeTx: NativeTransaction;
 
@@ -194,6 +233,10 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
         productId: product.id,
         productType: product.type,
         ...(product.androidPlanId ? { androidPlanId: product.androidPlanId } : {}),
+        // Validated above, so forwarded on presence rather than
+        // truthiness — a truthiness check here would re-introduce the
+        // silent drop that validation exists to prevent.
+        ...(androidOfferToken != null ? { androidOfferToken } : {}),
         ...(appUserId ? { appAccountToken: appUserId } : {}),
       });
     } catch (error) {

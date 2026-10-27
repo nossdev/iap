@@ -585,3 +585,70 @@ describe('CapgoNativeAdapter — consumables', () => {
     expect((error as IAPError).recoverable).toBe(true);
   });
 });
+
+describe('CapgoNativeAdapter — one-time offers', () => {
+  beforeEach(() => {
+    mockedPlatform = 'android';
+    nativePurchasesMock.purchaseProduct.mockReset();
+  });
+
+  it('forwards an offer token to the plugin', async () => {
+    nativePurchasesMock.purchaseProduct.mockResolvedValue(googleTx());
+
+    await new CapgoNativeAdapter(silentLogger, 'com.example.app').purchaseProduct({
+      productId: 'remove_ads',
+      productType: 'product',
+      androidOfferToken: 'TOKEN_DISCOUNT_50',
+    });
+
+    expect(nativePurchasesMock.purchaseProduct).toHaveBeenCalledWith(
+      expect.objectContaining({ offerToken: 'TOKEN_DISCOUNT_50' }),
+    );
+  });
+
+  it('omits offerToken entirely when none was given', async () => {
+    nativePurchasesMock.purchaseProduct.mockResolvedValue(googleTx());
+
+    await new CapgoNativeAdapter(silentLogger, 'com.example.app').purchaseProduct({
+      productId: 'remove_ads',
+      productType: 'product',
+    });
+
+    // The plugin reads the key's presence; an explicit `undefined` crossing
+    // the bridge is not the same as an absent key.
+    expect(nativePurchasesMock.purchaseProduct.mock.calls[0]?.[0]).not.toHaveProperty('offerToken');
+  });
+
+  it('maps a stale token to INVALID_PURCHASE_OPTIONS, not a store failure', async () => {
+    // What the plugin says when the token matches no current offer — the
+    // ordinary consequence of caching a per-query token. This path became
+    // reachable only because iap started sending one.
+    nativePurchasesMock.purchaseProduct.mockRejectedValue(
+      new Error('Offer token not found for product: remove_ads'),
+    );
+
+    const error = await new CapgoNativeAdapter(silentLogger, 'com.example.app')
+      .purchaseProduct({
+        productId: 'remove_ads',
+        productType: 'product',
+        androidOfferToken: 'STALE',
+      })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(IAPError);
+    // Falling through to STORE_ERROR told the developer to check device
+    // connectivity, which is the wrong place entirely.
+    expect((error as IAPError).code).toBe(IAPErrorCode.INVALID_PURCHASE_OPTIONS);
+    expect((error as IAPError).message).toContain('getProducts');
+  });
+
+  it('still maps a genuine product-not-found to PRODUCT_NOT_FOUND', async () => {
+    nativePurchasesMock.purchaseProduct.mockRejectedValue(new Error('Product not found'));
+
+    const error = await new CapgoNativeAdapter(silentLogger, 'com.example.app')
+      .purchaseProduct({ productId: 'remove_ads', productType: 'product' })
+      .catch((e: unknown) => e);
+
+    expect((error as IAPError).code).toBe(IAPErrorCode.PRODUCT_NOT_FOUND);
+  });
+});

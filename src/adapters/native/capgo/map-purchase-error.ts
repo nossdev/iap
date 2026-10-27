@@ -42,6 +42,23 @@ export function mapPurchaseError(error: unknown, productId: string): IAPError {
       cause: error,
     });
   }
+  // Reachable only because iap now sends an offer token. The plugin
+  // validates it against the live product query and rejects an unknown one
+  // — which is the right behaviour, but it is a stale-input problem, not a
+  // store problem, and falling through to STORE_ERROR would have told the
+  // developer to "check device connectivity".
+  //
+  // Checked after `product not found` on purpose: the plugin's message is
+  // "Offer token not found for product: <id>", which contains neither of
+  // that branch's phrases, but ordering it here keeps the more specific
+  // match from depending on that.
+  if (lower.includes('offer token not found')) {
+    return new IAPError({
+      code: IAPErrorCode.INVALID_PURCHASE_OPTIONS,
+      message: `The androidOfferToken passed for "${productId}" matches no current offer. These are per-query device tokens: re-read Product.androidOneTimeOffers from a fresh getProducts() rather than persisting one.`,
+      cause: error,
+    });
+  }
   return new IAPError({
     code: IAPErrorCode.STORE_ERROR,
     message: `Native purchase of "${productId}" failed.`,

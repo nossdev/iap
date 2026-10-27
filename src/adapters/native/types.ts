@@ -6,6 +6,17 @@ export interface NativePurchaseOptions {
   productId: string;
   productType: ProductType;
   androidPlanId?: string;
+  /**
+   * Android one-time products only. The core validates it and refuses one
+   * for a subscription before reaching here, because the plugin would drop
+   * it — see `PurchaseOptions.androidOfferToken` in `src/types/results.ts`.
+   *
+   * That split is worth knowing if a second adapter is ever written: the
+   * refusal lives in the core and applies to every adapter, while the
+   * forwarding is each adapter's own, so an adapter that ignores this field
+   * silently loses the feature rather than failing.
+   */
+  androidOfferToken?: string;
   appAccountToken?: string;
 }
 

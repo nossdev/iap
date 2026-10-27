@@ -3,6 +3,67 @@
 All notable changes to `@nosslabs/iap` will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## [8.3.0] — 2026-10-27
+
+### Added
+
+- **`purchase({ androidOfferToken })`** — buy a *specific* Android one-time purchase offer
+  instead of letting the store pick. Play allows several offers on one one-time product (a base
+  price plus, say, a launch discount) and the native layer takes the first unless told which.
+
+- **`Product.androidOneTimeOffers`** — and this is what makes the option usable. Play reports
+  **one payload per one-time offer**, each with its own price and token; iap returns one
+  `Product` per configured id and prices it from the base offer, which discarded every
+  discounted token. So the only token a consumer could obtain selected the *full price* —
+  passing it would have pinned $4.99 where the store's own default might have charged $2.49.
+  Every offer the store returned is now reported, with its `offerId`, `offerToken`,
+  `priceString`, `price` and `currencyCode`. Absent for a single-offer product, on iOS, and for
+  subscriptions, whose offers cannot be selected at purchase time at all.
+
+  The tokens are **per-query device tokens**: read them from the same `getProducts()` call you
+  purchase from. A persisted one is rejected by the store, which iap now reports as
+  `INVALID_PURCHASE_OPTIONS` instead of a generic `STORE_ERROR` telling you to check device
+  connectivity.
+
+- **`IAPErrorCode.INVALID_PURCHASE_OPTIONS`** — an argument to `purchase()` is unusable, as
+  distinct from `INVALID_CONFIG`, which is `createIAP()` schema validation. Raised for an
+  `androidOfferToken` that is empty, that is given for a subscription, or that matches no
+  current offer.
+
+  An **empty** token is refused rather than dropped, because it is what a defensive
+  `token ?? ''` produces when the catalog moved under the UI — and dropping it would charge
+  whichever offer the store picked while the app displayed another, which is the whole harm
+  this feature guards against. `null` behaves as if omitted, since `Product.androidOfferToken`
+  is `string | null` and `null` there genuinely means "no specific offer".
+
+### Fixed
+
+- **Corrected an iap `8.2.0` claim: a subscription's offer still cannot be chosen.** That
+  release reported capgo's new `purchaseProduct({ offerToken })` as "choosing a specific offer
+  within a base plan is now possible at the native layer". Reading the plugin's Java rather
+  than its type declaration shows otherwise: the subscription path matches `planIdentifier`
+  against the base plan id, falls back to the **first** offer, and calls `setOfferToken` with
+  the offer *it* chose. The caller's token is never read there. Only the one-time-purchase path
+  honours it — and there it validates, rejecting an unknown token rather than falling back.
+  iOS reads no offer token at all.
+
+  So `purchase()` **refuses** `androidOfferToken` for a subscription rather than forwarding it
+  to be dropped: forwarding would let a consumer believe they had bought a chosen promotional
+  offer while the store charged a different one's price. `androidPlanId` remains the only
+  subscription-offer control.
+
+  The guard that produced the wrong claim checked the plugin's *declaration*. It now reads the
+  Java, asserts the caller's token is not referenced anywhere in the subscription branch, and
+  was verified against a patched plugin source — including the idioms an identifier-keyed check
+  would have missed. When capgo closes that gap, the guard fails and the refusal can become a
+  forward. Same lesson as three previous findings in this plugin: its types and comments
+  describe intent, its code describes behaviour.
+
+- **`purchase()` throws `PRODUCT_NOT_FOUND`, not `INVALID_CONFIG`, for an unconfigured
+  product id**, which is what the code has always done — the error-handling guide said
+  otherwise. That guide also said `INVALID_CONFIG` "never reaches `initialize()`"; since
+  `8.2.0` it can, for a lazily-resolved `@capacitor/preferences`. Both corrected.
+
 ## [8.2.0] — 2026-10-27
 
 ### Changed
@@ -48,12 +109,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
     `debugLogging` config, and the purchase summary it emits carries no token. Verified by
     asserting that no `android.util.Log` call survives outside the wrapper, so a regression
     fails CI; the warning is off the page.
-  - **`purchaseProduct()` accepts an `offerToken`.** Choosing a specific offer within a base
-    plan is now possible at the native layer. iap does not forward one yet — `purchase()` has
-    no way to name an offer — so this is recorded as a feature to build rather than a gap to
-    live with.
+  - **`purchaseProduct()` accepts an `offerToken`.** This note overstated what that means.
+    The plugin reads the token **only on its one-time-purchase path**, never for a
+    subscription — see the iap `8.3.0` entry above, which corrects it.
 
-  The plugin also moved to **Play Billing Library 9.1.0** (from 8.3.0), a native major. It
+  The plugin also moved to **Play Billing Library 9.1.0** (from Play Billing 8.3.0 — not to be confused with iap's own 8.3.0 above), a native major. It
   changes nothing iap relies on, and that was checked against the 9.1.0 artifact rather than
   assumed: `Purchase.PurchaseState` still reads `UNSPECIFIED_STATE = 0, PURCHASED = 1,
   PENDING = 2`, and `consumeAsync`, `acknowledgePurchase` and `queryPurchasesAsync` keep their

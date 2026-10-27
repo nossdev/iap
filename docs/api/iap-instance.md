@@ -88,6 +88,7 @@ Starts a purchase. Returns a discriminated union — does NOT throw on user canc
 interface PurchaseOptions {
   productId: string;
   appUserId?: AppUserId;
+  androidOfferToken?: string;
 }
 ```
 
@@ -95,6 +96,7 @@ interface PurchaseOptions {
 | ----------- | ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `productId` | `string`                      | yes      | Must be in `config.products`.                                                                                                                                                                                                                                                                                                                                                        |
 | `appUserId` | [`AppUserId`](/api/types#appuserid) | no       | An RFC 9562 UUID of any version (literal or async-fetched) forwarded to StoreKit's `appAccountToken` (iOS) / Play Billing's `obfuscatedAccountId` (Android). Three forms accepted: plain string, zero-arg fetcher `() => Promise<string>`, or ctx-form fetcher `(ctx) => Promise<string>` where `ctx.authHeaders` is populated from `backend.getAuthHeaders()`. See [`AppUserId`](/api/types#appuserid) for full semantics. |
+| `androidOfferToken` | `string` | no | Android **one-time products only**: buy a specific offer rather than letting the store pick the first. Pass an `offerToken` from [`Product.androidOneTimeOffers`](/api/types#androidonetimeoffer) on the *same* `getProducts()` call — these are per-query device tokens and a persisted one is rejected. **Throws `INVALID_PURCHASE_OPTIONS`** when empty, or when given for a subscription: the native layer selects a subscription's offer by base plan and would ignore the token, so a different offer could be charged — use `androidPlanId` there. This is the one `android*`-prefixed option that *errors* on iOS rather than being ignored, and only for a subscription; for a one-time product it is harmlessly ignored, since StoreKit has one price per product. `null` behaves as if omitted. See [the native-layer page](/guide/native-layer). |
 
 ```typescript
 type PurchaseResult<T> =
@@ -110,6 +112,8 @@ type PurchaseResult<T> =
 - `IAPError(ALREADY_IN_PROGRESS)` — a purchase for the same productId is already running
 - `IAPError(PRODUCT_NOT_FOUND)` — productId not in `config.products`
 - `IAPError(PLATFORM_NOT_SUPPORTED)` — called on web
+- `IAPError(PRODUCT_NOT_FOUND)` — `productId` is not in `config.products`
+- `IAPError(INVALID_PURCHASE_OPTIONS)` — `androidOfferToken` is empty, or given for a subscription
 - `IAPError(INVALID_APP_USER_ID)` — `appUserId` (literal or fetcher-returned) isn't an RFC 9562 UUID
 - `IAPError(APP_USER_ID_FETCH_FAILED)` — async fetcher threw or rejected (original error attached as `cause`)
 

@@ -123,7 +123,7 @@ third column is what iap does with each field **today**, not what it could.
 | `planIdentifier` | Android | Two meanings, unfortunately. On `purchaseProduct()` it is the **base plan** to buy, passed through from `androidPlanId`. On a *product* payload it is the Play **product id** — which is how iap matches a payload back to a configured product, since `identifier` there is the base plan. |
 | `introductoryPrice` | both | `Product.introductoryOffer`, normalized to `SubscriptionOffer`. |
 | `discounts` | both | `Product.promotionalOffers`. |
-| `offerToken`, `offerId` | Android | `Product.androidOfferToken` / `androidOfferId`. Identification only *through iap* — the plugin accepts an `offerToken` on `purchaseProduct()` since `8.9.x`, but `iap.purchase()` does not forward one yet. |
+| `offerToken`, `offerId` | Android | `Product.androidOfferToken` / `androidOfferId` for the base offer, and `Product.androidOneTimeOffers` for every one-time offer the store returned. A one-time offer's token is what `purchase({ androidOfferToken })` takes; for a **subscription** these are identification only — see the gaps table. |
 | `subscriptionPeriod` | iOS | `Product.subscriptionPeriod`, as an ISO 8601 duration. Absent on Android. |
 | `subscriptionGroupIdentifier` | iOS | `Product.subscriptionGroupId`. |
 | `expirationDate`, `subscriptionState` | iOS | `NativeTransaction.subscription.expiresAt` / `.state`. |
@@ -257,15 +257,19 @@ These are the gaps as of 8.9.6. Each one caps what iap could offer, and each is 
 *inverted* test — when capgo adds one, CI fails, which is the signal to revisit this page.
 
 That mechanism has now earned its keep twice: the `8.6.5` → `8.9.6` bump failed exactly two
-guards, and both were capgo closing a gap — the logcat tokens above, and the offer token in
-the table below.
+guards. One was capgo closing a gap (the logcat tokens above). The other was the offer token,
+and it is the more instructive of the two — the guard fired on the plugin's *declaration*
+gaining `offerToken`, which read like the gap had closed. It had not, for subscriptions. The
+guard is now behavioural, reading the Java rather than the `.d.ts`, because a surface check
+was what produced a wrong claim in iap's own `8.2.0` notes.
 
 | Gap | Consequence |
 |---|---|
 | **Play purchase signature and original JSON** (`getSignature()` / `getOriginalJson()` are read nowhere in the Android sources) | No cryptographic check against the app's licence key is possible on the device. Were one built, it could only cover purchase state, product match, and the binding — which is a claim about the store's say-so, not a signature. |
 | **`originalTransactionId` as a field** | The stable iOS purchase reference — the one that survives renewals — is only reachable by decoding the `jwsRepresentation` payload. `transactionId` changes with each renewal. |
 | **Intro-offer eligibility** (no `isEligibleForIntroOffer`, no eligibility query; the `INTRO_ELIGIBILITY_STATUS` enum is declared but unused) | Whether *this user* qualifies for an introductory offer cannot be known on the device. The offer's existence and terms can; the eligibility cannot. |
-| ~~**A caller-chosen offer token on `purchaseProduct()`**~~ — **available since plugin `8.9.x`** | The plugin now accepts `offerToken`, so choosing a specific offer within a base plan is possible at the native layer. **iap does not pass it yet**: `purchase()` has no way to name an offer, so buying a particular promotional or win-back offer is still out of reach through iap, even though `Product.androidOfferToken` already surfaces the tokens. A feature to build, not a gap to live with. |
+| **A caller-chosen offer token for a *subscription*** | Still a gap, and the plugin's declaration is misleading about it: `purchaseProduct()` gained an `offerToken` option in `8.9.x`, but the Java reads it **only on the one-time-purchase path**. The subscription path matches `planIdentifier` against the base plan id, falls back to the first offer, and sets the token *it* chose. So a particular promotional or win-back offer still cannot be bought, and `iap.purchase()` **refuses** `androidOfferToken` for a subscription rather than forwarding it to be dropped — forwarding it would let a consumer believe they had chosen an offer while the store charged a different one. For a **one-time product** the token is honoured, and iap forwards it; the selectable offers are on `Product.androidOneTimeOffers`. |
+| **Subscription offer terms, per offer, at purchase time** | A consequence of the row above rather than a separate gap, but worth stating: `androidPlanId` selects a *base plan*, and whichever offer the plugin finds under it is what gets charged. An app showing "3 months free" cannot guarantee that is the offer the sheet applies. Play Console configuration and the store's own eligibility are the authority. |
 | **An error when `planIdentifier` matches nothing** | The plugin falls back to the **first** available subscription offer. So a typo'd or stale `androidPlanId` does not fail — it silently purchases a different base plan. Keep `androidPlanId` in step with Play Console; there is no client-side signal when it drifts. |
 | **Android purchase-update events** (`transactionUpdated` is fed from Apple's `Transaction.updates` only) | There is no live Android signal for a renewal, a refund, or a pending purchase clearing. |
 

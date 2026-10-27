@@ -757,3 +757,121 @@ describe('CapgoNativeAdapter — the transaction-feed delegations', () => {
     expect(await adapter.getPendingProductIds()).toEqual(['waiting']);
   });
 });
+
+describe('CapgoNativeAdapter.getProducts — Android one-time offers', () => {
+  /**
+   * Play allows several one-time purchase offers on one product, and the
+   * plugin emits **one payload per offer**, each with its own price and
+   * `offerToken`, all sharing the product id.
+   *
+   * iap returns one `Product` per configured id, preferring the base entry
+   * (`offerId === null`). That used to discard every discounted token — so
+   * the only token a consumer could obtain selected the *full price*, and
+   * passing it to `purchase({ androidOfferToken })` could charge more than
+   * the store's own default would have.
+   */
+  const oneTimeOffer = (over: Record<string, unknown> = {}) => ({
+    identifier: 'remove_ads',
+    title: 'Remove Ads',
+    description: '',
+    offerToken: 'TOKEN_BASE',
+    offerId: null,
+    price: 4.99,
+    priceString: '$4.99',
+    currencyCode: 'USD',
+    introductoryPrice: null,
+    discounts: [],
+    ...over,
+  });
+
+  it('keeps every offer, not just the base one it prices the Product from', async () => {
+    mockedPlatform = 'android';
+    nativePurchasesMock.getProducts.mockResolvedValue({
+      products: [
+        oneTimeOffer(),
+        oneTimeOffer({
+          offerToken: 'TOKEN_DISCOUNT_50',
+          offerId: 'launch-discount',
+          price: 2.49,
+          priceString: '$2.49',
+        }),
+      ],
+    });
+
+    const [product] = await adapter.getProducts([{ id: 'remove_ads', type: 'product' }]);
+
+    // The Product still describes the base offer...
+    expect(product?.priceString).toBe('$4.99');
+    expect(product?.androidOfferToken).toBe('TOKEN_BASE');
+    // ...and the discount is now reachable, which is what makes
+    // purchase({ androidOfferToken }) usable for anything but the base.
+    expect(product?.androidOneTimeOffers).toEqual([
+      {
+        offerId: null,
+        offerToken: 'TOKEN_BASE',
+        priceString: '$4.99',
+        price: 4.99,
+        currencyCode: 'USD',
+      },
+      {
+        offerId: 'launch-discount',
+        offerToken: 'TOKEN_DISCOUNT_50',
+        priceString: '$2.49',
+        price: 2.49,
+        currencyCode: 'USD',
+      },
+    ]);
+  });
+
+  it('omits the list when there is only one offer', async () => {
+    mockedPlatform = 'android';
+    nativePurchasesMock.getProducts.mockResolvedValue({ products: [oneTimeOffer()] });
+
+    const [product] = await adapter.getProducts([{ id: 'remove_ads', type: 'product' }]);
+
+    // A single offer *is* the product's price; a one-entry array would
+    // invite a paywall to render a choice of one.
+    expect(product?.androidOneTimeOffers).toBeUndefined();
+  });
+
+  it('omits the list for a subscription, whose offers cannot be selected', async () => {
+    mockedPlatform = 'android';
+    nativePurchasesMock.getProducts.mockResolvedValue({
+      products: [
+        {
+          identifier: 'monthly-plan',
+          planIdentifier: 'household',
+          offerToken: 'token-base',
+          offerId: null,
+          title: 'Household',
+          description: '',
+          price: 2.99,
+          priceString: '$2.99',
+          currencyCode: 'USD',
+          introductoryPrice: null,
+          discounts: [],
+        },
+        {
+          identifier: 'monthly-plan',
+          planIdentifier: 'household',
+          offerToken: 'token-promo',
+          offerId: 'winback',
+          title: 'Household',
+          description: '',
+          price: 0.99,
+          priceString: '$0.99',
+          currencyCode: 'USD',
+          introductoryPrice: null,
+          discounts: [],
+        },
+      ],
+    });
+
+    const [product] = await adapter.getProducts([{ id: 'household', type: 'subscription' }]);
+
+    // A subscription's offers are introductoryOffer/promotionalOffers, and
+    // none of them can be named at purchase time — the native layer selects
+    // by base plan. Reporting them here would imply otherwise.
+    expect(product?.androidOneTimeOffers).toBeUndefined();
+  });
+});

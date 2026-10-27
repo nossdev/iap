@@ -310,7 +310,7 @@ describe('@capgo/native-purchases — the surface the docs page describes', () =
    * and takes no offer token, so the caller cannot choose which offer
    * within a base plan is purchased.
    */
-  it('now accepts an offer token on purchaseProduct, as well as planIdentifier', () => {
+  it('accepts an offer token on purchaseProduct, as well as planIdentifier', () => {
     const start = definitions.indexOf('purchaseProduct(options: {');
     expect(start).toBeGreaterThan(-1);
     // Search for the closing line *from* `start` — the first occurrence in
@@ -321,12 +321,70 @@ describe('@capgo/native-purchases — the surface the docs page describes', () =
 
     const purchaseOptions = definitions.slice(start, end);
     expect(purchaseOptions).toContain('planIdentifier?: string;');
-    // Arrived in 8.9.x. iap does not pass it yet: `SubscriptionOffer`
-    // already exposes the offers to a consumer, but `purchase()` has no
-    // way to name one, so buying a specific promotional or win-back offer
-    // is still out of reach. This asserts the capability is there to build
-    // on rather than silently assuming it is not.
+    // Arrived in 8.9.x. iap forwards it for a one-time product.
     expect(purchaseOptions).toContain('offerToken?: string;');
+  });
+
+  /**
+   * **Inverted, and the reason `purchase()` refuses an offer token for a
+   * subscription instead of forwarding it.**
+   *
+   * The declaration above says `purchaseProduct` takes an `offerToken`,
+   * which reads like "any offer is now selectable". The Java says
+   * otherwise, and only for subscriptions: the `subs` branch matches
+   * `planIdentifier` against `getBasePlanId()`, falls back to the *first*
+   * offer, and calls `setOfferToken` with the offer **it** chose. The
+   * caller's token is never read on that path, so forwarding one would let
+   * a consumer believe they had bought a specific promotional offer while
+   * the store charged a different one.
+   *
+   * Only the `inapp` branch honours it — and there it validates, rejecting
+   * an unknown token rather than falling back.
+   *
+   * When capgo reads the token on the subscription path too, this fails,
+   * and the refusal in `purchase()` should become a forward.
+   */
+  it('still ignores an offer token on the subscription path', () => {
+    const plugin = sourceNamed('NativePurchasesPlugin.java');
+
+    // Bound the slice to the purchase flow's product loop, so this cannot
+    // accidentally read the getProducts() mapping further down the file.
+    const loopStart = plugin.indexOf(
+      'List<BillingFlowParams.ProductDetailsParams> productDetailsParamsList',
+    );
+    expect(loopStart).toBeGreaterThan(-1);
+    const subsStart = plugin.indexOf('if (productType.equals("subs"))', loopStart);
+    const inappStart = plugin.indexOf('} else if (productType.equals("inapp"))', subsStart);
+    expect(subsStart).toBeGreaterThan(loopStart);
+    expect(inappStart).toBeGreaterThan(subsStart);
+
+    const subsBranch = plugin.slice(subsStart, inappStart);
+    // The caller's variable is not referenced *at all*, rather than
+    // "not referenced via these two idioms" — `if (!TextUtils.isEmpty(
+    // offerToken))` or `Objects.equals(offerToken, …)` would have slipped
+    // past an idiom-keyed check, leaving the guard silent about exactly
+    // the change it exists to catch. Case-sensitive, so it does not match
+    // `getOfferToken()` or `setOfferToken(`.
+    expect(subsBranch).not.toMatch(/\bofferToken\b/);
+    // ...the base plan is, the first offer is the fallback, and the token
+    // that reaches Play is the one the plugin chose itself.
+    expect(subsBranch).toContain('getBasePlanId().equals(planIdentifier)');
+    expect(subsBranch).toContain('getSubscriptionOfferDetails().get(0)');
+    expect(subsBranch).toContain('setOfferToken(selectedOfferDetails.getOfferToken())');
+
+    // While the one-time branch does read it, and validates it.
+    const inappBranch = plugin.slice(
+      inappStart,
+      plugin.indexOf('productDetailsParamsList.add', inappStart),
+    );
+    expect(inappBranch).toContain('offerToken.equals(offerDetails.getOfferToken())');
+    expect(inappBranch).toContain('Offer token not found for product');
+  });
+
+  /** iOS has no offer-token concept at all, so nothing is forwarded there. */
+  it('still reads no offer token on the iOS side', () => {
+    const iosCode = IOS_SOURCES.map(([, contents]) => contents).join('\n');
+    expect(iosCode).not.toContain('offerToken');
   });
 
   /**

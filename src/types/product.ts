@@ -143,10 +143,16 @@ export interface Product {
    * Android: Play's token for the specific offer this entry describes, and
    * the offer's id (`null` for a base plan with no offer).
    *
-   * Exposed for identification and server-side reasoning only. A purchase
-   * **cannot** select an offer by token: the native plugin's purchase call
-   * takes a base plan id, and picks the offer itself. See
-   * `docs/guide/native-layer.md`.
+   * This is the **base** offer's token for a one-time product, and the base
+   * plan's for a subscription: `getProducts()` returns one `Product` per
+   * configured id, and the base entry is the one it keeps. To choose a
+   * *discounted* one-time offer, read {@link Product.androidOneTimeOffers},
+   * which carries every offer the store returned.
+   *
+   * For a **subscription** it is identification and server-side reasoning
+   * only. A subscription purchase cannot select an offer by token — the
+   * native plugin's subscription path takes a base plan id and picks the
+   * offer within it itself. See `docs/guide/native-layer.md`.
    */
   androidOfferToken?: string | null;
   androidOfferId?: string | null;
@@ -161,4 +167,45 @@ export interface Product {
    * adds underneath it.
    */
   androidBasePlanId?: string | null;
+
+  /**
+   * Android one-time products: every purchase offer the store returned for
+   * this product, including the discounted ones.
+   *
+   * Play allows several one-time purchase offers on one product — a base
+   * price plus, say, a launch discount — and reports each as its own entry
+   * with its own price and token. A `Product`'s own `price`/`priceString`
+   * and {@link Product.androidOfferToken} describe the **base** offer,
+   * because one `Product` is returned per configured id. This is where the
+   * rest live, so a paywall can show a discount and
+   * `purchase({ androidOfferToken })` can buy it.
+   *
+   * Absent when the product has a single offer, on iOS (one price per
+   * product, no offer concept here), and for subscriptions — whose offers
+   * are {@link Product.introductoryOffer} and
+   * {@link Product.promotionalOffers}, and which cannot be selected at
+   * purchase time at all.
+   */
+  androidOneTimeOffers?: AndroidOneTimeOffer[];
+}
+
+/**
+ * One of several Android one-time purchase offers on a single product.
+ *
+ * The token is the only way to buy a specific one, and it is a **per-query
+ * device token**: it comes from the `getProducts()` call that returned this
+ * offer, and it goes stale. Read it fresh rather than persisting it — the
+ * store rejects an unknown token, which iap surfaces as
+ * `INVALID_PURCHASE_OPTIONS`.
+ */
+export interface AndroidOneTimeOffer {
+  /** `null` for the base offer; Play's offer id for a discounted one. */
+  offerId: string | null;
+  /** Pass to `purchase({ androidOfferToken })`. Goes stale; see above. */
+  offerToken: string;
+  /** Localized and display-ready — e.g. `"$2.49"`. */
+  priceString: string;
+  /** Numeric price in the currency's major units. */
+  price: number;
+  currencyCode: string;
 }

@@ -235,6 +235,8 @@ Surfaced to consumers via:
 interface PurchaseOptions {
   productId: string;
   appUserId?: AppUserId;
+  /** Android one-time products only; refused for a subscription. */
+  androidOfferToken?: string;
 }
 ```
 
@@ -319,6 +321,33 @@ type ProductType = 'subscription' | 'product' | 'consumable';
 - `'subscription'` — auto-renewable subscription. Requires `androidPlanId` on Android.
 - `'product'` — non-consumable one-time purchase (Remove Ads, lifetime unlock).
 - `'consumable'` — consumable one-time purchase (coin packs, hint refills).
+
+## `AndroidOneTimeOffer`
+
+```typescript
+interface AndroidOneTimeOffer {
+  offerId: string | null;
+  offerToken: string;
+  priceString: string;
+  price: number;
+  currencyCode: string;
+}
+```
+
+Reported as `Product.androidOneTimeOffers` when an Android one-time product has **more than
+one** purchase offer — a base price plus, say, a launch discount. Play reports each as its own
+entry; iap returns one `Product` per configured id and prices it from the base offer, so this
+is where the rest live.
+
+`offerToken` is what `purchase({ androidOfferToken })` takes. It is a **per-query device
+token**: it belongs to the `getProducts()` call that returned it and goes stale, so read it
+fresh rather than persisting one — the store rejects an unknown token and iap surfaces that as
+`INVALID_PURCHASE_OPTIONS`.
+
+Absent for a single-offer product, on iOS, and for subscriptions — whose offers are
+[`introductoryOffer`](#product) and [`promotionalOffers`](#product), and which cannot be
+selected at purchase time at all. See [the native-layer
+page](/guide/native-layer#what-the-plugin-does-not-expose).
 
 ## `LocallyVerifiedPurchase`
 

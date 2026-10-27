@@ -106,6 +106,36 @@ export interface PurchaseOptions {
    * See `AppUserId` for supplied-value semantics.
    */
   appUserId?: AppUserId;
+  /**
+   * Android, one-time products only: buy a **specific offer** rather than
+   * letting the store pick.
+   *
+   * Pass an `offerToken` from `Product.androidOneTimeOffers`, read on the
+   * **same** `getProducts()` call: Play supports several one-time purchase
+   * offers on one product — a base price plus, say, a launch discount — and
+   * without this the native layer takes the first. The tokens are per-query
+   * device tokens, so a persisted one is rejected as
+   * `INVALID_PURCHASE_OPTIONS`.
+   *
+   * `null` means "no offer chosen" and behaves as if omitted, since
+   * `Product.androidOfferToken` is `string | null`. An **empty string** is
+   * refused: it is what a defensive `token ?? ''` produces when the offer
+   * has gone, and letting it through would charge whichever offer the store
+   * picked while the app displayed another.
+   *
+   * **Refused for a subscription**, with `INVALID_PURCHASE_OPTIONS`, rather than
+   * accepted and ignored. The native plugin reads an offer token only on
+   * its one-time-purchase path: for a subscription it selects by base plan
+   * (`androidPlanId`) and picks the offer within it itself, so a token
+   * passed here would be silently dropped and a *different* offer — at a
+   * different price — could be charged. `androidPlanId` is the only
+   * subscription-offer control there is; see
+   * [the native-layer page](https://iap.nossdev.com/guide/native-layer).
+   *
+   * Ignored on iOS, which has no equivalent: StoreKit promotional offers
+   * need a server-signed payload the plugin does not accept.
+   */
+  androidOfferToken?: string;
 }
 
 export type PurchaseResult<TEntitlement extends EntitlementBase = EntitlementBase> =

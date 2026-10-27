@@ -95,8 +95,8 @@ Everything else (config, events, error codes, return shape) is unchanged. The op
 
 | Library version | Capacitor major | Native plugin | dist-tag | Status |
 |---|---|---|---|---|
-| 8.2.x | 8 | `@capgo/native-purchases` `^8.2` | `@latest`, `@latest-8` | **Current** |
-| 8.0.x – 8.1.x | 8 | `@capgo/native-purchases` `^8` / `^8.2` | — | Superseded by `8.2.0` |
+| 8.3.x | 8 | `@capgo/native-purchases` `^8.2` | `@latest`, `@latest-8` | **Current** |
+| 8.0.x – 8.2.x | 8 | `@capgo/native-purchases` `^8` / `^8.2` | — | Superseded by `8.3.0` |
 | 7.1.x | 7 | `@capgo/native-purchases` `lts-v7` | `@latest-7` (pin via `^7`) | Maintenance |
 | 5.0.x | 5 | `cordova-plugin-purchase` ^13.x | `@latest-5` (pin via `^5`) | Maintenance |
 | 0.2.x – 0.4.x | 5 | `cordova-plugin-purchase` ^13.x | — | Superseded by `5.0.0` (same code, renumbered) |

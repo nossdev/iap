@@ -4,6 +4,7 @@ import type {
 } from '@capgo/native-purchases';
 import { toIso8601Duration } from '../../../lib/subscription-period.js';
 import type {
+  AndroidOneTimeOffer,
   ConfiguredProduct,
   Product,
   ProductType,
@@ -67,7 +68,17 @@ export function resolveProducts(
     });
     if (candidates.length === 0) continue;
 
-    products.push(normalizeProduct(pickCandidate(candidates, request.androidPlanId), request));
+    const product = normalizeProduct(pickCandidate(candidates, request.androidPlanId), request);
+    // Keep the offers `pickCandidate` did not choose, for a one-time
+    // product. The plugin emits **one payload per one-time purchase offer**
+    // — base price, launch discount, each with its own price and token —
+    // and collapsing them to one `Product` discarded every discounted
+    // token. Without them `purchase({ androidOfferToken })` can only ever
+    // name the base offer, which is worse than useless: it would pin the
+    // full price while the store's own default might have been the
+    // discount.
+    const offers = request.type === 'subscription' ? [] : oneTimeOffers(candidates);
+    products.push(offers.length > 1 ? { ...product, androidOneTimeOffers: offers } : product);
   }
 
   return products;
@@ -78,6 +89,32 @@ export function resolveProducts(
  * configured if it is here, then the entry carrying the offers (the base
  * plan, `offerId === null`), else the first the store gave.
  */
+/**
+ * The one-time purchase offers among a product's payloads.
+ *
+ * Only reported when there is more than one, since a single offer *is* the
+ * product's own price and a one-entry array would invite a paywall to
+ * render a "choice" of one. Entries with no token are dropped — there is
+ * nothing a consumer could do with one.
+ */
+function oneTimeOffers(candidates: PluginProduct[]): AndroidOneTimeOffer[] {
+  const offers: AndroidOneTimeOffer[] = [];
+
+  for (const candidate of candidates) {
+    const p = candidate as DeliveredProduct;
+    if (typeof p.offerToken !== 'string' || p.offerToken === '') continue;
+    offers.push({
+      offerId: p.offerId ?? null,
+      offerToken: p.offerToken,
+      priceString: p.priceString,
+      price: p.price,
+      currencyCode: p.currencyCode,
+    });
+  }
+
+  return offers;
+}
+
 function pickCandidate(candidates: PluginProduct[], androidPlanId?: string): PluginProduct {
   const named =
     androidPlanId !== undefined

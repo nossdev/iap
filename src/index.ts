@@ -14,6 +14,7 @@ export type {
 } from './types/config.js';
 
 export type {
+  AndroidOneTimeOffer,
   ConfiguredProduct,
   Product,
   ProductType,
