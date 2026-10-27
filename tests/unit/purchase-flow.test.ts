@@ -167,6 +167,7 @@ describe('PurchaseOrchestrator — happy path', () => {
       platform: 'apple',
       productId: 'remove_ads',
       token: '2000000444444444',
+      purchaseReference: '2000000444444444',
       productType: 'product',
     };
     const { orchestrator } = makeOrchestrator({
@@ -359,6 +360,7 @@ describe('PurchaseOrchestrator — concurrency', () => {
             platform: 'apple',
             productId,
             token: `tok-${productId}`,
+            purchaseReference: `tok-${productId}`,
             productType: 'product',
           } as NativeTransaction;
         },
@@ -398,6 +400,7 @@ describe('PurchaseOrchestrator — guards', () => {
             platform: 'google',
             productId: 'premium_monthly',
             token: 'play-tok',
+            purchaseReference: 'play-tok',
             // packageName intentionally missing
             productType: 'subscription',
           }) as NativeTransaction,

@@ -98,6 +98,34 @@ await iap.initialize();
 
 After `initialize()` returns, all read methods (`hasEntitlement`, `getEntitlements`, `getEntitlement`, `getProducts`, `getStorefront`) are safe to call.
 
+### Building paywall copy from the store's own data
+
+`getProducts()` returns each subscription's introductory offer, so the paywall can describe it without a hardcoded price:
+
+```typescript
+const products = await iap.getProducts();
+const plan = products.find((p) => p.id === 'premium_monthly');
+if (!plan) return; // configured, but the store has not ingested it yet
+
+// Every string here is the store's own, in the store's currency and format.
+const offer = plan.introductoryOffer;
+let label: string;
+
+if (offer?.payment === 'free-trial' && offer.period) {
+  // `period` is an ISO 8601 duration, e.g. "P1W" — and it is nullable, so
+  // guard it rather than rendering "null free, then …".
+  label = `${formatDuration(offer.period)} free, then ${plan.priceString}`;
+} else if (offer) {
+  label = `${offer.priceString} to start, then ${plan.priceString}`;
+} else {
+  label = plan.priceString;
+}
+```
+
+::: warning Do not promise an offer to a specific user
+An offer here means **this product has one**, not **this user will get it** — eligibility cannot be read on the device on either platform. Phrase copy so it is true either way ("7-day free trial for new subscribers"). On Android, also do not render `promotionalOffers` terms. Both caveats in full: [`SubscriptionOffer`](/api/types#subscriptionoffer).
+:::
+
 ## 4. Buy something
 
 ```typescript

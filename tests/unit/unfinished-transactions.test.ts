@@ -17,6 +17,7 @@ const sampleApple: NativeTransaction = {
   platform: 'apple',
   productId: 'premium_monthly',
   token: '2000000123456789',
+  purchaseReference: '2000000123456789',
   productType: 'subscription',
 };
 
@@ -24,6 +25,7 @@ const sampleGoogle: NativeTransaction = {
   platform: 'google',
   productId: 'premium_monthly',
   token: 'play-tok-abc',
+  purchaseReference: 'play-tok-abc',
   packageName: 'com.example.app',
   productType: 'subscription',
 };
@@ -148,5 +150,103 @@ describe('UnfinishedTransactionsStore', () => {
     };
     const store = new UnfinishedTransactionsStore(failing, silentLogger);
     expect(await store.list()).toEqual([]);
+  });
+});
+
+describe('UnfinishedTransactionsStore — the purchase reference', () => {
+  /**
+   * Recovery re-verifies an entry on a later launch, possibly days later, so
+   * the renewal-stable reference has to survive the round trip through
+   * storage — on iOS it is not recoverable from the token.
+   */
+  it('round-trips a reference that differs from the token', async () => {
+    const { store } = makeStore();
+    await store.add({
+      platform: 'apple',
+      productId: 'premium_monthly',
+      token: '2000001099999999',
+      purchaseReference: '2000001043762129',
+      productType: 'subscription',
+    });
+
+    const [entry] = await store.list();
+    expect(entry?.token).toBe('2000001099999999');
+    expect(entry?.purchaseReference).toBe('2000001043762129');
+  });
+
+  /**
+   * Entries written by a version before the field existed must keep working
+   * across the upgrade — dropping them would abandon a purchase that was
+   * paid for but never acknowledged, which on Android means Google refunds
+   * it after three days.
+   */
+  it('still reads an entry persisted before the field existed', async () => {
+    const { store, storage } = makeStore();
+    await storage.set(
+      'unfinished_transactions',
+      JSON.stringify([
+        {
+          platform: 'apple',
+          productId: 'premium_monthly',
+          token: '2000000123456789',
+          productType: 'subscription',
+          recordedAt: '2026-10-01T00:00:00.000Z',
+        },
+      ]),
+    );
+
+    const entries = await store.list();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.purchaseReference).toBeUndefined();
+  });
+
+  it('keeps an entry whose reference is empty, falling back to its token', async () => {
+    // The reference is a non-essential optional: platform, productId, token
+    // and productType are all that recovery needs, and it falls back to the
+    // token anyway. Discarding the entry would abandon a purchase that was
+    // paid for and never acknowledged — on Android, Google refunds it after
+    // three days.
+    const { store, storage } = makeStore();
+    await storage.set(
+      'unfinished_transactions',
+      JSON.stringify([
+        {
+          platform: 'apple',
+          productId: 'premium_monthly',
+          token: '2000000123456789',
+          purchaseReference: '',
+          productType: 'subscription',
+          recordedAt: '2026-10-01T00:00:00.000Z',
+        },
+      ]),
+    );
+
+    const entries = await store.list();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.token).toBe('2000000123456789');
+  });
+
+  it('drops only the unreadable entry, never its neighbours', async () => {
+    // The list was parsed as one array, so a single malformed entry failed
+    // the whole parse and cleared every pending recovery with it. Each entry
+    // stands or falls on its own.
+    const { store, storage } = makeStore();
+    await storage.set(
+      'unfinished_transactions',
+      JSON.stringify([
+        { platform: 'martian', productId: '', token: '' },
+        {
+          platform: 'apple',
+          productId: 'premium_monthly',
+          token: '2000000123456789',
+          productType: 'subscription',
+          recordedAt: '2026-10-01T00:00:00.000Z',
+        },
+      ]),
+    );
+
+    const entries = await store.list();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.token).toBe('2000000123456789');
   });
 });

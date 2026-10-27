@@ -16,6 +16,9 @@ export function makeAppleTransaction(productId = 'premium_monthly'): NativeTrans
     platform: 'apple',
     productId,
     token: `apple-token-${productId}`,
+    // Deliberately different from `token`: on iOS the two really do differ
+    // (the token changes each renewal), so a test that conflates them fails.
+    purchaseReference: `apple-original-${productId}`,
     productType: 'subscription',
   };
 }
@@ -25,6 +28,8 @@ export function makeGoogleTransaction(productId = 'premium_monthly'): NativeTran
     platform: 'google',
     productId,
     token: `play-token-${productId}`,
+    // On Android the purchase token *is* the stable reference.
+    purchaseReference: `play-token-${productId}`,
     packageName: 'com.example.app',
     productType: 'subscription',
   };

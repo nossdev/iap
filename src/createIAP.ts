@@ -490,7 +490,9 @@ export function createIAP<TEntitlement extends EntitlementBase = EntitlementBase
           message: 'Native adapter not constructed; this is a library bug.',
         });
       }
-      return state.adapter.getProducts(state.products.map((p) => ({ id: p.id, type: p.type })));
+      // Pass the manifest entries whole: the adapter needs `androidPlanId`
+      // to pick a base plan on Android.
+      return state.adapter.getProducts([...state.products]);
     },
 
     async getStorefront() {

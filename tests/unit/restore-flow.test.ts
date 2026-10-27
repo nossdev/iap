@@ -101,6 +101,7 @@ describe('RestoreOrchestrator — single platform', () => {
       platform: 'apple',
       productId: 'premium_monthly',
       token: '2000000123456789',
+      purchaseReference: '2000000123456789',
       productType: 'subscription',
     };
     const acknowledgeSpy = vi.fn(async () => {});
@@ -150,6 +151,7 @@ describe('RestoreOrchestrator — single platform', () => {
       platform: 'google',
       productId: 'premium_monthly',
       token: 'play-token-abc',
+      purchaseReference: 'play-token-abc',
       packageName: 'com.example.app',
       productType: 'subscription',
     };
@@ -187,18 +189,21 @@ describe('RestoreOrchestrator — multi-product mixed batch', () => {
         platform: 'apple',
         productId: 'premium_monthly',
         token: '2000000111',
+        purchaseReference: '2000000111',
         productType: 'subscription',
       },
       {
         platform: 'apple',
         productId: 'remove_ads',
         token: '2000000222',
+        purchaseReference: '2000000222',
         productType: 'product',
       },
       {
         platform: 'google',
         productId: 'coin_pack_100',
         token: 'play-tok-coin',
+        purchaseReference: 'play-tok-coin',
         packageName: 'com.example.app',
         productType: 'consumable',
       },
@@ -251,6 +256,7 @@ describe('RestoreOrchestrator — failure paths', () => {
         platform: 'apple',
         productId: 'premium_monthly',
         token: '2000000111',
+        purchaseReference: '2000000111',
         productType: 'subscription',
       },
     ];
@@ -292,6 +298,7 @@ describe('RestoreOrchestrator — failure paths', () => {
         platform: 'apple',
         productId: 'premium_monthly',
         token: '2000000111',
+        purchaseReference: '2000000111',
         productType: 'subscription',
       },
     ];
@@ -347,6 +354,7 @@ describe('RestoreOrchestrator — failure paths', () => {
               platform: 'google',
               productId: 'premium_monthly',
               token: 'play-tok',
+              purchaseReference: 'play-tok',
               // packageName missing
               productType: 'subscription',
             },
@@ -373,12 +381,14 @@ describe('RestoreOrchestrator — defensive paths', () => {
         platform: 'apple',
         productId: 'premium_monthly',
         token: '2000000111',
+        purchaseReference: '2000000111',
         productType: 'subscription',
       },
       {
         platform: 'apple',
         productId: 'remove_ads',
         token: '2000000222',
+        purchaseReference: '2000000222',
         productType: 'product',
       },
     ];
@@ -441,6 +451,7 @@ describe('RestoreOrchestrator — defensive paths', () => {
             platform: 'apple',
             productId: 'premium_monthly',
             token: '2000000111',
+            purchaseReference: '2000000111',
             productType: 'subscription',
           },
         ],
@@ -480,6 +491,7 @@ describe('RestoreOrchestrator — unfinished list maintenance', () => {
         platform: 'apple',
         productId: 'premium_monthly',
         token: '2000000111',
+        purchaseReference: '2000000111',
         productType: 'subscription',
       },
     ];
@@ -510,6 +522,7 @@ describe('RestoreOrchestrator — unfinished list maintenance', () => {
         platform: 'apple',
         productId: 'premium_monthly',
         token: '2000000111',
+        purchaseReference: '2000000111',
         productType: 'subscription',
       },
     ];

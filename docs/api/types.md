@@ -53,10 +53,61 @@ interface Product {
   priceMicros: string;
   /** ISO 4217 currency code, e.g. "USD". */
   currency: string;
+
+  // ----- Subscription detail. null / empty for non-subscriptions. -----
+
+  /** Billing period as an ISO 8601 duration, e.g. "P1M". iOS only. */
+  subscriptionPeriod?: string | null;
+  /** Subscription group. iOS only. */
+  subscriptionGroupId?: string | null;
+  /** The introductory offer, or null when there is none. */
+  introductoryOffer?: SubscriptionOffer | null;
+  /** Promotional and win-back offers. Empty when there are none. */
+  promotionalOffers?: SubscriptionOffer[];
+  /** Android: Play's offer token and offer id, for identification only. */
+  androidOfferToken?: string | null;
+  androidOfferId?: string | null;
 }
 ```
 
 Returned by `iap.getProducts()`. The combination of `priceMicros` + `currency` gives you precise math without floating-point issues; `priceString` is what you display.
+
+`subscriptionPeriod` and `subscriptionGroupId` are **iOS only** and `null` on Android — the native plugin collapses Play's pricing phases before exposing them and never surfaces a base plan's billing period. Where you need the cadence on both platforms, take it from your own product configuration: you chose the base plan's period in Play Console.
+
+## `SubscriptionOffer`
+
+```typescript
+type SubscriptionOfferType = 'introductory' | 'promotional' | 'win-back' | 'unknown';
+
+type SubscriptionOfferPayment =
+  | 'free-trial'      // no charge for the offer period
+  | 'pay-up-front'    // one discounted charge for the whole offer period
+  | 'pay-as-you-go'   // a discounted charge each period, periodCount times
+  | 'unknown';
+
+interface SubscriptionOffer {
+  /** The store's id for the offer; null when the store does not name it. */
+  id: string | null;
+  type: SubscriptionOfferType;
+  payment: SubscriptionOfferPayment;
+  /** Localized, e.g. "$0.00". Render as-is. */
+  priceString: string;
+  priceMicros: string;
+  currency: string;
+  /** Offer period as an ISO 8601 duration, e.g. "P1W". */
+  period: string | null;
+  /** How many periods the offer runs for. 0 when the store did not say. */
+  periodCount: number;
+}
+```
+
+Build paywall copy from these fields rather than hardcoding — `priceString` is the store's own localized string, in the store's currency and format.
+
+::: warning Eligibility cannot be determined on the device
+An offer appearing here means **this product has one**, not **this user will get it**. The native plugin exposes no eligibility query on either platform (see [The native layer](/guide/native-layer#what-the-plugin-does-not-expose)), so iap cannot tell you whether the current user qualifies.
+
+The store's own purchase sheet applies eligibility at purchase time and is the authority. Write copy that reads correctly either way — "7-day free trial for new subscribers" rather than "your 7 days free" — or confirm eligibility server-side.
+:::
 
 ## `ConfiguredProduct`
 
@@ -103,19 +154,62 @@ interface NativeTransaction {
   platform: Platform;
   productId: string;
   /**
-   * Apple: StoreKit 2 transactionId (numeric string)
-   * Google: Play Billing purchaseToken
+   * Apple: StoreKit 2 transactionId (numeric string) — CHANGES each renewal.
+   * Google: Play Billing purchaseToken.
    */
   token: string;
+  /**
+   * The stable reference to the purchase, which survives renewals.
+   * Apple: originalTransactionId. Google: the purchaseToken (== token).
+   */
+  purchaseReference: string;
   /** Google only — required by Attesto's /v1/google/verify */
   packageName?: string;
   productType: ProductType;
+  /** The binding the purchase was made with; null when it carried none. */
+  appUserId?: string | null;
+  /** Renewal detail for a subscription; null when not reported. */
+  subscription?: SubscriptionRenewal | null;
   /** Plugin-native fields — opaque pass-through */
   raw?: unknown;
 }
 ```
 
 The shape the native adapter passes to backend verification. Most consumers never see this directly — it's an internal contract surfaced via `BackendAdapter` for custom transports.
+
+**`token` vs `purchaseReference`** is the distinction worth internalizing. `token` is the handle for acknowledging *this* transaction; on Apple it is a different value after every renewal. `purchaseReference` is the identity of the purchase itself, so it is what you store if you need to recognise the subscription later — re-minting a token from it months after the purchase, say.
+
+On Google the two are the same value. On Apple, `purchaseReference` is read from the signed `jwsRepresentation` payload, because the native plugin does not expose `originalTransactionId` as a field; it falls back to `token` when the JWS is absent or unreadable, so it is always set.
+
+## `SubscriptionRenewal`
+
+```typescript
+type SubscriptionState =
+  | 'subscribed'
+  | 'expired'
+  | 'revoked'
+  | 'in-grace-period'
+  | 'in-billing-retry'
+  | 'unknown';
+
+interface SubscriptionRenewal {
+  state: SubscriptionState | null;
+  /** false = cancelled but still has access until expiresAt. */
+  autoRenewing: boolean | null;
+  /** When the next period begins, ISO 8601. */
+  renewsAt: string | null;
+  /** The product it renews into — differs after a pending plan change. */
+  renewalProductId: string | null;
+  /** When the current period ends, ISO 8601. */
+  expiresAt: string | null;
+}
+```
+
+iap passes these through and does not interpret them. Whether a grace period still grants access is your business rule, and the authoritative answer comes from your backend — iap does not run a subscription state machine ([PLAN.md §14](https://github.com/nossdev/iap/blob/main/PLAN.md)).
+
+::: warning iOS only, in practice
+`subscription` is `null` on Android, where the native plugin exposes no subscription state, no renewal date and no auto-renew flag, and always reports cancellation as unknown. On Android this information lives server-side in the Google Play Developer API, so read it from your backend. See [The native layer](/guide/native-layer).
+:::
 
 ## `VerifiedTransaction`
 
@@ -201,6 +295,8 @@ The discriminated union returned by `iap.purchase(opts)`. Switch on `status` to 
 interface RestoreResult<T extends EntitlementBase = EntitlementBase> {
   restored: number;
   entitlements: T[];
+  /** The store's view of every transaction the account owns. */
+  purchases: StorePurchase[];
 }
 ```
 

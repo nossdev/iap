@@ -12,7 +12,14 @@ export type {
   OptionsConfig,
 } from './types/config.js';
 
-export type { ConfiguredProduct, Product, ProductType } from './types/product.js';
+export type {
+  ConfiguredProduct,
+  Product,
+  ProductType,
+  SubscriptionOffer,
+  SubscriptionOfferPayment,
+  SubscriptionOfferType,
+} from './types/product.js';
 
 export type { Storefront } from './types/storefront.js';
 
@@ -23,6 +30,8 @@ export type {
 
 export type {
   NativeTransaction,
+  SubscriptionRenewal,
+  SubscriptionState,
   VerifiedTransaction,
   Platform,
 } from './types/transaction.js';
@@ -33,6 +42,7 @@ export type {
   PurchaseOptions,
   PurchaseResult,
   RestoreResult,
+  StorePurchase,
 } from './types/results.js';
 
 export type {
