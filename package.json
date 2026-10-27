@@ -1,6 +1,6 @@
 {
   "name": "@nosslabs/iap",
-  "version": "8.2.0",
+  "version": "8.3.0",
   "description": "Thin Capacitor IAP orchestrator that pairs with Attesto for receipt validation",
   "license": "MIT",
   "author": "nossdev",
