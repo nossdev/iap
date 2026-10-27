@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import type { HttpRequest } from '../adapters/backend/http-client.js';
+import type { LocallyVerifiedPurchase } from '../core/local-verification.js';
+import { isValidUuid } from '../lib/uuid.js';
+import type { EntitlementBase } from './entitlement.js';
 
 export const productTypeSchema = z.enum(['subscription', 'product', 'consumable']);
 
@@ -122,6 +125,58 @@ const backendConfigSchema = z
     }
   });
 
+/**
+ * Verify purchases on the device instead of through a backend.
+ *
+ * For an app with no server at all. Every safety guarantee still applies —
+ * the purchase flow, the acknowledge-after-verify ordering and the
+ * unfinished-transaction recovery are all above the adapter boundary and do
+ * not know which mode they are in. What changes is who answers "is this
+ * purchase real", and how strong that answer is.
+ *
+ * Read `docs/guide/offline-and-no-backend.md` before choosing this: on
+ * Android no cryptographic check is possible on the device, so a passing
+ * verification there means "Play told this device it owns this".
+ */
+const verificationConfigSchema = z.object({
+  mode: z.literal('local'),
+  /**
+   * Maps a verified purchase to the entitlements it grants. Required: iap
+   * does not know what a product entitles anyone to, and in local mode
+   * there is no backend to ask. Type is checked at runtime via a shape
+   * guard, not zod — see {@link VerificationConfig}.
+   */
+  entitlements: z.unknown(),
+  /**
+   * The binding every purchase must carry, as passed to
+   * `purchase({ appUserId })`. A purchase bound to something else is
+   * refused. Omit it if the app does not bind purchases.
+   */
+  appUserId: z
+    .string()
+    .min(1)
+    .refine((value) => isValidUuid(value), {
+      message:
+        'verification.appUserId must be an RFC 9562 UUID — the same constraint purchase({ appUserId }) enforces. A value that is not a UUID could never match a purchase, so it would silently refuse every one.',
+    })
+    .optional(),
+});
+
+/**
+ * Android-specific settings.
+ *
+ * `packageName` exists because Google's verification APIs are keyed on it
+ * and **the native layer does not report it**: capgo's `Transaction` shape
+ * has no such field, so iap cannot derive it from a purchase. Without it,
+ * every Google transaction fails to build a verify or restore request.
+ *
+ * Set it to your app's applicationId, exactly as Play Console has it. Only
+ * required for an Android build that sells anything.
+ */
+const androidConfigSchema = z.object({
+  packageName: z.string().min(1).optional(),
+});
+
 const storageConfigSchema = z.object({
   type: z.enum(['preferences', 'memory', 'custom']).default('preferences'),
   namespace: z.string().min(1).default('nosslabs_iap'),
@@ -135,6 +190,21 @@ const optionsConfigSchema = z.object({
     .int()
     .positive()
     .default(60 * 60 * 1000),
+  /**
+   * Extra time past an entitlement's `expiresAt` during which it still
+   * counts as active, by the **device** clock.
+   *
+   * Exists because a renewal is not instantaneous: a subscription that
+   * renews at midnight may not have a fresh receipt on the device for
+   * minutes or hours, and locking the user out in that window is a worse
+   * error than letting a lapsed subscription run slightly long. Store
+   * grace periods and billing retry can stretch much further — on Android
+   * those are server-side only, so a backendless app cannot see them at all
+   * and this window is the only cushion it has.
+   *
+   * Defaults to 0: no grace, which is the strict reading of `expiresAt`.
+   */
+  entitlementGraceMs: z.number().int().nonnegative().default(0),
   recoverUnfinishedTransactions: z.boolean().default(true),
   /**
    * Cap on how many unfinished transactions recovery inspects per launch.
@@ -174,7 +244,16 @@ export const iapConfigSchema = z
      * without either path throw `INVALID_CONFIG` at parse time.
      */
     products: z.array(configuredProductSchema).min(1).optional(),
-    backend: backendConfigSchema,
+    /**
+     * The consumer's backend, which calls Attesto. Optional **only** when
+     * `verification` is set instead — one of the two has to answer
+     * whether a purchase is real.
+     */
+    backend: backendConfigSchema.optional(),
+    /** On-device verification, for an app with no backend. */
+    verification: verificationConfigSchema.optional(),
+    /** Android-specific settings. See {@link androidConfigSchema}. */
+    android: androidConfigSchema.default({}),
     storage: storageConfigSchema.default({ type: 'preferences', namespace: 'nosslabs_iap' }),
     options: optionsConfigSchema.default({
       refreshOnResume: true,
@@ -186,14 +265,56 @@ export const iapConfigSchema = z
     }),
   })
   .superRefine((data, ctx) => {
+    // Exactly one verification source. Both would be ambiguous (which one
+    // decides?) and neither leaves nothing to gate acknowledgement on.
+    if (data.backend && data.verification) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Set either backend or verification, not both — they are two answers to the same question.',
+        path: [],
+      });
+    }
+    if (!data.backend && !data.verification) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'One of backend or verification is required: something has to verify a purchase before an entitlement is granted. Use verification: { mode: "local", entitlements } for an app with no backend.',
+        path: [],
+      });
+    }
+    if (data.verification && typeof data.verification.entitlements !== 'function') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'verification.entitlements must be a function ((purchase) => TEntitlement[]) — iap cannot know what a product entitles a user to.',
+        path: ['verification', 'entitlements'],
+      });
+    }
+    // Local mode has no backend to curate a manifest, so the catalog must
+    // be static. Checked here because the products rule below only knows
+    // about the backend paths.
+    if (data.verification && data.products === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'products is required in local verification mode: there is no backend to supply the manifest.',
+        path: ['products'],
+      });
+    }
+
     if (data.products !== undefined) return;
+    if (data.verification) return;
     // No static products → the backend must be able to supply them.
     // Adapter takes precedence: if `adapter` is provided, the HTTP fields are
     // ignored everywhere else, so we ignore them here too. The HTTP path is
     // only consulted when no custom adapter is set.
-    const adapter = data.backend.adapter as { listProducts?: unknown } | undefined;
+    // `verification` returned above, so a backend is present here.
+    const backend = data.backend;
+    if (!backend) return;
+    const adapter = backend.adapter as { listProducts?: unknown } | undefined;
     const adapterCanList = adapter && typeof adapter.listProducts === 'function';
-    const httpCanList = !data.backend.adapter && data.backend.endpoints?.products;
+    const httpCanList = !backend.adapter && backend.endpoints?.products;
     if (!adapterCanList && !httpCanList) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -239,9 +360,35 @@ export type BackendConfigInput = Omit<
 type RawIAPConfig = z.infer<typeof iapConfigSchema>;
 type RawIAPConfigInput = z.input<typeof iapConfigSchema>;
 
-export type IAPConfig = Omit<RawIAPConfig, 'backend'> & { backend: BackendConfig };
-export type IAPConfigInput = Omit<RawIAPConfigInput, 'backend'> & {
-  backend: BackendConfigInput;
+/**
+ * Replace the schema's `unknown` typing for the entitlement mapper with its
+ * real contract, the same way {@link BackendConfig} does for its functions.
+ *
+ * Generic over the consumer's entitlement shape. `LocallyVerifiedPurchase`
+ * carries what a mapper needs to decide: the product, the expiry, the
+ * binding, and how strongly the purchase was checked.
+ */
+export type VerificationConfig<TEntitlement extends EntitlementBase = EntitlementBase> = Omit<
+  z.infer<typeof verificationConfigSchema>,
+  'entitlements'
+> & {
+  entitlements: (purchase: LocallyVerifiedPurchase) => TEntitlement[];
+};
+
+export type IAPConfig<TEntitlement extends EntitlementBase = EntitlementBase> = Omit<
+  RawIAPConfig,
+  'backend' | 'verification'
+> & {
+  backend?: BackendConfig;
+  verification?: VerificationConfig<TEntitlement>;
+};
+
+export type IAPConfigInput<TEntitlement extends EntitlementBase = EntitlementBase> = Omit<
+  RawIAPConfigInput,
+  'backend' | 'verification'
+> & {
+  backend?: BackendConfigInput;
+  verification?: VerificationConfig<TEntitlement>;
 };
 export type StorageConfig = z.infer<typeof storageConfigSchema>;
 export type OptionsConfig = z.infer<typeof optionsConfigSchema>;

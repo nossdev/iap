@@ -320,6 +320,40 @@ type ProductType = 'subscription' | 'product' | 'consumable';
 - `'product'` — non-consumable one-time purchase (Remove Ads, lifetime unlock).
 - `'consumable'` — consumable one-time purchase (coin packs, hint refills).
 
+## `LocallyVerifiedPurchase`
+
+```typescript
+type PurchaseAssurance = 'store-signed' | 'store-reported';
+
+type LocalVerificationError =
+  | 'PRODUCT_NOT_CONFIGURED'
+  | 'BINDING_MISMATCH'
+  | 'NOT_PURCHASED'
+  | 'REVOKED'
+  | 'SUBSCRIPTION_EXPIRED';
+
+interface LocallyVerifiedPurchase {
+  productId: string;
+  platform: Platform;
+  productType: ProductType;
+  purchaseReference: string;
+  appUserId: string | null;
+  expiresAt: string | null;
+  subscription: SubscriptionRenewal | null;
+  assurance: PurchaseAssurance;
+}
+```
+
+What [local verification](/guide/offline-and-no-backend) hands your `verification.entitlements`
+mapper. `assurance` records **how strongly** the purchase was checked: `store-signed` on iOS,
+where StoreKit verified Apple's signature in native code, and `store-reported` on Android,
+where no cryptographic check is possible on the device.
+
+`productType` is there because it changes what an entitlement means. iOS's owned set retains
+**finished consumables**, so a mapper that grants on every verified purchase will re-grant a
+consumable on every refresh, forever — a consumable's effect belongs in your own records, not
+in a standing entitlement.
+
 ## Config types
 
 | Type | Purpose |

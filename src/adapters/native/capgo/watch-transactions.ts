@@ -24,6 +24,7 @@ import { inferProductType, normalizeTransaction } from './normalize-transaction.
 export async function watchCapgoTransactions(
   onUpdate: (transaction: NativeTransaction) => void,
   logger: Logger,
+  packageName?: string,
 ): Promise<TransactionWatchHandle | null> {
   const handles: Array<{ remove(): Promise<void> }> = [];
 
@@ -34,7 +35,7 @@ export async function watchCapgoTransactions(
         // go — it would surface as an unhandled rejection in the bridge, or
         // be swallowed — so it stops at the boundary.
         try {
-          onUpdate(normalizeTransaction(tx, inferProductType(tx)));
+          onUpdate(normalizeTransaction(tx, inferProductType(tx), packageName));
         } catch (error) {
           logger.warn('transactionUpdated handler threw; ignoring the update.', error);
         }

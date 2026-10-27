@@ -1,13 +1,25 @@
+import type { LocallyVerifiedPurchase } from '../../core/local-verification.js';
 import { IAPError, IAPErrorCode } from '../../lib/errors.js';
 import type { Logger } from '../../lib/logger.js';
-import type { BackendConfig } from '../../types/config.js';
+import type { IAPConfig } from '../../types/config.js';
 import type { EntitlementBase } from '../../types/entitlement.js';
+import type { ConfiguredProduct } from '../../types/product.js';
+import type { NativeAdapter } from '../native/types.js';
 import { HttpBackendAdapter } from './http-adapter.js';
+import { LocalVerificationAdapter } from './local-adapter.js';
 import { type BackendAdapter, isBackendAdapter } from './types.js';
 
 export interface BackendAdapterOptions {
-  config: BackendConfig;
+  config: IAPConfig;
   logger: Logger;
+  /**
+   * Resolved lazily for local mode, which reads what the store owns. The
+   * native adapter is constructed in `initialize()`, after this.
+   */
+  getNativeAdapter?: () => NativeAdapter | null;
+  getProducts?: () => readonly ConfiguredProduct[];
+  /** Current entitlements, so an ambiguous store answer preserves them. */
+  getCurrentEntitlements?: () => EntitlementBase[];
   /** Test/override hook. Otherwise uses globalThis.fetch. */
   fetch?: typeof fetch;
 }
@@ -25,7 +37,33 @@ export interface BackendAdapterOptions {
 export function selectBackendAdapter<TEntitlement extends EntitlementBase = EntitlementBase>(
   options: BackendAdapterOptions,
 ): BackendAdapter<TEntitlement> {
-  const { config, logger, fetch: fetchImpl } = options;
+  const { config: iapConfig, logger, fetch: fetchImpl } = options;
+
+  // Local mode: verify on the device. Still an adapter, so the purchase and
+  // recovery flows above it are unchanged — see `LocalVerificationAdapter`.
+  if (iapConfig.verification) {
+    const verification = iapConfig.verification;
+    return new LocalVerificationAdapter<TEntitlement>({
+      getNativeAdapter: options.getNativeAdapter ?? (() => null),
+      getProducts: options.getProducts ?? (() => iapConfig.products ?? []),
+      entitlements: verification.entitlements as (
+        purchase: LocallyVerifiedPurchase,
+      ) => TEntitlement[],
+      getAppUserId: () => verification.appUserId ?? null,
+      getCurrentEntitlements: () => (options.getCurrentEntitlements?.() ?? []) as TEntitlement[],
+      graceMs: iapConfig.options.entitlementGraceMs,
+      logger,
+    });
+  }
+
+  const config = iapConfig.backend;
+  if (!config) {
+    throw new IAPError({
+      code: IAPErrorCode.INVALID_CONFIG,
+      message:
+        'Neither backend nor verification is configured; the schema should have caught this. This is a library bug.',
+    });
+  }
 
   if (config.adapter !== undefined) {
     if (!isBackendAdapter(config.adapter)) {

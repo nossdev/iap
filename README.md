@@ -65,6 +65,7 @@ await iap.purchase({
 - [Backend contract](https://iap.nossdev.com/guide/backend-contract) — four endpoints your backend implements
 - [Architecture](https://iap.nossdev.com/guide/architecture) — three-tier model
 - [The native layer](https://iap.nossdev.com/guide/native-layer) — what `@capgo/native-purchases` exposes, its licence, its privacy audit
+- [Offline and no-backend use](https://iap.nossdev.com/guide/offline-and-no-backend) — on-device verification, offline guarantees, privacy
 - [Vue + Quasar recipe](https://iap.nossdev.com/recipes/vue-quasar) / [React recipe](https://iap.nossdev.com/recipes/react)
 
 ## Why this library
@@ -72,12 +73,12 @@ await iap.purchase({
 `@nosslabs/iap` does **one thing**: orchestrate the purchase flow on the client. It
 
 - wraps [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) for native purchase + restore,
-- POSTs to **your** backend (which calls Attesto) for receipt validation,
+- POSTs to **your** backend (which calls Attesto) for receipt validation — or [verifies on the device](https://iap.nossdev.com/guide/offline-and-no-backend) when you have no backend at all,
 - acknowledges native transactions only **after** the backend confirms — `autoAcknowledgePurchases: false` defers finishing on **both** iOS and Android, so there's no phantom grant and no iOS finish-before-verify race,
 - caches entitlements locally for instant, reactive UI reads,
 - recovers unfinished transactions across app launches.
 
-It does **not**: talk to Attesto directly, define entitlement business logic, manage user auth, or ship paywall UI. Those belong to your app and your backend.
+It does **not**: talk to Attesto directly, manage user auth, or ship paywall UI. Those belong to your app and your backend. It does not define entitlement business logic either — except in local mode, where you supply the mapping in config because there is no backend to ask.
 
 ## Capacitor support matrix
 

@@ -207,14 +207,27 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     const transaction = response.transaction as VerifiedTransaction;
     const entitlements = response.entitlements;
 
-    // Acknowledge the native transaction. Failure here is recoverable —
-    // entitlement state on the backend says we're good, and the store still
-    // reports the purchase as owned/unfinished, so a later restore()/refresh()
-    // re-acks it (on Android, before the 3-day auto-refund window closes).
+    // Acknowledge the native transaction. Failure here is recoverable: the
+    // entitlement is confirmed, so the user gets access — but the store
+    // still considers the purchase unfinished, and on Android Google
+    // auto-refunds an unacknowledged purchase after three days.
+    //
+    // So the unfinished entry is **kept** when this fails, for recovery to
+    // retry the acknowledgement on the next launch. It used to be removed
+    // regardless, on the reasoning that "a later restore()/refresh() re-acks
+    // it" — but only `restore()` acknowledges, and nothing calls it
+    // automatically. An ack failure therefore left a paid-for purchase
+    // unacknowledged and untracked, granting access right up to the silent
+    // refund.
+    let acknowledged = true;
     try {
       await nativeAdapter.acknowledge(nativeTx);
     } catch (error) {
-      logger.warn(`acknowledge() failed for "${productId}"; entitlements still updated.`, error);
+      acknowledged = false;
+      logger.warn(
+        `acknowledge() failed for "${productId}"; entitlements still updated, and the transaction is retained for recovery to re-acknowledge on the next launch.`,
+        error,
+      );
     }
 
     // Persist entitlements (best-effort) and clear the unfinished entry.
@@ -230,13 +243,15 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     }
     this.deps.setEntitlements(entitlements);
 
-    try {
-      await unfinished.remove(nativeTx.token);
-    } catch (error) {
-      logger.warn(
-        `Failed to remove "${productId}" from unfinished list; will be skipped on next recovery.`,
-        error,
-      );
+    if (acknowledged) {
+      try {
+        await unfinished.remove(nativeTx.token);
+      } catch (error) {
+        logger.warn(
+          `Failed to remove "${productId}" from unfinished list; will be skipped on next recovery.`,
+          error,
+        );
+      }
     }
 
     // A pending purchase the user retried and completed directly: clear the

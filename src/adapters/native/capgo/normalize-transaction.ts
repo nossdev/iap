@@ -12,6 +12,7 @@ import type {
 export function normalizeTransaction(
   tx: PluginTransaction,
   productType: ProductType,
+  packageName?: string,
 ): NativeTransaction {
   const platform = inferPlatform(tx);
   const token = platform === 'google' ? (tx.purchaseToken ?? tx.transactionId) : tx.transactionId;
@@ -32,9 +33,14 @@ export function normalizeTransaction(
     raw: tx,
   };
 
-  // packageName is not exposed by the plugin's Transaction shape; consumers
-  // pass it via Capacitor app config and it's added by the backend HTTP layer
-  // before sending to /verify/google.
+  // The plugin's Transaction shape has no packageName, and Google's
+  // verification APIs are keyed on it — so it comes from
+  // `config.android.packageName` and is stamped on here. Without it the
+  // verify and restore requests cannot be built at all, which is why
+  // omitting it is a config error rather than a silent degradation.
+  if (native.platform === 'google' && packageName) {
+    native.packageName = packageName;
+  }
 
   return native;
 }

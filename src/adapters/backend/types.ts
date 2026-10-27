@@ -3,6 +3,7 @@ import { configuredProductsArraySchema } from '../../types/config.js';
 import type { EntitlementBase } from '../../types/entitlement.js';
 import { entitlementBaseSchema } from '../../types/entitlement.js';
 import type { ConfiguredProduct, ProductType } from '../../types/product.js';
+import type { NativeTransaction } from '../../types/transaction.js';
 
 // ----- Request types (constructed by the library; static TS types are sufficient) -----
 
@@ -85,6 +86,7 @@ const restoreSuccessSchema = z
   .object({
     valid: z.literal(true),
     entitlements: z.array(passthroughEntitlementSchema),
+    verifiedTokens: z.array(z.string()).optional(),
   })
   .passthrough();
 
@@ -139,7 +141,24 @@ export type VerifyResponse<TEntitlement extends EntitlementBase = EntitlementBas
  * unmodified via top-level passthrough; consumers cast to read them.
  */
 export type RestoreResponse<TEntitlement extends EntitlementBase = EntitlementBase> =
-  | { valid: true; entitlements: TEntitlement[] }
+  | {
+      valid: true;
+      entitlements: TEntitlement[];
+      /**
+       * Optional: the tokens that were actually verified, when the
+       * adapter judged them individually.
+       *
+       * When present, only these are acknowledged. It exists because a
+       * single consolidated `valid: true` cannot say *which* of the
+       * submitted transactions passed — and acknowledging one that did
+       * not finalises a purchase the adapter just refused, waiving
+       * Play's refund window for it.
+       *
+       * A backend that validates the batch as a whole omits it, and
+       * every submitted transaction is acknowledged as before.
+       */
+      verifiedTokens?: string[];
+    }
   | { valid: false; error: string; message?: string };
 
 // ----- BackendAdapter interface (transport-agnostic) -----
@@ -182,16 +201,51 @@ export interface BackendAdapter<TEntitlement extends EntitlementBase = Entitleme
    * not a registration.
    */
   listProducts?(): Promise<ConfiguredProduct[]>;
+  /**
+   * Optional: verify a transaction **without** extracting it into the HTTP
+   * request shapes.
+   *
+   * `VerifyAppleRequest` and `VerifyGoogleRequest` carry what a server needs
+   * to look a receipt up — a product id and a token. An on-device check
+   * needs more than that: the binding, the subscription state, the expiry.
+   * Rather than widen the HTTP contract (and so change what gets sent over
+   * the wire), an adapter that can answer from the transaction itself
+   * implements this, and the router prefers it.
+   *
+   * Implemented by the built-in local-verification adapter. The HTTP path
+   * does not implement it and is unaffected.
+   */
+  verifyNative?(transaction: NativeTransaction): Promise<VerifyResponse<TEntitlement>>;
+  /**
+   * Optional counterpart to {@link verifyNative} for restore: the owned
+   * transactions, unextracted.
+   *
+   * Avoids two problems for an adapter that answers from the transaction.
+   * It needs the fields `RestoreRequestTransaction` drops; and building
+   * that request requires a `packageName` on every Google transaction,
+   * which such an adapter never reads — so a request it would discard
+   * could fail the restore outright.
+   */
+  restoreNative?(owned: NativeTransaction[]): Promise<RestoreResponse<TEntitlement>>;
 }
 
 /** Type guard; consumers passing a custom adapter via config get a runtime check. */
 export function isBackendAdapter(value: unknown): value is BackendAdapter {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<BackendAdapter>;
-  return (
+  if (typeof candidate.getEntitlements !== 'function') return false;
+
+  // Either the extracted per-platform pair, or the whole-transaction form.
+  // An adapter that verifies from the transaction has no use for the
+  // extracted shapes, and requiring it to stub them out would be a tax on
+  // the pattern the docs recommend for on-device verification.
+  const hasExtracted =
     typeof candidate.verifyApple === 'function' &&
     typeof candidate.verifyGoogle === 'function' &&
-    typeof candidate.getEntitlements === 'function' &&
-    typeof candidate.restore === 'function'
-  );
+    typeof candidate.restore === 'function';
+  const hasNative =
+    typeof candidate.verifyNative === 'function' &&
+    (typeof candidate.restore === 'function' || typeof candidate.restoreNative === 'function');
+
+  return hasExtracted || hasNative;
 }

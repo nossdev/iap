@@ -376,6 +376,22 @@ function entryToNativeTransaction(entry: UnfinishedTransaction): NativeTransacti
     purchaseReference: entry.purchaseReference || entry.token,
     productType: entry.productType,
   };
+  // Restore what a verification needs. Without these a local check sees an
+  // amputated transaction and answers differently than it did at purchase
+  // time — see the fields' note in `unfinished-transactions.ts`.
+  if (entry.appUserId) tx.appUserId = entry.appUserId;
+  if (entry.expiresAt) {
+    tx.subscription = {
+      state: null,
+      autoRenewing: null,
+      renewsAt: null,
+      renewalProductId: null,
+      expiresAt: entry.expiresAt,
+    };
+  }
+  if (entry.purchaseState) {
+    tx.raw = { purchaseState: entry.purchaseState };
+  }
   if (entry.packageName) tx.packageName = entry.packageName;
   return tx;
 }

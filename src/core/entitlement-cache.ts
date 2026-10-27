@@ -3,6 +3,7 @@ import { IAPError, IAPErrorCode } from '../lib/errors.js';
 import type { Logger } from '../lib/logger.js';
 import { entitlementBaseSchema } from '../types/entitlement.js';
 import type { EntitlementBase } from '../types/entitlement.js';
+import { isExpired } from './local-verification.js';
 
 const ENTITLEMENTS_KEY = 'entitlements';
 
@@ -107,6 +108,27 @@ export class EntitlementCache<TEntitlement extends EntitlementBase> {
       this.logger.warn('Failed to remove corrupt entitlement cache.', cause);
     }
   }
+}
+
+/**
+ * The entitlements that are still active, by the **device** clock.
+ *
+ * iap's offline rule, in one function: an entitlement is dropped only when
+ * its `expiresAt` has passed (plus any configured grace), never because a
+ * refresh failed or the cache is old. A network error must not downgrade
+ * anyone — the cached answer stands until the store's own deadline says
+ * otherwise, or until an authoritative negative replaces it.
+ *
+ * The device clock can be wrong, and a user who sets it back can extend a
+ * subscription. That is the price of answering offline at all; a backend is
+ * the fix if it matters.
+ */
+export function activeEntitlements<T extends EntitlementBase>(
+  entitlements: readonly T[],
+  now: number,
+  graceMs = 0,
+): T[] {
+  return entitlements.filter((entitlement) => !isExpired(entitlement.expiresAt, now, graceMs));
 }
 
 /**

@@ -12,7 +12,33 @@ interface BackendAdapter<TEntitlement extends EntitlementBase = EntitlementBase>
   restore(req: RestoreRequest):           Promise<RestoreResponse<TEntitlement>>;
   /** Optional: return the SKU manifest the app should register. */
   listProducts?():                        Promise<ConfiguredProduct[]>;
+  /** Optional: verify from the whole transaction, not the extracted fields. */
+  verifyNative?(tx: NativeTransaction):   Promise<VerifyResponse<TEntitlement>>;
+  /** Optional: the restore counterpart of `verifyNative`. */
+  restoreNative?(owned: NativeTransaction[]): Promise<RestoreResponse<TEntitlement>>;
 }
+```
+
+::: tip Implementing `verifyNative` instead of the extracted pair
+`VerifyAppleRequest` and `VerifyGoogleRequest` carry what a *server* needs to look a receipt
+up — a product id and a token. An adapter that answers locally needs more than that: the
+binding, the subscription state, the expiry. So rather than widen the HTTP contract (and
+change what goes over the wire), such an adapter implements `verifyNative`, and iap's router
+prefers it when present.
+
+`restoreNative` exists for the same reason, plus one more: building a `RestoreRequest`
+requires a `packageName` on every Google transaction, which an adapter answering locally never
+reads — so a request it would discard could fail the restore outright.
+
+An adapter is accepted if it has **either** `verifyApple` + `verifyGoogle` + `restore`, **or**
+`verifyNative` plus one of `restore`/`restoreNative`. `getEntitlements` is always required.
+So you do not have to stub the extracted pair out to write a local adapter.
+
+The built-in local-verification mode is exactly this shape — see
+[Offline and no-backend use](/guide/offline-and-no-backend).
+:::
+
+```typescript
 ```
 
 ## Request types

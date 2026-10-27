@@ -77,13 +77,15 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
       return { restored: 0, entitlements, purchases: [] };
     }
 
-    const request: RestoreRequest = {
-      transactions: owned.map((tx) => this.toRestoreEntry(tx)),
-    };
-
     let response: RestoreResponse<TEntitlement>;
     try {
-      response = await backend.restore(request);
+      // An adapter that answers from the transaction gets them whole. The
+      // extraction below drops the fields it needs, and building it requires
+      // a packageName such an adapter never reads — so a request it would
+      // discard could fail the restore outright.
+      response = backend.restoreNative
+        ? await backend.restoreNative(owned)
+        : await backend.restore({ transactions: owned.map((tx) => this.toRestoreEntry(tx)) });
     } catch (cause) {
       throw toIAPError(cause, 'Backend restore call failed.', IAPErrorCode.BACKEND_UNAVAILABLE);
     }
@@ -101,10 +103,29 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
       });
     }
 
-    // Acknowledge each native transaction. Failures are best-effort —
-    // backend says these are valid; if acknowledge() fails the store still
-    // reports the purchase as owned, so the next refresh()/restore() retries.
-    for (const tx of owned) {
+    // Acknowledge each verified transaction. Failures are best-effort —
+    // verification says these are valid; if acknowledge() fails the store
+    // still reports the purchase as owned, so the next refresh()/restore()
+    // retries.
+    //
+    // `verifiedTokens`, when the adapter supplies it, is what keeps the
+    // acknowledge-after-verification invariant true here. An adapter that
+    // judges transactions individually (on-device verification does) can
+    // pass some and refuse others, and a single consolidated `valid: true`
+    // cannot say which — so acknowledging the whole owned set would
+    // finalise purchases that were just refused.
+    const ackable =
+      response.verifiedTokens === undefined
+        ? owned
+        : owned.filter((tx) => response.verifiedTokens?.includes(tx.token));
+
+    if (ackable.length !== owned.length) {
+      logger.debug(
+        `Restore: acknowledging ${ackable.length} of ${owned.length} owned transaction(s); the rest were not verified.`,
+      );
+    }
+
+    for (const tx of ackable) {
       try {
         await nativeAdapter.acknowledge(tx);
       } catch (error) {
@@ -165,7 +186,7 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
     if (!tx.packageName) {
       throw new IAPError({
         code: IAPErrorCode.STORE_ERROR,
-        message: `Google owned transaction for "${tx.productId}" has no packageName; cannot restore.`,
+        message: `Google owned transaction for "${tx.productId}" has no packageName; cannot restore. Set config.android.packageName to your app's applicationId — the native plugin does not report it, so iap cannot derive it from the purchase.`,
       });
     }
     return {

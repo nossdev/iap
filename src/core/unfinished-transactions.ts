@@ -22,6 +22,22 @@ const unfinishedEntrySchema = z.object({
    * recoverable purchase over a field recovery does not even read.
    */
   purchaseReference: z.string().optional(),
+  /**
+   * The fields a verification needs that the extracted request shapes do
+   * not carry. All optional, so entries written before they existed still
+   * parse.
+   *
+   * These exist because recovery re-verifies from the **stored entry**, not
+   * from a live transaction. Without them a rebuilt transaction has no
+   * binding, no expiry and no purchase state — so an on-device check sees
+   * an amputated object and answers differently than it did at purchase
+   * time: an expired subscription verifies as non-expiring and is granted,
+   * and a purchase with a binding fails `BINDING_MISMATCH` forever and is
+   * never acknowledged (which on Android means Google refunds it).
+   */
+  appUserId: z.string().optional(),
+  expiresAt: z.string().optional(),
+  purchaseState: z.string().optional(),
   /** ISO 8601 timestamp the entry was first persisted. */
   recordedAt: z.string(),
 });
@@ -134,6 +150,15 @@ export class UnfinishedTransactionsStore {
         productType: tx.productType,
         ...(tx.packageName ? { packageName: tx.packageName } : {}),
         ...(tx.purchaseReference ? { purchaseReference: tx.purchaseReference } : {}),
+        ...(tx.appUserId ? { appUserId: tx.appUserId } : {}),
+        ...(tx.subscription?.expiresAt ? { expiresAt: tx.subscription.expiresAt } : {}),
+        ...(typeof (tx.raw as { purchaseState?: unknown } | undefined)?.purchaseState ===
+          'string' ||
+        typeof (tx.raw as { purchaseState?: unknown } | undefined)?.purchaseState === 'number'
+          ? {
+              purchaseState: String((tx.raw as { purchaseState?: unknown }).purchaseState),
+            }
+          : {}),
         recordedAt: new Date().toISOString(),
       };
       await this.persist([...current, entry]);
