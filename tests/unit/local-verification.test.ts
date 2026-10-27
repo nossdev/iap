@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isExpired, verifyPurchaseOnDevice } from '../../src/core/local-verification.js';
 import type { NativeTransaction } from '../../src/types/transaction.js';
+import { activeSubscription, appleTransaction, playTransaction } from '../mocks/transactions.js';
 
 /**
  * What can be checked on a device with no server — and, just as important,
@@ -9,39 +10,10 @@ import type { NativeTransaction } from '../../src/types/transaction.js';
 
 const NOW = Date.parse('2026-10-27T12:00:00Z');
 
-function appleSub(over: Partial<NativeTransaction> = {}): NativeTransaction {
-  return {
-    platform: 'apple',
-    productId: 'household_yearly',
-    token: '2000001099999999',
-    purchaseReference: '2000001043762129',
-    productType: 'subscription',
-    appUserId: null,
-    subscription: {
-      state: 'subscribed',
-      autoRenewing: true,
-      renewsAt: '2026-11-27T00:00:00Z',
-      renewalProductId: 'household_yearly',
-      expiresAt: '2026-11-27T00:00:00Z',
-    },
-    ...over,
-  };
-}
-
-function playPurchase(over: Partial<NativeTransaction> = {}): NativeTransaction {
-  return {
-    platform: 'google',
-    productId: 'household_yearly',
-    token: 'play-token',
-    purchaseReference: 'play-token',
-    packageName: 'com.example.app',
-    productType: 'subscription',
-    appUserId: null,
-    subscription: null,
-    raw: { purchaseState: '1' },
-    ...over,
-  };
-}
+/** The shared builders, named for what this file is checking. */
+const appleSub = (over: Partial<NativeTransaction> = {}) =>
+  appleTransaction({ subscription: activeSubscription('2026-11-27T00:00:00Z'), ...over });
+const playPurchase = playTransaction;
 
 const opts = { productIds: ['household_yearly'], now: () => NOW };
 

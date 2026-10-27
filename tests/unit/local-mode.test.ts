@@ -48,6 +48,7 @@ import { MemoryAdapter } from '../../src/adapters/storage/memory-adapter.js';
 import { createIAP } from '../../src/createIAP.js';
 import { IAPErrorCode } from '../../src/lib/errors.js';
 import type { IAPConfigInput } from '../../src/types/config.js';
+import { appleTransaction, playTransaction } from '../mocks/transactions.js';
 
 const HOUSEHOLD: EntitlementBase = {
   key: 'household',
@@ -70,33 +71,8 @@ function localConfig(over: Partial<IAPConfigInput> = {}): IAPConfigInput {
   } as IAPConfigInput;
 }
 
-function appleTx(over: Partial<NativeTransaction> = {}): NativeTransaction {
-  return {
-    platform: 'apple',
-    productId: 'household_yearly',
-    token: '2000001099999999',
-    purchaseReference: '2000001043762129',
-    productType: 'subscription',
-    appUserId: null,
-    subscription: null,
-    ...over,
-  };
-}
-
-function playTx(over: Partial<NativeTransaction> = {}): NativeTransaction {
-  return {
-    platform: 'google',
-    productId: 'household_yearly',
-    token: 'play-token',
-    purchaseReference: 'play-token',
-    packageName: 'com.example.app',
-    productType: 'subscription',
-    appUserId: null,
-    subscription: null,
-    raw: { purchaseState: '1' },
-    ...over,
-  };
-}
+const appleTx = appleTransaction;
+const playTx = playTransaction;
 
 beforeEach(() => {
   vi.clearAllMocks();
