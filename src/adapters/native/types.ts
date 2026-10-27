@@ -53,6 +53,34 @@ export interface NativeAdapter {
    */
   acknowledge(transaction: NativeTransaction): Promise<void>;
 
+  /**
+   * Consume an **Android consumable** post-verification, instead of merely
+   * acknowledging it.
+   *
+   * Consuming does two things Play treats as one: it acknowledges the
+   * purchase, and it releases ownership so the product can be bought again.
+   * Acknowledging alone leaves Play reporting the purchase as owned
+   * forever, and `purchase()` of that product then fails
+   * `ALREADY_PURCHASED` — the user has paid for a consumable they can never
+   * buy a second time.
+   *
+   * Android only. iOS has no separate concept: `Transaction.finish()`,
+   * which {@link NativeAdapter.acknowledge} calls, is the whole of it
+   * there. So the core only reaches for this on Google transactions, and
+   * an adapter that omits it falls back to `acknowledge()`.
+   *
+   * Not idempotent in the way `acknowledge()` is: in Billing 8.x a consumed
+   * purchase is no longer returned by `getPurchases()` at all, so a second
+   * call has no purchase to act on and rejects.
+   *
+   * A failure is **not** best-effort — it propagates, the transaction keeps
+   * its unfinished entry, and recovery retries on the next launch, because
+   * until it succeeds the product stays unbuyable. `finalizeTransaction`
+   * does acknowledge the purchase on the way out, so Google's three-day
+   * auto-refund clock stops even though the consume has not landed yet.
+   */
+  consume?(transaction: NativeTransaction): Promise<void>;
+
   /** Open the platform's native subscription management UI. */
   manageSubscriptions?(): Promise<void>;
 

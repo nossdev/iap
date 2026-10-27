@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Changed
+
+- **`peerDependencies` now require `@capgo/native-purchases` `^8.2.0`**, up from `^8.0.0`.
+  `consumePurchase()` landed in 8.2.0, and the consumable path above needs it: on 8.0.x/8.1.x
+  the call would reject at the bridge and be retried forever rather than degrading.
+
 ### Added
 
 - **Local verification — iap works with no backend at all.** `verification: { mode: 'local',
@@ -76,6 +82,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   refresh in that state keeps the current entitlements instead of revoking them — a multi-user
   app restores its session asynchronously, and "I cannot tell you" must never read as "you own
   nothing".
+
+- **Android consumables are consumed, not just acknowledged, so they can be bought again.**
+  Play treats acknowledging and consuming as different things, and only consuming releases
+  ownership. A consumable that cleared out of band — a restore, or launch recovery — was
+  acknowledged and then stayed owned forever, so `purchase()` of it failed `ALREADY_PURCHASED`
+  permanently. With a backend the entitlement was unaffected and only the product was
+  unbuyable; in local mode a mapper that granted something for a consumable kept granting it
+  on every refresh, since the purchase never left the store's owned set.
+
+  Three parts. `NativeAdapter` gains an optional **`consume(transaction)`** (capgo's
+  `consumePurchase()`); a custom adapter without it falls back to acknowledging and logs that
+  the product will stay owned. All four settle paths now go through one `finalizeTransaction`
+  step that decides acknowledge-vs-consume. And a store-reported transaction is typed from
+  **your configured catalog**, because Play reports a consumable and a one-time purchase both
+  as `'inapp'` — the plugin's payload cannot tell them apart. The catalog only *refines* the
+  store's answer: it can turn `'inapp'` into `'consumable'`, and never contradicts a `'subs'`,
+  so one wrong `type` in a config or a stale `backend.listProducts()` manifest cannot strip a
+  subscription's expiry and have it granted forever.
+
+  iap also no longer passes the plugin's `isConsumable` flag. The plugin consumes on that flag
+  inside the purchase callback **regardless of `autoAcknowledgePurchases`**, which contradicts
+  that option's own documentation and would have finalised a purchase before iap verified it —
+  unrecoverably, since Billing 8.x drops a consumed purchase from `getPurchases()`. Found by
+  reading the plugin's Java rather than its docs, and now guarded by a test so that if capgo
+  closes the gap iap can stop working around it.
+
+  Two things to know if you sell consumables. A consumed purchase leaves `getPurchases()` for
+  good in Billing 8, so **in local mode an entitlement derived from a consumable now
+  disappears at the next refresh** — which is what `LocallyVerifiedPurchase.productType` has
+  always warned about, but it used to be masked. Keep a consumable's effect in your own
+  records, not in a standing entitlement. And `restorePurchases()` now clears a pending mark
+  it settles, which it never did: harmless while a purchase stayed owned for the next
+  reconcile to find, but a consumed one is gone, and the reconcile would otherwise have
+  reported a succeeded purchase as `cancelled`.
 
 - **`LocalVerificationError` gains `BINDING_UNAVAILABLE`.** Additive, but it widens a public
   union, so an exhaustive `switch` over it will need the new arm.

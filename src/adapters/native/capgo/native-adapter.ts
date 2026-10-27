@@ -20,8 +20,11 @@ import { getCapgoPendingProductIds, watchCapgoTransactions } from './watch-trans
  * Capacitor 8 adapter for the `@capgo/native-purchases` `^8` line (this is the
  * `8.x` line of `@nosslabs/iap`; Cap-7 consumers stay on `7.x`). The v8 plugin
  * is additive over the 7.16.x surface captured in
- * `docs/internal/plugin-v7-api.md` — every method below keeps its 7.16.2
- * signature — so that capture still describes what this adapter calls.
+ * `docs/internal/plugin-v7-api.md` — every method that capture lists keeps
+ * its 7.16.2 signature. It is no longer the *whole* of what this adapter
+ * calls, though: `getStorefront()` and `consumePurchase()` are both v8-only
+ * additions absent from it, and the peer range's floor is the version that
+ * added the second (`8.2.0`).
  *
  * Plugin contract (relevant bits):
  * - `purchaseProduct({ ..., autoAcknowledgePurchases: false })` defers finishing on
@@ -29,6 +32,12 @@ import { getCapgoPendingProductIds, watchCapgoTransactions } from './watch-trans
  *   "never grant entitlement before backend confirms" guarantee, with no
  *   iOS-specific finish-before-verify race.
  * - `acknowledgePurchase({ purchaseToken })` is cross-platform (since v7.14.0).
+ * - `consumePurchase({ purchaseToken })` (since 8.2.0) is Android-only and
+ *   both acknowledges and releases ownership, which is the only way a
+ *   consumable can be bought again. iap never passes the plugin's
+ *   `isConsumable` flag, because the plugin acts on it inside the purchase
+ *   callback regardless of `autoAcknowledgePurchases` — see
+ *   {@link CapgoNativeAdapter.purchaseProduct}.
  *   For iOS, pass the `transactionId` as a string in the `purchaseToken` arg —
  *   under the hood it calls `Transaction.finish()`. Stateless: no transaction
  *   object to retain, so this adapter holds no internal state and needs no
@@ -50,11 +59,37 @@ export class CapgoNativeAdapter implements NativeAdapter {
    *   `config.android.packageName`. Stamped onto every Google transaction
    *   because the plugin does not report it and Google's verification
    *   APIs are keyed on it.
+   * @param getConfiguredProducts the catalog, for typing a transaction the
+   *   store reported — the plugin's payload cannot distinguish a consumable
+   *   from a one-time purchase, since Play calls both `'inapp'`.
    */
   constructor(
     private readonly logger: Logger,
     private readonly packageName?: string,
+    private readonly getConfiguredProducts?: () => readonly ConfiguredProduct[],
   ) {}
+
+  /**
+   * The configured catalog, for typing a transaction the store reported.
+   *
+   * An empty one is not benign: every store-reported consumable would type
+   * as `'product'`, be acknowledged rather than consumed, and stay owned —
+   * which is the bug the catalog exists to prevent, reachable by
+   * misconfiguration rather than by code. Warned once, since
+   * `getOwnedTransactions` runs on every refresh.
+   */
+  private configured(): readonly ConfiguredProduct[] {
+    const products = this.getConfiguredProducts?.() ?? [];
+    if (products.length === 0 && !this.warnedAboutEmptyCatalog) {
+      this.warnedAboutEmptyCatalog = true;
+      this.logger.warn(
+        'The native adapter has no configured products, so a purchase the store reports cannot be recognised as a consumable and will be acknowledged rather than consumed — leaving it owned and unbuyable. This is a wiring problem inside iap; please report it.',
+      );
+    }
+    return products;
+  }
+
+  private warnedAboutEmptyCatalog = false;
 
   async isAvailable(): Promise<boolean> {
     try {
@@ -100,7 +135,6 @@ export class CapgoNativeAdapter implements NativeAdapter {
 
   async purchaseProduct(opts: NativePurchaseOptions): Promise<NativeTransaction> {
     const purchaseType = mapToPluginPurchaseType(opts.productType);
-    const isConsumable = opts.productType === 'consumable';
 
     let tx: PluginTransaction;
     try {
@@ -109,7 +143,23 @@ export class CapgoNativeAdapter implements NativeAdapter {
         productType: purchaseType,
         planIdentifier: opts.androidPlanId,
         appAccountToken: opts.appAccountToken,
-        isConsumable,
+        // `false` even for a consumable, and this is load-bearing.
+        //
+        // `autoAcknowledgePurchases: false` does **not** cover the
+        // consumable case: the plugin's `PurchaseActionDecider` returns
+        // CONSUME whenever `isConsumable` is set, and its caller consumes
+        // without consulting `autoAcknowledgePurchases` — that flag is only
+        // read on the ACKNOWLEDGE branch. (Checked in the plugin's Java,
+        // not its docs, and guarded by a test in
+        // `tests/unit/native-plugin-contract.test.ts`.)
+        //
+        // So passing `true` here would have the plugin consume inside the
+        // purchase callback, before iap has verified anything — breaking
+        // acknowledge-only-after-verification for exactly the product type
+        // where it cannot be undone, since Billing 8.x drops a consumed
+        // purchase from `getPurchases()` entirely. iap consumes itself,
+        // after verification, via {@link CapgoNativeAdapter.consume}.
+        isConsumable: false,
         autoAcknowledgePurchases: false,
       });
     } catch (error) {
@@ -132,7 +182,9 @@ export class CapgoNativeAdapter implements NativeAdapter {
         // expired/revoked subs are NOT filtered here — they're part of
         // `Transaction.all` per the class-level JSDoc; the backend decides.)
         .filter((tx) => tx.purchaseState === undefined || tx.purchaseState === '1')
-        .map((tx) => normalizeTransaction(tx, inferProductType(tx), this.packageName))
+        .map((tx) =>
+          normalizeTransaction(tx, inferProductType(tx, this.configured()), this.packageName),
+        )
     );
   }
 
@@ -146,6 +198,32 @@ export class CapgoNativeAdapter implements NativeAdapter {
         code: IAPErrorCode.STORE_ERROR,
         message: `Failed to acknowledge transaction for ${transaction.productId}.`,
         cause: error,
+        recoverable: true,
+      });
+    }
+  }
+
+  /**
+   * Consume an Android consumable, releasing ownership so it can be bought
+   * again. See {@link NativeAdapter.consume} for why acknowledging is not
+   * enough.
+   *
+   * The plugin rejects this on iOS and web, so the core calls it only for
+   * Google transactions.
+   */
+  async consume(transaction: NativeTransaction): Promise<void> {
+    try {
+      await NativePurchases.consumePurchase({
+        purchaseToken: transaction.token,
+      });
+    } catch (error) {
+      throw new IAPError({
+        code: IAPErrorCode.STORE_ERROR,
+        message: `Failed to consume transaction for ${transaction.productId}.`,
+        cause: error,
+        // Retried by the recovery loop like a failed acknowledge: until it
+        // succeeds, Play still reports the product owned and the user
+        // cannot buy it again.
         recoverable: true,
       });
     }
@@ -187,7 +265,7 @@ export class CapgoNativeAdapter implements NativeAdapter {
   async watchTransactions(
     onUpdate: (transaction: NativeTransaction) => void,
   ): Promise<TransactionWatchHandle | null> {
-    return watchCapgoTransactions(onUpdate, this.logger, this.packageName);
+    return watchCapgoTransactions(onUpdate, this.logger, this.packageName, () => this.configured());
   }
 
   /** Android only; `null` on iOS. See {@link getCapgoPendingProductIds}. */

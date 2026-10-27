@@ -6,6 +6,7 @@ import { maskToken } from '../lib/redact.js';
 import type { EntitlementBase } from '../types/entitlement.js';
 import type { NativeTransaction } from '../types/transaction.js';
 import { type EntitlementCache, entitlementsEqual } from './entitlement-cache.js';
+import { finalizeTransaction } from './finalize-transaction.js';
 import type { PendingPurchasesStore } from './pending-purchases.js';
 import { resolvePendingPurchase } from './resolve-pending.js';
 import type {
@@ -76,7 +77,7 @@ interface RecoveryResult {
 }
 
 /**
- * Re-attempts verification + acknowledgement for unfinished transactions
+ * Re-attempts verification and settlement for unfinished transactions
  * that survived from a prior session (app killed mid-purchase, network
  * outage during verify, etc.). Runs once per `initialize()` call before
  * `ready` fires.
@@ -89,8 +90,9 @@ interface RecoveryResult {
  *  1. `verifyNativeTransaction` — reuse the shared platform router.
  *  2. If `valid: false` → log debug, increment `failures`, leave in list.
  *  3. If `valid: true`:
- *     a. `nativeAdapter.acknowledge()` — best-effort; ack failure means
- *        we don't yet remove from the list (next launch will retry).
+ *     a. `finalizeTransaction()` — acknowledge, or consume for an Android
+ *        consumable. A failure means we don't yet remove from the list
+ *        (next launch will retry).
  *     b. `unfinished.remove(token)` — clear the entry.
  *     c. Stash the response's `entitlements` as the latest seen.
  *  4. Transport / verify throw → log warn, increment `failures`, leave.
@@ -187,6 +189,42 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
    * transaction, so the `unfinished` entry is the only remaining handle on
    * it. Callers on that path pass `alreadyFinished`.
    */
+  /**
+   * Whether an Android consumable's purchase has left the store's owned set,
+   * which makes a failed consume terminal rather than retryable.
+   *
+   * The sequence this exists for: the consume succeeds on Play, then the
+   * bridge reply or the `unfinished.remove` that follows fails. Play has
+   * already dropped the purchase — Billing 8.x stops returning consumed
+   * purchases from `getPurchases()` — so every later consume of that token
+   * rejects, the entry is retained, and recovery retries it at every launch
+   * forever, burning a `recoveryMaxBatch` slot and a verify each time. The
+   * unfinished store has no age-based eviction to catch that.
+   *
+   * Acknowledging had no such trap: the purchase stayed owned, so a retry
+   * eventually worked. So this asks the store a positive question — is the
+   * purchase still there — rather than trying to read a meaning out of the
+   * error, which would mean matching on Play's message text.
+   *
+   * Only for Google consumables, only on the failure path, and `false` on
+   * any doubt: a store that cannot answer must not be taken to have said
+   * "gone", or a genuinely retryable failure would be dropped.
+   */
+  private async alreadyGone(tx: NativeTransaction): Promise<boolean> {
+    if (tx.platform !== 'google' || tx.productType !== 'consumable') return false;
+
+    try {
+      const owned = await this.deps.nativeAdapter.getOwnedTransactions();
+      return !owned.some((candidate) => candidate.token === tx.token);
+    } catch (error) {
+      this.deps.logger.debug(
+        `Recovery: could not re-read the owned set for productId=${tx.productId}; treating the settle failure as retryable.`,
+        error,
+      );
+      return false;
+    }
+  }
+
   async settleTransaction(
     tx: NativeTransaction,
     opts: { persist?: boolean; alreadyFinished?: boolean } = {},
@@ -252,6 +290,15 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
           // ack failure is rare and transient, and even an orphaned native
           // tx won't re-enter unfinished storage (no init-time sync exists,
           // only `purchase-flow.ts` writes to this store).
+          //
+          // Deliberately an acknowledge and not `finalizeTransaction`:
+          // consuming is for a purchase iap has granted, and verification
+          // has just called this one permanently invalid. The cost is worth
+          // naming — a permanently-rejected Android *consumable* stays
+          // owned, so the user can never buy that product again. Releasing
+          // ownership for something declared invalid is the worse trade, and
+          // a purchase that fails verification permanently is a backend or
+          // catalog problem to fix, not a state to launder.
           try {
             await nativeAdapter.acknowledge(tx);
           } catch (error) {
@@ -286,9 +333,14 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
         return { kind: 'failed' };
       }
 
-      // Ack natively. Failure means we don't yet remove — next launch retries.
+      // Settle with the store — acknowledge, or consume for an Android
+      // consumable. Failure means we don't yet remove — next launch retries.
+      //
+      // The permanent-rejection path above deliberately still only
+      // acknowledges: that transaction did *not* verify, and consuming is
+      // for a purchase iap has granted.
       try {
-        await nativeAdapter.acknowledge(tx);
+        await finalizeTransaction({ nativeAdapter, transaction: tx, logger });
       } catch (error) {
         // …unless the platform already finished it, which is the case for a
         // transaction off the iOS update feed. There the plugin finishes
@@ -298,13 +350,13 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
         // finished consumable. Treating that as a failure would retain the
         // entry forever and never resolve a pending purchase that in fact
         // completed.
-        if (opts.alreadyFinished) {
+        if (opts.alreadyFinished || (await this.alreadyGone(tx))) {
           logger.debug(
-            `Recovery: acknowledge() failed for productId=${tx.productId}, but the platform had already finished it; treating as settled.`,
+            `Recovery: settling productId=${tx.productId} failed, but the store no longer has the purchase; treating as settled.`,
           );
         } else {
           logger.warn(
-            `Recovery: acknowledge() failed for productId=${tx.productId}; entry retained for next launch.`,
+            `Recovery: settling productId=${tx.productId} with the store failed; entry retained for next launch.`,
             error,
           );
           return { kind: 'failed' };

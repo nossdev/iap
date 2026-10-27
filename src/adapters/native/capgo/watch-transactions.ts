@@ -1,6 +1,7 @@
 import { NativePurchases } from '@capgo/native-purchases';
 import type { Logger } from '../../../lib/logger.js';
 import { getPlatform } from '../../../lib/platform.js';
+import type { ConfiguredProduct } from '../../../types/product.js';
 import type { NativeTransaction } from '../../../types/transaction.js';
 import type { TransactionWatchHandle } from '../types.js';
 import { inferProductType, normalizeTransaction } from './normalize-transaction.js';
@@ -25,6 +26,16 @@ export async function watchCapgoTransactions(
   onUpdate: (transaction: NativeTransaction) => void,
   logger: Logger,
   packageName?: string,
+  /**
+   * The catalog, so this feed's transactions carry the same `productType`
+   * the owned-set path gives them — which reaches the backend's verify
+   * request and the `transaction-updated` event.
+   *
+   * It does not change acknowledge-vs-consume today: this feed is iOS-only
+   * in practice (above), and iOS always acknowledges. It would, if capgo
+   * ever adds the Android event.
+   */
+  getConfiguredProducts?: () => readonly ConfiguredProduct[],
 ): Promise<TransactionWatchHandle | null> {
   const handles: Array<{ remove(): Promise<void> }> = [];
 
@@ -35,7 +46,9 @@ export async function watchCapgoTransactions(
         // go — it would surface as an unhandled rejection in the bridge, or
         // be swallowed — so it stops at the boundary.
         try {
-          onUpdate(normalizeTransaction(tx, inferProductType(tx), packageName));
+          onUpdate(
+            normalizeTransaction(tx, inferProductType(tx, getConfiguredProducts?.()), packageName),
+          );
         } catch (error) {
           logger.warn('transactionUpdated handler threw; ignoring the update.', error);
         }

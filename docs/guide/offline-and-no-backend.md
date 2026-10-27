@@ -39,8 +39,9 @@ All of it, which is the point. Local verification is implemented as a `BackendAd
 everything above that boundary is untouched:
 
 - The purchase flow, including **acknowledge only after verification succeeds**. A purchase
-  whose local check fails is never acknowledged — on any of the three paths that verify one
-  (a purchase, a restore, or launch recovery) — so the store keeps it and it is retried. That
+  whose local check fails is never acknowledged — on any of the four paths that settle one (a
+  purchase, a restore, launch recovery, or a transaction arriving on its own) — so the store
+  keeps it and it is retried. That
   is the same guarantee the backend path gives, and the same protection against Play's 3-day
   auto-refund.
 - The at-least-once write to the unfinished-transaction store before verifying, so an app that
@@ -127,6 +128,19 @@ So: local mode is right for an app with no server, where the alternative is no v
 all. It is **not** a substitute for server-side validation where being wrong is expensive —
 where a single fraudulent unlock costs real money, or where you need refund detection, which
 needs the store's server API. If you have a backend, use it.
+:::
+
+::: warning Do not map a consumable to a standing entitlement
+A consumable is **consumed** once verified, which releases it so the user can buy it again —
+and in Play Billing 8 a consumed purchase is gone from the owned set for good. Local mode
+re-derives entitlements from that set on every refresh, so an entitlement your mapper returned
+for a consumable disappears at the next one.
+
+That is the right shape: a consumable's effect — coins added, a hint spent — belongs in your
+own records, not in something iap re-derives. `LocallyVerifiedPurchase.productType` is there
+so your mapper can tell. iOS makes the same point from the other side: its owned set
+*retains* finished consumables, so a mapper that grants on every verified purchase would
+re-grant the same coins forever.
 :::
 
 ### Reusing the checks in your own adapter

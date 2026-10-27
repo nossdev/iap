@@ -1,7 +1,7 @@
 import type { Transaction as PluginTransaction } from '@capgo/native-purchases';
 import { readJwsClaims } from '../../../lib/jws.js';
 import { getPlatform } from '../../../lib/platform.js';
-import type { ProductType } from '../../../types/product.js';
+import type { ConfiguredProduct, ProductType } from '../../../types/product.js';
 import type {
   NativeTransaction,
   Platform,
@@ -141,10 +141,37 @@ function inferPlatform(tx: PluginTransaction): Platform {
   return getPlatform() === 'android' ? 'google' : 'apple';
 }
 
-// The plugin's Transaction only carries 'inapp' | 'subs', so this never
-// resolves to 'consumable' — fine, since getOwnedTransactions() consumers
-// (restore-flow) key on platform/token/packageName, not the consumable bit.
-export function inferProductType(tx: PluginTransaction): ProductType {
+/**
+ * The product type of a transaction the *store* reported.
+ *
+ * The **store's family is authoritative**, and the catalog only refines
+ * within it. The store knows whether it sold a subscription, because the
+ * payload comes out of the subscription query or the in-app one. What it
+ * cannot say is which kind of in-app purchase: `'inapp'` covers consumables
+ * and one-time purchases alike, and that difference decides whether iap
+ * acknowledges the transaction or consumes it. A consumable mistyped as
+ * `'product'` is acknowledged but never consumed, so Play keeps reporting it
+ * owned and `purchase()` of it fails `ALREADY_PURCHASED` for good — the user
+ * paid for something they can never buy again.
+ *
+ * The order matters the other way round too, and more dangerously. Letting
+ * the catalog override `'subs'` would let one wrong `type` — in a hand-written
+ * config, or in a stale `backend.listProducts()` manifest, which is validated
+ * for shape only — turn a subscription into a `'product'`. `normalizeTransaction`
+ * drops the whole `subscription` block for a non-subscription, so the
+ * transaction would arrive with no expiry and no renewal state, and an
+ * on-device check would read "does not expire" and grant an expired
+ * subscription indefinitely.
+ */
+export function inferProductType(
+  tx: PluginTransaction,
+  configured?: readonly ConfiguredProduct[],
+): ProductType {
   if (tx.productType === 'subs') return 'subscription';
-  return 'product';
+
+  const declared = configured?.find((p) => p.id === tx.productIdentifier)?.type;
+  // Only `'consumable'` is a refinement of `'inapp'`. Anything else the
+  // catalog says — including `'subscription'`, which the store has just
+  // contradicted — leaves the store's answer standing.
+  return declared === 'consumable' ? 'consumable' : 'product';
 }

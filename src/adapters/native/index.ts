@@ -1,5 +1,6 @@
 import type { Logger } from '../../lib/logger.js';
 import { getPlatform } from '../../lib/platform.js';
+import type { ConfiguredProduct } from '../../types/product.js';
 import type { NativeAdapter } from './types.js';
 import { WebStubAdapter } from './web/web-stub.js';
 
@@ -27,11 +28,29 @@ import { WebStubAdapter } from './web/web-stub.js';
 export async function selectNativeAdapter(
   logger: Logger,
   packageName?: string,
+  /**
+   * The configured catalog, as a getter.
+   *
+   * The adapter needs it to type a transaction the *store* reported. The
+   * plugin's payload carries Play's `'inapp' | 'subs'`, and `'inapp'`
+   * covers consumables and one-time purchases alike — so the catalog is the
+   * only thing that can tell them apart, and the difference decides whether
+   * iap acknowledges the transaction or consumes it. Getting it wrong leaves
+   * a consumable owned, and the user unable to buy it again.
+   *
+   * It refines the store's answer rather than replacing it: see
+   * `inferProductType`.
+   *
+   * A getter rather than an array because a backend-supplied manifest is
+   * resolved into `state.products` just before this call, and nothing
+   * stops it being refreshed later.
+   */
+  getConfiguredProducts?: () => readonly ConfiguredProduct[],
 ): Promise<NativeAdapter> {
   const platform = getPlatform();
   if (platform === 'ios' || platform === 'android') {
     const mod = await import('./capgo/native-adapter.js');
-    return new mod.CapgoNativeAdapter(logger, packageName);
+    return new mod.CapgoNativeAdapter(logger, packageName, getConfiguredProducts);
   }
   return new WebStubAdapter();
 }

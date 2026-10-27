@@ -82,7 +82,15 @@ export async function initializeIap<TEntitlement extends EntitlementBase>(
 
   // Lazy adapter construction — this is the dynamic-import boundary so
   // web builds don't pull in `@capgo/native-purchases`.
-  state.adapter = await selectNativeAdapter(state.logger, state.config.android.packageName);
+  // The catalog is passed as a getter so the adapter can type a transaction
+  // the store reported: Play calls a consumable and a one-time purchase both
+  // `'inapp'`, and the difference decides whether iap acknowledges it or
+  // consumes it.
+  state.adapter = await selectNativeAdapter(
+    state.logger,
+    state.config.android.packageName,
+    () => state.products,
+  );
 
   // Now that the native adapter is resolved, wire the orchestrators.
   // Both share the same getter/setter triplet into createIAP's state.
@@ -117,7 +125,7 @@ export async function initializeIap<TEntitlement extends EntitlementBase>(
     products: state.products,
     pending: state.pending,
   });
-  state.restorer = new RestoreOrchestrator<TEntitlement>(sharedDeps);
+  state.restorer = new RestoreOrchestrator<TEntitlement>({ ...sharedDeps, pending: state.pending });
   state.recoverer = new RecoveryOrchestrator<TEntitlement>({
     ...sharedDeps,
     pending: state.pending,

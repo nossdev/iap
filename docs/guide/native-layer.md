@@ -176,16 +176,30 @@ transaction, so iap's own record is the only remaining handle on it. It also mea
 `acknowledge` that fails with "already finished" is treated as success on this path only, or a
 pending purchase that in fact completed would never be reported.
 
-::: warning A cleared Play purchase is acknowledged, not consumed
-iap acknowledges every transaction it settles. Play distinguishes acknowledging a purchase
-from **consuming** one, and a consumable must be consumed before it can be bought again —
-`@capgo/native-purchases` does that at purchase time via `isConsumable`, which this path does
-not go through. So a consumable that clears out of band (the common shape for cash and
-e-wallet payments) is acknowledged and then stays owned, and the user cannot rebuy it.
+::: tip Consumables are consumed, on every path
+Play distinguishes acknowledging a purchase from **consuming** one, and a consumable must be
+consumed before it can be bought again. iap consumes it — after verification, on all four
+paths that settle a transaction: a purchase, a restore, launch recovery, and a transaction
+arriving on its own. So a consumable that clears out of band (the common shape for cash and
+e-wallet payments) can be rebought like any other.
 
-Entitlement is unaffected — the backend confirmed it and the grant is in place. If you sell
-consumables through a pending payment method, verify the rebuy flow on a device before
-relying on it. Closing this needs a consume path in the native adapter.
+Two things make that work, and both are worth knowing if you write your own adapter:
+
+- The product type comes from **your configured catalog**, not from the plugin's payload.
+  Play reports a consumable and a one-time purchase both as `'inapp'`, so a store-reported
+  transaction cannot be typed from what the store said.
+- iap never passes the plugin's `isConsumable` flag. The plugin consumes on that flag inside
+  the purchase callback **regardless of `autoAcknowledgePurchases`** — its
+  `PurchaseActionDecider` reads the flag only on the acknowledge branch — which would finalise
+  the purchase before iap verified it. That is unrecoverable rather than retryable: Billing 8.x
+  drops a consumed purchase from `getPurchases()` entirely. A test guards the gap, so if capgo
+  closes it iap can stop working around it.
+
+A custom `NativeAdapter` with no `consume()` falls back to acknowledging, which still protects
+the refund window — but the product stays owned, and iap logs a warning saying so.
+
+iOS needs none of this: `Transaction.finish()` ends a consumable's lifecycle, and the plugin
+rejects `consumePurchase()` there.
 :::
 
 A transaction that arrives while `purchase()` is handling the same product is ignored here:

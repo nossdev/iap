@@ -14,6 +14,7 @@ const nativePurchasesMock = vi.hoisted(() => ({
   purchaseProduct: vi.fn(),
   getPurchases: vi.fn(),
   acknowledgePurchase: vi.fn(),
+  consumePurchase: vi.fn(),
   manageSubscriptions: vi.fn(),
 }));
 
@@ -248,7 +249,7 @@ describe('CapgoNativeAdapter', () => {
     });
   });
 
-  it('purchaseProduct() marks consumables and normalizes a Google transaction', async () => {
+  it('purchaseProduct() never lets the plugin consume, not even a consumable', async () => {
     nativePurchasesMock.purchaseProduct.mockResolvedValue(googleTx());
     const result = await new CapgoNativeAdapter(silentLogger).purchaseProduct({
       productId: 'coins_100',
@@ -260,7 +261,16 @@ describe('CapgoNativeAdapter', () => {
       productType: 'inapp',
       planIdentifier: undefined,
       appAccountToken: undefined,
-      isConsumable: true,
+      // `false`, although this *is* a consumable.
+      //
+      // `autoAcknowledgePurchases: false` does not cover the consumable
+      // case: the plugin consumes whenever `isConsumable` is set, without
+      // consulting that flag. Passing `true` would have it consume inside
+      // the purchase callback, before iap verified anything — and a
+      // consumed purchase is gone from `getPurchases()` in Billing 8.x, so
+      // a failed verification would be unrecoverable instead of retried.
+      // iap consumes itself, after verifying, via `consume()`.
+      isConsumable: false,
       autoAcknowledgePurchases: false,
     });
     expect(result).toMatchObject({
@@ -435,5 +445,143 @@ describe('CapgoNativeAdapter', () => {
       });
       expect(r.platform).toBe('google');
     });
+  });
+});
+
+describe('CapgoNativeAdapter — consumables', () => {
+  beforeEach(() => {
+    mockedPlatform = 'android';
+    nativePurchasesMock.getPurchases.mockReset();
+    nativePurchasesMock.consumePurchase.mockReset();
+    nativePurchasesMock.consumePurchase.mockResolvedValue(undefined);
+  });
+
+  const catalog = () =>
+    [
+      { id: 'coins_100', type: 'consumable' },
+      { id: 'remove_ads', type: 'product' },
+    ] as const;
+
+  it('types a store-reported purchase from the configured catalog', async () => {
+    nativePurchasesMock.getPurchases.mockResolvedValue({
+      purchases: [googleTx({ productIdentifier: 'coins_100' })],
+    });
+
+    const adapter = new CapgoNativeAdapter(silentLogger, 'com.example.app', () => [...catalog()]);
+    const [tx] = await adapter.getOwnedTransactions();
+
+    // The plugin's payload says `'inapp'`, which Play uses for consumables
+    // and one-time purchases alike. Only the catalog knows the difference,
+    // and the difference decides acknowledge-vs-consume.
+    expect(tx?.productType).toBe('consumable');
+  });
+
+  it('never lets the catalog override the store on a subscription', async () => {
+    nativePurchasesMock.getPurchases.mockResolvedValue({
+      purchases: [
+        googleTx({
+          productIdentifier: 'household_yearly',
+          productType: 'subs',
+          purchaseToken: 'sub-token',
+        }),
+      ],
+    });
+
+    // One wrong `type` — in a hand-written config, or in a stale
+    // `backend.listProducts()` manifest, which is validated for shape only.
+    const adapter = new CapgoNativeAdapter(silentLogger, 'com.example.app', () => [
+      { id: 'household_yearly', type: 'product' },
+    ]);
+    const [tx] = await adapter.getOwnedTransactions();
+
+    // The store knows what family it sold — the payload came out of the
+    // subscription query. Taking the catalog's word here would drop the
+    // whole `subscription` block (normalizeTransaction returns null for a
+    // non-subscription), so the transaction would arrive with no expiry and
+    // no renewal state — and an on-device check reads a missing expiry as
+    // "does not expire" and grants an expired subscription indefinitely.
+    expect(tx?.productType).toBe('subscription');
+  });
+
+  it('ignores a catalog that claims a subscription for an inapp payload', async () => {
+    nativePurchasesMock.getPurchases.mockResolvedValue({
+      purchases: [googleTx({ productIdentifier: 'remove_ads', productType: 'inapp' })],
+    });
+
+    const adapter = new CapgoNativeAdapter(silentLogger, 'com.example.app', () => [
+      { id: 'remove_ads', type: 'subscription' },
+    ]);
+    const [tx] = await adapter.getOwnedTransactions();
+
+    // The catalog refines `'inapp'` into `'consumable'` and nothing else:
+    // only the consumable bit is genuinely ambiguous in the payload.
+    expect(tx?.productType).toBe('product');
+  });
+
+  it('falls back to the payload for a product the catalog does not list', async () => {
+    nativePurchasesMock.getPurchases.mockResolvedValue({
+      purchases: [
+        googleTx({ productIdentifier: 'retired_pack' }),
+        googleTx({ productIdentifier: 'old_sub', productType: 'subs' }),
+      ],
+    });
+
+    const adapter = new CapgoNativeAdapter(silentLogger, 'com.example.app', () => [...catalog()]);
+    const owned = await adapter.getOwnedTransactions();
+
+    // The store reports purchases from previous versions of the app, and
+    // from products since retired. Neither is in the catalog.
+    expect(owned.map((tx) => tx.productType)).toEqual(['product', 'subscription']);
+  });
+
+  it('types everything from the payload when no catalog is supplied', async () => {
+    nativePurchasesMock.getPurchases.mockResolvedValue({
+      purchases: [googleTx({ productIdentifier: 'coins_100' })],
+    });
+
+    const adapter = new CapgoNativeAdapter(silentLogger);
+    const [tx] = await adapter.getOwnedTransactions();
+
+    expect(tx?.productType).toBe('product');
+  });
+
+  it('consume() calls consumePurchase with the token', async () => {
+    const adapter = new CapgoNativeAdapter(silentLogger, 'com.example.app');
+    await adapter.consume({
+      platform: 'google',
+      productId: 'coins_100',
+      token: 'play-token-abc',
+      purchaseReference: 'play-token-abc',
+      productType: 'consumable',
+      appUserId: null,
+      subscription: null,
+    });
+
+    expect(nativePurchasesMock.consumePurchase).toHaveBeenCalledWith({
+      purchaseToken: 'play-token-abc',
+    });
+  });
+
+  it('consume() wraps a failure as a recoverable STORE_ERROR', async () => {
+    nativePurchasesMock.consumePurchase.mockRejectedValue(new Error('billing disconnected'));
+    const adapter = new CapgoNativeAdapter(silentLogger, 'com.example.app');
+
+    const error = await adapter
+      .consume({
+        platform: 'google',
+        productId: 'coins_100',
+        token: 'play-token-abc',
+        purchaseReference: 'play-token-abc',
+        productType: 'consumable',
+        appUserId: null,
+        subscription: null,
+      })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(IAPError);
+    expect((error as IAPError).code).toBe(IAPErrorCode.STORE_ERROR);
+    // Recoverable, like a failed acknowledge: until it succeeds Play still
+    // reports the product owned and the user cannot buy it again.
+    expect((error as IAPError).recoverable).toBe(true);
   });
 });

@@ -14,6 +14,7 @@ import type {
 } from '../types/results.js';
 import type { NativeTransaction, VerifiedTransaction } from '../types/transaction.js';
 import type { EntitlementCache } from './entitlement-cache.js';
+import { finalizeTransaction } from './finalize-transaction.js';
 import type { PendingPurchasesStore } from './pending-purchases.js';
 import { resolvePendingPurchase } from './resolve-pending.js';
 import { toStorePurchase } from './store-purchase.js';
@@ -249,11 +250,14 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     // refund.
     let acknowledged = true;
     try {
-      await nativeAdapter.acknowledge(nativeTx);
+      // Acknowledge, or consume for an Android consumable — see
+      // `finalizeTransaction`. Both are "tell the store we are done with
+      // it", and only the second lets a consumable be bought again.
+      await finalizeTransaction({ nativeAdapter, transaction: nativeTx, logger });
     } catch (error) {
       acknowledged = false;
       logger.warn(
-        `acknowledge() failed for "${productId}"; entitlements still updated, and the transaction is retained for recovery to re-acknowledge on the next launch.`,
+        `Settling "${nativeTx.productId}" with the store failed; the entitlement is granted, and the transaction is retained for recovery to retry on the next launch.`,
         error,
       );
     }

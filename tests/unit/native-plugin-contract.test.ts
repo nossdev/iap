@@ -328,6 +328,71 @@ describe('@capgo/native-purchases — the surface the docs page describes', () =
   });
 });
 
+describe('@capgo/native-purchases — consuming, and what autoAcknowledge does not cover', () => {
+  /**
+   * `consumePurchase()` is why iap can let an Android consumable be bought
+   * again. It arrived in plugin 8.2.0; the adapter's `consume()` is built on
+   * it, and `finalizeTransaction` falls back to acknowledging without it.
+   */
+  it('still exposes consumePurchase on the Android side', () => {
+    expect(ANDROID_CODE).toContain('consumeAsync');
+    expect(findMatches(ANDROID_SOURCES, ['public void consumePurchase('])).not.toHaveLength(0);
+  });
+
+  /**
+   * The finding iap's `isConsumable: false` depends on, and it contradicts
+   * the plugin's own documentation of `autoAcknowledgePurchases` ("the
+   * purchase will NOT be automatically acknowledged/finished").
+   *
+   * `PurchaseActionDecider.decide()` returns CONSUME whenever `isConsumable`
+   * is set, before any acknowledge consideration, and the caller acts on
+   * CONSUME without reading `autoAcknowledgePurchases` — which it *does*
+   * read on the ACKNOWLEDGE branch. So a purchase flagged consumable is
+   * consumed inside the purchase callback regardless, which for iap would
+   * mean finalising before verification, unrecoverably: Billing 8.x drops a
+   * consumed purchase from `getPurchases()`.
+   *
+   * iap therefore never sets the flag and consumes itself after verifying.
+   * This guard is **inverted**: it asserts the gap is still a gap, so that
+   * if capgo makes `autoAcknowledgePurchases` cover consuming, this fails
+   * and iap can simplify rather than carrying the workaround forever.
+   */
+  it('still consumes on isConsumable regardless of autoAcknowledgePurchases', () => {
+    const decider = Object.entries(nativeSources).find(([path]) =>
+      path.endsWith('PurchaseActionDecider.java'),
+    )?.[1];
+    expect(decider, 'PurchaseActionDecider.java should ship').toBeDefined();
+
+    // CONSUME is decided from `isConsumable` alone.
+    expect(decider).toMatch(/if\s*\(isConsumable\)\s*\{\s*return PurchaseAction\.CONSUME;/);
+    // And the decider never sees the flag that is supposed to gate it.
+    expect(decider).not.toContain('autoAcknowledge');
+
+    // The caller consumes on CONSUME with no autoAcknowledge check, while
+    // the ACKNOWLEDGE branch has one. Asserted by the order of the three
+    // in the switch: CONSUME → consumeAsync, then ACKNOWLEDGE → the flag.
+    const plugin = Object.entries(nativeSources).find(([path]) =>
+      path.endsWith('NativePurchasesPlugin.java'),
+    )?.[1];
+    expect(plugin).toBeDefined();
+    const consumeCase = (plugin ?? '').indexOf('case CONSUME:');
+    const ackCase = (plugin ?? '').indexOf('case ACKNOWLEDGE:');
+    expect(consumeCase).toBeGreaterThan(-1);
+    expect(ackCase).toBeGreaterThan(consumeCase);
+    const consumeBranch = (plugin ?? '').slice(consumeCase, ackCase);
+    expect(consumeBranch).toContain('consumeAsync');
+    expect(consumeBranch).not.toContain('autoAcknowledge');
+  });
+
+  /**
+   * The other half of why consuming cannot be deferred and retried the way
+   * acknowledging can: once consumed, there is no purchase left to find.
+   */
+  it('still documents that a consumed purchase leaves getPurchases()', () => {
+    expect(definitions).toContain('consumed purchases can no longer');
+  });
+});
+
 describe('@capgo/native-purchases — the paymentMode legend iap maps from', () => {
   /**
    * This is the guard that matters most on this page, because the mapping it

@@ -3,6 +3,7 @@ import type { BackendAdapter, RestoreRequest } from '../../src/adapters/backend/
 import type { NativeAdapter } from '../../src/adapters/native/types.js';
 import { MemoryAdapter } from '../../src/adapters/storage/memory-adapter.js';
 import { EntitlementCache } from '../../src/core/entitlement-cache.js';
+import { PendingPurchasesStore } from '../../src/core/pending-purchases.js';
 import { RestoreOrchestrator } from '../../src/core/restore-flow.js';
 import { UnfinishedTransactionsStore } from '../../src/core/unfinished-transactions.js';
 import { TypedEventEmitter } from '../../src/events/emitter.js';
@@ -23,11 +24,14 @@ function makeOrchestrator<T extends EntitlementBase = EntitlementBase>(opts: {
   state: { entitlements: T[]; cachedAt: number | null };
   events: Array<{ name: string; payload: unknown }>;
   unfinished: UnfinishedTransactionsStore;
+  pending: PendingPurchasesStore;
+  pendingResolved: Array<{ productId: string; status: string }>;
   storage: MemoryAdapter;
 } {
   const storage = new MemoryAdapter('test');
   const cache = new EntitlementCache<T>(storage, silentLogger);
   const unfinished = new UnfinishedTransactionsStore(storage, silentLogger);
+  const pending = new PendingPurchasesStore(storage, silentLogger);
   const emitter = new TypedEventEmitter<T>();
   const state: { entitlements: T[]; cachedAt: number | null } = {
     entitlements: opts.initialEntitlements ?? [],
@@ -39,11 +43,15 @@ function makeOrchestrator<T extends EntitlementBase = EntitlementBase>(opts: {
     emitter.on(name, (payload) => events.push({ name, payload }));
   }
 
+  const pendingResolved: Array<{ productId: string; status: string }> = [];
+  emitter.on('purchase-pending-resolved', (payload) => pendingResolved.push(payload));
+
   const restorer = new RestoreOrchestrator<T>({
     nativeAdapter: opts.nativeAdapter ?? makeNativeAdapter(),
     backend: opts.backend ?? makeBackend<T>(),
     cache,
     unfinished,
+    pending,
     emitter,
     logger: silentLogger,
     getCurrentEntitlements: () => state.entitlements,
@@ -55,7 +63,7 @@ function makeOrchestrator<T extends EntitlementBase = EntitlementBase>(opts: {
     },
   });
 
-  return { restorer, state, events, unfinished, storage };
+  return { restorer, state, events, unfinished, pending, pendingResolved, storage };
 }
 
 describe('RestoreOrchestrator — empty owned list', () => {
@@ -209,6 +217,7 @@ describe('RestoreOrchestrator — multi-product mixed batch', () => {
       },
     ];
     const acknowledgeSpy = vi.fn(async () => {});
+    const consumeSpy = vi.fn(async (_tx: NativeTransaction) => {});
     let capturedRequest: RestoreRequest | undefined;
     const restoreSpy = async (req: RestoreRequest) => {
       capturedRequest = req;
@@ -225,6 +234,7 @@ describe('RestoreOrchestrator — multi-product mixed batch', () => {
       nativeAdapter: makeNativeAdapter({
         getOwnedTransactions: async () => owned,
         acknowledge: acknowledgeSpy,
+        consume: consumeSpy,
       }),
       backend: makeBackend({ restore: restoreSpy }),
     });
@@ -233,7 +243,12 @@ describe('RestoreOrchestrator — multi-product mixed batch', () => {
     expect(result.restored).toBe(3);
     expect(result.entitlements).toHaveLength(2);
     expect(state.entitlements.map((e) => e.key).sort()).toEqual(['no_ads', 'premium']);
-    expect(acknowledgeSpy).toHaveBeenCalledTimes(3);
+    // The two Apple transactions are acknowledged; the Google consumable is
+    // **consumed**, which acknowledges it and additionally releases
+    // ownership so the user can buy more coins.
+    expect(acknowledgeSpy).toHaveBeenCalledTimes(2);
+    expect(consumeSpy).toHaveBeenCalledTimes(1);
+    expect(consumeSpy.mock.calls[0]?.[0]).toMatchObject({ productId: 'coin_pack_100' });
 
     if (!capturedRequest) throw new Error('backend.restore was not called');
     expect(capturedRequest.transactions).toHaveLength(3);
@@ -438,6 +453,7 @@ describe('RestoreOrchestrator — defensive paths', () => {
     const cache = new EntitlementCache<EntitlementBase>(failingStorage, silentLogger);
     const memStorage = new MemoryAdapter('test');
     const unfinished = new UnfinishedTransactionsStore(memStorage, silentLogger);
+    const pending = new PendingPurchasesStore(memStorage, silentLogger);
     const emitter = new TypedEventEmitter<EntitlementBase>();
     const state: { entitlements: EntitlementBase[]; cachedAt: number | null } = {
       entitlements: [],
@@ -466,6 +482,7 @@ describe('RestoreOrchestrator — defensive paths', () => {
       }),
       cache,
       unfinished,
+      pending,
       emitter,
       logger: silentLogger,
       getCurrentEntitlements: () => state.entitlements,
@@ -548,5 +565,93 @@ describe('RestoreOrchestrator — unfinished list maintenance', () => {
     expect(state.entitlements).toHaveLength(1);
     expect(removeSpy).toHaveBeenCalledTimes(1);
     removeSpy.mockRestore();
+  });
+});
+
+describe('RestoreOrchestrator — pending marks and failed settles', () => {
+  const coins = (): NativeTransaction => ({
+    platform: 'google',
+    productId: 'coin_pack_100',
+    token: 'play-tok-coin',
+    purchaseReference: 'play-tok-coin',
+    packageName: 'com.example.app',
+    productType: 'consumable',
+    appUserId: null,
+    subscription: null,
+  });
+
+  it('clears a pending mark it settles, and reports it purchased', async () => {
+    // The regression this guards: restore was the one settle path with no
+    // pending store. That was survivable only by accident — an acknowledged
+    // purchase stays in the owned set, so the next reconcile found it and
+    // cleared the mark one pass late. A *consumed* purchase is gone from
+    // that set, so the reconcile instead saw it neither owned nor pending
+    // and reported `cancelled` for a purchase that had succeeded.
+    const { restorer, pending, pendingResolved } = makeOrchestrator({
+      nativeAdapter: makeNativeAdapter({ getOwnedTransactions: async () => [coins()] }),
+    });
+    await pending.add('coin_pack_100');
+
+    await restorer.restorePurchases();
+
+    expect(pendingResolved).toEqual([{ productId: 'coin_pack_100', status: 'purchased' }]);
+    expect(await pending.list()).toEqual([]);
+  });
+
+  it('emits nothing for a product that was never pending', async () => {
+    const { restorer, pendingResolved } = makeOrchestrator({
+      nativeAdapter: makeNativeAdapter({ getOwnedTransactions: async () => [coins()] }),
+    });
+
+    await restorer.restorePurchases();
+
+    // The common case: an ordinary purchase was never announced as pending.
+    expect(pendingResolved).toEqual([]);
+  });
+
+  it('keeps the unfinished entry when the settle fails, so recovery retries', async () => {
+    const tx = coins();
+    const { restorer, unfinished, pending, pendingResolved } = makeOrchestrator({
+      nativeAdapter: makeNativeAdapter({
+        getOwnedTransactions: async () => [tx],
+        consume: async () => {
+          throw new Error('billing service disconnected');
+        },
+      }),
+    });
+    await unfinished.add(tx);
+    await pending.add('coin_pack_100');
+
+    await restorer.restorePurchases();
+
+    // Draining the whole owned set used to be merely untidy: a failed
+    // acknowledge left the purchase owned, so a later restore re-acked it.
+    // A consumable that fails to consume stays owned *and* unacknowledged,
+    // with Play's three-day refund clock running — and dropping its entry
+    // removes the only record that would make recovery retry.
+    expect((await unfinished.list()).map((entry) => entry.token)).toEqual(['play-tok-coin']);
+    // And the mark stands, because nothing settled.
+    expect(await pending.list()).toEqual(['coin_pack_100']);
+    expect(pendingResolved).toEqual([]);
+  });
+
+  it('does not drain an entry for a transaction verification refused', async () => {
+    const tx = coins();
+    const { restorer, unfinished } = makeOrchestrator({
+      nativeAdapter: makeNativeAdapter({ getOwnedTransactions: async () => [tx] }),
+      backend: makeBackend({
+        restore: async () => ({
+          valid: true as const,
+          entitlements: [] as EntitlementBase[],
+          // The adapter judged this one and refused it.
+          verifiedTokens: [],
+        }),
+      }),
+    });
+    await unfinished.add(tx);
+
+    await restorer.restorePurchases().catch(() => {});
+
+    expect((await unfinished.list()).map((entry) => entry.token)).toEqual(['play-tok-coin']);
   });
 });
