@@ -216,8 +216,12 @@ type VerificationConfig<TEntitlement> = {
   mode: 'local';
   /** Maps a verified purchase to the entitlements it grants. Required. */
   entitlements: (purchase: LocallyVerifiedPurchase) => TEntitlement[];
-  /** Optional: every purchase must carry this binding, or it is refused. Must be a UUID. */
-  appUserId?: string;
+  /**
+   * Optional: every purchase must carry this binding, or it is refused.
+   * A UUID, or a function returning one — the function is read at the time
+   * of each check, so the binding follows the session.
+   */
+  appUserId?: string | (() => string | null);
 };
 ```
 
@@ -232,6 +236,12 @@ const iap = createIAP({
   },
 });
 ```
+
+Use the **function form of `appUserId`** in any app where the signed-in user can change: a
+fixed string is captured at `createIAP()` time, so after a login change it is still the
+previous user's and every purchase is refused as a mismatch. Returning `null` means "nobody is
+signed in", which refuses rather than skipping the check — see
+[Binding purchases to an account](./offline-and-no-backend.md#binding-purchases-to-an-account).
 
 `entitlements` is required because iap cannot know what a product entitles anyone to, and
 there is no backend to ask. `products` is also required in this mode — there is no backend to

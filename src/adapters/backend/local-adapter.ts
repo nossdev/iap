@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { verifyPurchaseOnDevice } from '../../core/local-verification.js';
 import type {
+  LocalVerificationError,
   LocalVerificationOptions,
   LocallyVerifiedPurchase,
 } from '../../core/local-verification.js';
 import { IAPError, IAPErrorCode } from '../../lib/errors.js';
 import type { Logger } from '../../lib/logger.js';
+import { isValidUuid } from '../../lib/uuid.js';
 import { entitlementBaseSchema } from '../../types/entitlement.js';
 import type { EntitlementBase } from '../../types/entitlement.js';
 import type { ConfiguredProduct } from '../../types/product.js';
@@ -22,7 +24,15 @@ export interface LocalVerificationAdapterOptions<TEntitlement extends Entitlemen
   getProducts: () => readonly ConfiguredProduct[];
   /** Maps a verified purchase to the entitlements it grants. */
   entitlements: (purchase: LocallyVerifiedPurchase) => TEntitlement[];
-  /** The binding every purchase must carry, when the app uses one. */
+  /**
+   * The binding every purchase must carry, resolved **at the time of each
+   * check** so it can follow the session.
+   *
+   * Present means the app binds purchases; omitted means it does not. A
+   * present resolver returning `null` is therefore "the app binds
+   * purchases and nobody is signed in", which refuses rather than
+   * silently dropping the check — see {@link LocalVerificationAdapter}.
+   */
   getAppUserId?: () => string | null;
   /**
    * The entitlements currently held, so an ambiguous answer from the store
@@ -111,6 +121,22 @@ export class LocalVerificationAdapter<TEntitlement extends EntitlementBase = Ent
    * drops out here, which is the only downgrade local mode performs.
    */
   async getEntitlements(): Promise<TEntitlement[]> {
+    // Same asymmetry as the empty-store answer below: "I cannot tell you"
+    // must never read as "you own nothing". A multi-user app restores its
+    // session asynchronously, so an initial refresh — or a `refreshOnResume`
+    // during a sign-out — can land while the binding is unresolved, and
+    // re-deriving from nothing would revoke a paying user's access.
+    //
+    // Purchases and restores still refuse while it is unavailable; those
+    // are the paths where failing closed is the safe direction.
+    const binding = this.binding();
+    if (!binding.ok) {
+      this.opts.logger.debug(
+        `Keeping the current entitlements: ${binding.error}. ${binding.message}`,
+      );
+      return this.opts.getCurrentEntitlements();
+    }
+
     const owned = await this.ownedTransactions();
 
     // An empty answer is ambiguous, and must not downgrade anyone.
@@ -143,6 +169,11 @@ export class LocalVerificationAdapter<TEntitlement extends EntitlementBase = Ent
    * read, so the store is not asked twice.
    */
   async restoreNative(owned: NativeTransaction[]): Promise<RestoreResponse<TEntitlement>> {
+    const binding = this.binding();
+    if (!binding.ok) {
+      return { valid: false, error: binding.error, message: binding.message };
+    }
+
     const { entitlements, verifiedTokens } = this.evaluate(owned);
 
     // `verifiedTokens` is what keeps the acknowledge-after-verification
@@ -172,10 +203,74 @@ export class LocalVerificationAdapter<TEntitlement extends EntitlementBase = Ent
     return this.restoreNative(await this.ownedTransactions());
   }
 
-  private checkOptions(): LocalVerificationOptions {
+  /**
+   * The binding to check against, or a refusal.
+   *
+   * Read per check rather than once at construction, because a
+   * `verification.appUserId` getter exists precisely so the binding can
+   * follow the session: in a multi-user app a value captured at
+   * `createIAP()` time is the previous user's after a switch, and every
+   * purchase is then refused as a mismatch.
+   *
+   * The thing it will not do is treat "no account right now" as "this app
+   * uses no binding". That would turn a signed-out session into an
+   * unguarded one, accepting a purchase bound to **someone else** — a
+   * weaker check than the app asked for, silently. Refusing is the safe
+   * direction: the purchase stays unacknowledged and the store retries it.
+   */
+  private binding():
+    | { ok: true; appUserId: string | null }
+    | { ok: false; error: LocalVerificationError; message: string } {
+    const resolve = this.opts.getAppUserId;
+    if (!resolve) return { ok: true, appUserId: null };
+
+    let value: string | null;
+    try {
+      value = resolve();
+    } catch (error) {
+      // A throwing getter is the same situation as a null one, and must
+      // not fail open either.
+      this.opts.logger.warn(
+        'verification.appUserId threw. Refusing purchases rather than dropping the binding check.',
+        error,
+      );
+      return {
+        ok: false,
+        error: 'BINDING_UNAVAILABLE',
+        message: 'The expected account binding could not be read.',
+      };
+    }
+
+    if (value === null || value === undefined || value === '') {
+      return {
+        ok: false,
+        error: 'BINDING_UNAVAILABLE',
+        message:
+          'This app binds purchases to an account, and verification.appUserId resolved to none. Nothing can be verified until someone is signed in.',
+      };
+    }
+
+    // Only the getter form reaches here unvalidated — the schema checks a
+    // literal string. A non-UUID could never match a purchase, since
+    // `purchase({ appUserId })` enforces the same constraint, so every
+    // purchase would be refused as a mismatch with no clue why.
+    if (!isValidUuid(value) && !this.warnedAboutBinding) {
+      this.warnedAboutBinding = true;
+      this.opts.logger.warn(
+        'verification.appUserId returned a value that is not an RFC 9562 UUID. purchase({ appUserId }) only accepts UUIDs, so no purchase can ever match it.',
+      );
+    }
+
+    return { ok: true, appUserId: value };
+  }
+
+  /** Warned once per instance, not once per check — a refresh runs this. */
+  private warnedAboutBinding = false;
+
+  private checkOptions(appUserId: string | null): LocalVerificationOptions {
     return {
       productIds: this.opts.getProducts().map((p) => p.id),
-      appUserId: this.opts.getAppUserId?.() ?? null,
+      appUserId,
       graceMs: this.opts.graceMs,
     };
   }
@@ -187,7 +282,15 @@ export class LocalVerificationAdapter<TEntitlement extends EntitlementBase = Ent
         purchase: LocallyVerifiedPurchase;
         transaction: { id: string; productId: string; expiresAt: string | null };
       } {
-    const result = verifyPurchaseOnDevice(transaction, this.checkOptions());
+    const binding = this.binding();
+    if (!binding.ok) {
+      this.opts.logger.debug(
+        `Local verification refused "${transaction.productId}": ${binding.error}.`,
+      );
+      return { valid: false, error: binding.error, message: binding.message };
+    }
+
+    const result = verifyPurchaseOnDevice(transaction, this.checkOptions(binding.appUserId));
 
     if (!result.valid) {
       this.opts.logger.debug(
@@ -262,6 +365,12 @@ export class LocalVerificationAdapter<TEntitlement extends EntitlementBase = Ent
     owned: NativeTransaction[],
     extra?: LocallyVerifiedPurchase,
   ): { entitlements: TEntitlement[]; verifiedTokens: string[] } {
+    const binding = this.binding();
+    // Unreachable from the three callers, which all resolve it first; kept
+    // so this cannot silently verify against no binding if one is added.
+    if (!binding.ok) return { entitlements: [], verifiedTokens: [] };
+
+    const options = this.checkOptions(binding.appUserId);
     const verifiedTokens: string[] = [];
     const byKey = new Map<string, TEntitlement>();
 
@@ -280,7 +389,7 @@ export class LocalVerificationAdapter<TEntitlement extends EntitlementBase = Ent
     };
 
     for (const transaction of owned) {
-      const result = verifyPurchaseOnDevice(transaction, this.checkOptions());
+      const result = verifyPurchaseOnDevice(transaction, options);
       if (!result.valid) {
         this.opts.logger.debug(
           `Local verification refused "${transaction.productId}": ${result.error}.`,

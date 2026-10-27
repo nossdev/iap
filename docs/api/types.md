@@ -328,6 +328,7 @@ type PurchaseAssurance = 'store-signed' | 'store-reported';
 type LocalVerificationError =
   | 'PRODUCT_NOT_CONFIGURED'
   | 'BINDING_MISMATCH'
+  | 'BINDING_UNAVAILABLE'
   | 'NOT_PURCHASED'
   | 'REVOKED'
   | 'SUBSCRIPTION_EXPIRED';
@@ -348,6 +349,12 @@ What [local verification](/guide/offline-and-no-backend) hands your `verificatio
 mapper. `assurance` records **how strongly** the purchase was checked: `store-signed` on iOS,
 where StoreKit verified Apple's signature in native code, and `store-reported` on Android,
 where no cryptographic check is possible on the device.
+
+`BINDING_UNAVAILABLE` is the one of these that `verifyPurchaseOnDevice` never returns: it
+means the app binds purchases but has no account to bind to right now — a signed-out session,
+or a `verification.appUserId` getter that threw — and only the adapter resolving that getter
+can know. See [Binding purchases to an
+account](/guide/offline-and-no-backend#binding-purchases-to-an-account).
 
 `productType` is there because it changes what an entitlement means. iOS's owned set retains
 **finished consumables**, so a mapper that grants on every verified purchase will re-grant a

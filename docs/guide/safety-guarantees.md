@@ -72,6 +72,8 @@ On every `initialize()` (and optionally on app resume — see [`refreshOnResume`
 
 `@capgo/native-purchases`' `acknowledgePurchase()` is idempotent — calling it twice for the same token is a no-op the second time (on iOS it maps to `Transaction.finish()`; on Android re-acknowledging an already-acknowledged purchase is harmless). The library doesn't rely on this — it removes from storage immediately after a successful ack so the recovery loop won't re-process.
 
+**Consuming is not idempotent**, and that is the one place the removal matters rather than merely being tidy. An Android consumable is *consumed* instead of acknowledged, which releases ownership so it can be bought again — and in Play Billing 8 a consumed purchase is no longer returned by `getPurchases()` at all, so a second attempt has no purchase to act on. The ordering is the same as everywhere else, just less forgiving: consume only after verification succeeds, because a failed verification would otherwise be unrecoverable instead of retried.
+
 ## 3. Backend is the source of truth
 
 **The local entitlement cache is a performance optimization, not a security boundary.**
@@ -157,7 +159,10 @@ running with no backend at all.
   test on every build](/guide/native-layer#privacy-no-device-identifiers).
 - **No generated user id.** iap never invents an `appUserId`; the only user-scoped value that
   crosses the bridge is one you passed to `purchase()`.
-- **Erasable.** `iap.reset()` wipes everything iap stored on the device.
+- **Erasable.** `iap.reset()` wipes everything iap stored on the device — every key, from one
+  registry, so a store added in a later version cannot quietly survive it. It still wipes after
+  `destroy()`; it refuses only while a `purchase()` is in flight, whose unfinished-transaction
+  record is the one thing a wipe must not take.
 
 Running with no backend at all? See [Offline and no-backend
 use](/guide/offline-and-no-backend), which also covers what the device can and cannot

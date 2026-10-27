@@ -138,7 +138,7 @@ All of these throw `IAPError(INVALID_CONFIG)` synchronously:
 | Both `backend` and `verification` | Two answers to the same question, with no rule for which wins. |
 | `verification` without `entitlements` | iap cannot know what a product entitles anyone to, and there is no backend to ask. |
 | `verification` without `products` | There is no backend to curate a manifest either. |
-| `verification.appUserId` that is not a UUID | It would never match a purchase, so it would silently refuse every one. |
+| `verification.appUserId` that is neither a UUID nor a function | A non-UUID could never match a purchase, so it would silently refuse every one. The function form is read per check, so the binding can follow the session. |
 | `products: []`, or duplicate product ids | |
 | `backend` with no `baseUrl`/`endpoints`/`getAuthHeaders` and no custom `adapter` | |
 | `products` omitted with no way for the backend to supply it | |

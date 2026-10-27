@@ -5,8 +5,9 @@ import type { Logger } from '../lib/logger.js';
 import { productTypeSchema } from '../types/config.js';
 import type { NativeTransaction } from '../types/transaction.js';
 import { type MutationLock, createMutationLock } from './mutation-lock.js';
+import { IAP_STORAGE_KEYS } from './storage-keys.js';
 
-const STORE_KEY = 'unfinished_transactions';
+const STORE_KEY = IAP_STORAGE_KEYS.unfinishedTransactions;
 
 const unfinishedEntrySchema = z.object({
   platform: z.enum(['apple', 'google']),

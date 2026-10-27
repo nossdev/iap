@@ -151,15 +151,21 @@ const verificationConfigSchema = z.object({
    * The binding every purchase must carry, as passed to
    * `purchase({ appUserId })`. A purchase bound to something else is
    * refused. Omit it if the app does not bind purchases.
+   *
+   * Either the id itself, or a function returning it — in which case it is
+   * read **at the time of each check**, so the binding follows the session.
+   * A fixed string is captured at `createIAP()` time and cannot track a
+   * login change, which in a multi-user app means every purchase after a
+   * switch is refused as the previous user's.
+   *
+   * The function may return `null` for "nobody is signed in right now".
+   * That is **not** the same as using no binding: iap refuses the purchase
+   * rather than dropping the check. See `LocalVerificationAdapter`.
+   *
+   * Typed via the overlay on {@link VerificationConfig}; validated in the
+   * schema's `superRefine`, the same way the backend's functions are.
    */
-  appUserId: z
-    .string()
-    .min(1)
-    .refine((value) => isValidUuid(value), {
-      message:
-        'verification.appUserId must be an RFC 9562 UUID — the same constraint purchase({ appUserId }) enforces. A value that is not a UUID could never match a purchase, so it would silently refuse every one.',
-    })
-    .optional(),
+  appUserId: z.unknown().optional(),
 });
 
 /**
@@ -291,6 +297,24 @@ export const iapConfigSchema = z
         path: ['verification', 'entitlements'],
       });
     }
+    // Either the id or a function returning it. A non-UUID string could
+    // never match a purchase — `purchase({ appUserId })` enforces the same
+    // constraint — so it would silently refuse every one.
+    const binding = data.verification?.appUserId;
+    if (
+      data.verification &&
+      binding !== undefined &&
+      typeof binding !== 'function' &&
+      !(typeof binding === 'string' && isValidUuid(binding))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'verification.appUserId must be an RFC 9562 UUID, or a function returning one (or null when nobody is signed in) — the same constraint purchase({ appUserId }) enforces.',
+        path: ['verification', 'appUserId'],
+      });
+    }
+
     // Local mode has no backend to curate a manifest, so the catalog must
     // be static. Checked here because the products rule below only knows
     // about the backend paths.
@@ -370,9 +394,15 @@ type RawIAPConfigInput = z.input<typeof iapConfigSchema>;
  */
 export type VerificationConfig<TEntitlement extends EntitlementBase = EntitlementBase> = Omit<
   z.infer<typeof verificationConfigSchema>,
-  'entitlements'
+  'entitlements' | 'appUserId'
 > & {
   entitlements: (purchase: LocallyVerifiedPurchase) => TEntitlement[];
+  /**
+   * The id, or a getter so the binding can follow the session. A getter
+   * returning `null` means "nobody signed in", and refuses rather than
+   * skipping the check.
+   */
+  appUserId?: string | (() => string | null);
 };
 
 export type IAPConfig<TEntitlement extends EntitlementBase = EntitlementBase> = Omit<

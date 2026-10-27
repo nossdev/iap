@@ -2,8 +2,9 @@ import { z } from 'zod';
 import type { StorageAdapter } from '../adapters/storage/types.js';
 import type { Logger } from '../lib/logger.js';
 import { type MutationLock, createMutationLock } from './mutation-lock.js';
+import { IAP_STORAGE_KEYS } from './storage-keys.js';
 
-const STORE_KEY = 'pending_purchases';
+const STORE_KEY = IAP_STORAGE_KEYS.pendingPurchases;
 
 /**
  * An entry carries when it was marked, so a mark that can never resolve

@@ -12,6 +12,9 @@ import type { EntitlementBase } from '../types/entitlement.js';
 import type { RestoreResult } from '../types/results.js';
 import type { NativeTransaction } from '../types/transaction.js';
 import { type EntitlementCache, entitlementsEqual } from './entitlement-cache.js';
+import { finalizeTransaction } from './finalize-transaction.js';
+import type { PendingPurchasesStore } from './pending-purchases.js';
+import { resolvePendingPurchase } from './resolve-pending.js';
 import { toStorePurchase } from './store-purchase.js';
 import type { UnfinishedTransactionsStore } from './unfinished-transactions.js';
 
@@ -20,6 +23,17 @@ interface RestoreOrchestratorDeps<TEntitlement extends EntitlementBase> {
   backend: BackendAdapter<TEntitlement>;
   cache: EntitlementCache<TEntitlement>;
   unfinished: UnfinishedTransactionsStore;
+  /**
+   * So a pending mark this restore settles is cleared.
+   *
+   * Restore used to be the one settle path without this, and it was
+   * survivable only by accident: an acknowledged purchase stays in the
+   * store's owned set, so the next reconcile found it and cleared the mark
+   * one pass late. A **consumed** purchase is gone from that set, so the
+   * reconcile instead sees it neither owned nor pending and reports it
+   * `cancelled` — for a purchase that succeeded.
+   */
+  pending: PendingPurchasesStore;
   emitter: TypedEventEmitter<TEntitlement>;
   logger: Logger;
   getCurrentEntitlements: () => TEntitlement[];
@@ -41,9 +55,10 @@ interface RestoreOrchestratorDeps<TEntitlement extends EntitlementBase> {
  *    transport implementations benefit automatically.
  * 4. POST batch to `backend.restore()`.
  * 5. On `valid: true`:
- *    - Acknowledge each native transaction (best-effort; an ack failure just
- *      means the store keeps reporting it as owned and the next
- *      restore()/refresh() retries).
+ *    - Settle each verified transaction with the store — acknowledge, or
+ *      consume for an Android consumable (see `finalizeTransaction`).
+ *      Best-effort per transaction; one that fails keeps its unfinished
+ *      entry so recovery retries it on the next launch.
  *    - Persist consolidated entitlements via `cache.save()`.
  *    - Replace state.
  *    - Remove from `unfinished_transactions` (defensive — purchase flow may
@@ -103,10 +118,9 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
       });
     }
 
-    // Acknowledge each verified transaction. Failures are best-effort —
-    // verification says these are valid; if acknowledge() fails the store
-    // still reports the purchase as owned, so the next refresh()/restore()
-    // retries.
+    // Settle each verified transaction with the store. Failures are
+    // best-effort per transaction — verification says these are valid — and
+    // the entry survives below so recovery retries it.
     //
     // `verifiedTokens`, when the adapter supplies it, is what keeps the
     // acknowledge-after-verification invariant true here. An adapter that
@@ -121,15 +135,24 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
 
     if (ackable.length !== owned.length) {
       logger.debug(
-        `Restore: acknowledging ${ackable.length} of ${owned.length} owned transaction(s); the rest were not verified.`,
+        `Restore: settling ${ackable.length} of ${owned.length} owned transaction(s); the rest were not verified.`,
       );
     }
 
+    // Which transactions actually settled, so the drain below removes only
+    // those. Draining the whole owned set used to be merely untidy, because
+    // a failed acknowledge left the purchase owned and the next
+    // restore()/refresh() re-acked it. A consumable that fails to consume
+    // stays owned *and* unacknowledged, with Play's three-day refund clock
+    // running — and dropping its unfinished entry removes the only record
+    // that would have made recovery retry it.
+    const settled: NativeTransaction[] = [];
     for (const tx of ackable) {
       try {
-        await nativeAdapter.acknowledge(tx);
+        await finalizeTransaction({ nativeAdapter, transaction: tx, logger });
+        settled.push(tx);
       } catch (error) {
-        logger.warn(`acknowledge() failed for "${tx.productId}" during restore.`, error);
+        logger.warn(`Settling "${tx.productId}" with the store failed during restore.`, error);
       }
     }
 
@@ -147,13 +170,30 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
     }
     this.deps.setEntitlements(entitlements);
 
-    // Drain the unfinished list of any tokens we just verified.
-    for (const tx of owned) {
+    // Drain the unfinished list of the tokens we actually settled — not the
+    // whole owned set, which would also drop entries for transactions
+    // `verifiedTokens` explicitly refused.
+    for (const tx of settled) {
       try {
         await unfinished.remove(tx.token);
       } catch (error) {
         logger.warn(
           `Failed to remove "${tx.productId}" from unfinished list during restore.`,
+          error,
+        );
+      }
+    }
+
+    // And clear any pending mark these settled, which is what stops a later
+    // reconcile reporting a succeeded purchase as `cancelled`. Atomic via
+    // `takeIfPresent`, so overlapping with recovery or the update listener
+    // still fires `purchase-pending-resolved` at most once.
+    for (const tx of settled) {
+      try {
+        await resolvePendingPurchase(this.deps, tx.productId, 'purchased');
+      } catch (error) {
+        logger.warn(
+          `Failed to clear the pending mark for "${tx.productId}" during restore.`,
           error,
         );
       }

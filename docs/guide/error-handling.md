@@ -80,7 +80,7 @@ For the purchase flow specifically, the discriminated union from `iap.purchase()
 | `ALREADY_PURCHASED` | no | Buying a non-consumable the user already owns | Use `restorePurchases()` to re-grant |
 | `STORE_ERROR` | no | Generic native-side failure (declined card, store down) | Surface message; offer retry |
 | `UNACKNOWLEDGED_PENDING` | yes | Google purchase >2 days unacknowledged | Library auto-retries on next refresh |
-| `ALREADY_IN_PROGRESS` | no | Concurrent `purchase()` for same productId | Await the in-flight call |
+| `ALREADY_IN_PROGRESS` | no¹ | Concurrent `purchase()` for same productId, or `reset()` while a purchase is in flight | Await the in-flight call |
 | `BACKEND_UNAVAILABLE` | yes | Backend unreachable / 5xx / network drop | Library auto-retries; surface to user if persistent |
 | `BACKEND_TIMEOUT` | yes | Backend exceeded `timeoutMs` | Increase `timeoutMs` or check server perf |
 | `BACKEND_AUTH_FAILED` | no | 401 / 403 from backend | Re-auth user; check `getAuthHeaders()` |
@@ -89,6 +89,10 @@ For the purchase flow specifically, the discriminated union from `iap.purchase()
 | `STORAGE_ERROR` | yes | Capacitor Preferences write failed | In-memory state is fine; persistence will retry |
 | `INVALID_APP_USER_ID` | no | `purchase({ appUserId })` value (literal or fetcher-returned) isn't an RFC 9562 UUID | Pass any UUID version — `crypto.randomUUID()` (v4), or a UUIDv5 over a stable name for a deterministic binding — or omit `appUserId` to fall back to subject.key mapping |
 | `APP_USER_ID_FETCH_FAILED` | no | The async appUserId fetcher threw or rejected | Inspect `error.cause` for the underlying error (network failure, backend non-2xx) |
+
+¹ `recoverable: false` by default, because the common cause is a caller bug — two `purchase()`
+calls for one product. `reset()` raises it with `recoverable: true` and no per-code hint, since
+there the remedy really is "await the purchase and try again".
 
 Get the per-code hint programmatically:
 
@@ -188,7 +192,7 @@ It DOES throw on:
 
 - `INVALID_CONFIG` (productId not in `config.products`)
 - `NOT_INITIALIZED`
-- `ALREADY_IN_PROGRESS` (concurrent purchase for same productId)
+- `ALREADY_IN_PROGRESS` (concurrent purchase for same productId; also raised by `reset()` while a purchase is in flight)
 - `PLATFORM_NOT_SUPPORTED` (web)
 - `INVALID_APP_USER_ID` (`appUserId` not an RFC 9562 UUID)
 - `APP_USER_ID_FETCH_FAILED` (async fetcher threw / rejected; original attached as `cause`)

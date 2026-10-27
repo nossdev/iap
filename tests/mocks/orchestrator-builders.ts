@@ -59,6 +59,13 @@ export function makeNativeAdapter(overrides: Partial<NativeAdapter> = {}): Nativ
     async acknowledge() {
       // default success
     },
+    // Present by default, because `CapgoNativeAdapter` implements it: a stub
+    // without it sends every test down `finalizeTransaction`'s degraded
+    // "adapter cannot consume" branch, so a test could assert the
+    // pre-consume behaviour and still pass.
+    async consume() {
+      // default success
+    },
     ...overrides,
   };
 }
