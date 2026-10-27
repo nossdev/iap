@@ -14,16 +14,25 @@ const unfinishedEntrySchema = z.object({
   productType: productTypeSchema,
   packageName: z.string().optional(),
   /**
-   * The renewal-stable purchase reference. Optional because entries written
-   * by a version before it existed are still valid and must not be dropped
-   * on upgrade — readers fall back to `token`.
+   * The renewal-stable purchase reference. Optional, and deliberately
+   * unconstrained beyond its type: entries written before it existed are
+   * still valid, and readers fall back to `token`. A `min(1)` here would
+   * make an empty string fail the whole entry's parse — rejecting a
+   * recoverable purchase over a field recovery does not even read.
    */
-  purchaseReference: z.string().min(1).optional(),
+  purchaseReference: z.string().optional(),
   /** ISO 8601 timestamp the entry was first persisted. */
   recordedAt: z.string(),
 });
 
-const envelopeSchema = z.array(unfinishedEntrySchema);
+/**
+ * Entries are validated one at a time rather than as an array, so one
+ * unreadable entry cannot take its neighbours down with it. Parsing the
+ * whole array meant a single malformed record failed the parse and cleared
+ * every pending recovery — abandoning purchases that were paid for and
+ * never acknowledged, which on Android Google refunds after three days.
+ */
+const entryListSchema = z.array(z.unknown());
 
 export type UnfinishedTransaction = z.infer<typeof unfinishedEntrySchema>;
 
@@ -76,19 +85,42 @@ export class UnfinishedTransactionsStore {
       return [];
     }
 
-    const result = envelopeSchema.safeParse(parsed);
-    if (!result.success) {
-      this.logger.warn('unfinished_transactions has unexpected shape; clearing.', result.error);
+    const list = entryListSchema.safeParse(parsed);
+    if (!list.success) {
+      // Not a list at all — nothing here is salvageable.
+      this.logger.warn('unfinished_transactions is not a list; clearing.', list.error);
       await this.safeClear();
       return [];
     }
-    return result.data;
+
+    const entries: UnfinishedTransaction[] = [];
+    let dropped = 0;
+    for (const candidate of list.data) {
+      const entry = unfinishedEntrySchema.safeParse(candidate);
+      if (entry.success) {
+        entries.push(entry.data);
+      } else {
+        dropped++;
+      }
+    }
+    if (dropped > 0) {
+      this.logger.warn(
+        `Dropped ${dropped} unreadable unfinished-transaction entry/entries; kept ${entries.length}.`,
+      );
+    }
+    return entries;
   }
 
   /**
    * Append a transaction to the list. Idempotent: if a same-token entry
    * already exists, this is a no-op (avoids dupes when restore + active
    * purchase race for the same StoreKit replay).
+   *
+   * **Keyed on `token`, deliberately — not on `purchaseReference`.** The
+   * token is what acknowledges one transaction, and on iOS a subscription
+   * has a separate token per renewal while sharing one reference. Keying
+   * on the reference would collapse several unacknowledged renewals into
+   * one entry and leave the rest unfinished.
    */
   async add(tx: NativeTransaction): Promise<void> {
     return this.runExclusive(async () => {

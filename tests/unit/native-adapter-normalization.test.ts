@@ -23,18 +23,7 @@ vi.mock('@capgo/native-purchases', () => ({
 }));
 
 import { CapgoNativeAdapter } from '../../src/adapters/native/capgo/native-adapter.js';
-
-/** base64url-encode a UTF-8 string, as Apple encodes a JWS segment. */
-function base64Url(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function makeJws(claims: Record<string, unknown>): string {
-  return ['eyJhbGciOiJFUzI1NiJ9', base64Url(JSON.stringify(claims)), 'c2ln'].join('.');
-}
+import { makeJws } from '../mocks/jws.js';
 
 /** An iOS period object as the plugin emits it. */
 const period = (numberOfUnits: number, unitString: string, unit: number) => ({
@@ -282,6 +271,25 @@ describe('CapgoNativeAdapter.getProducts — subscription offers', () => {
     });
   });
 
+  it('reports a null price rather than the string "NaN" when price is absent', async () => {
+    nativePurchasesMock.getProducts.mockResolvedValue({
+      products: [
+        {
+          identifier: 'bare',
+          title: 'Bare',
+          description: '',
+          priceString: '',
+          currencyCode: 'USD',
+        },
+      ],
+    });
+
+    const [product] = await adapter.getProducts([{ id: 'bare', type: 'product' }]);
+    // Math.round(undefined * 1e6).toString() is "NaN" — a string that looks
+    // like a price and poisons any arithmetic downstream.
+    expect(product?.priceMicros).toBe('0');
+  });
+
   it('does not throw when the plugin omits every optional field', async () => {
     // The minimum the plugin's required fields guarantee. Anything beyond
     // this is a field some platform or some version does not send.
@@ -398,19 +406,26 @@ describe('CapgoNativeAdapter — the purchase reference', () => {
 });
 
 describe('CapgoNativeAdapter — the purchase binding', () => {
-  it('returns the binding the purchase was made with', async () => {
+  it('returns the binding lower-cased, so it compares equal to what was sent', async () => {
+    // StoreKit hands back `UUID.uuidString`, which Swift renders UPPERCASE,
+    // while a consumer supplies a lowercase UUID (`crypto.randomUUID()` is
+    // lowercase, and iap's validator is case-insensitive). Returned raw, the
+    // binding never `===` the value the caller passed in — which is exactly
+    // the comparison the field exists to support.
+    const supplied = '550e8400-e29b-41d4-a716-446655440000';
     nativePurchasesMock.purchaseProduct.mockResolvedValue({
       transactionId: '1',
       productIdentifier: 'premium',
-      appAccountToken: '6ba7b812-9dad-11d1-80b4-00c04fd430c8',
+      appAccountToken: supplied.toUpperCase(),
       willCancel: null,
     });
 
     const tx = await adapter.purchaseProduct({
       productId: 'premium',
       productType: 'subscription',
+      appAccountToken: supplied,
     });
-    expect(tx.appUserId).toBe('6ba7b812-9dad-11d1-80b4-00c04fd430c8');
+    expect(tx.appUserId).toBe(supplied);
   });
 
   it('reports null when the purchase carried no binding', async () => {
@@ -450,6 +465,25 @@ describe('CapgoNativeAdapter — renewal detail', () => {
       productType: 'subscription',
     });
     expect(tx.subscription?.state).toBe(expected);
+  });
+
+  it('maps an Object prototype member to unknown rather than a function', async () => {
+    // The state table is keyed by a string straight off the bridge, so an
+    // inherited key used to resolve to a function: `?? 'unknown'` never
+    // fired and `state` was a function at runtime while typed as a union.
+    for (const state of ['constructor', 'toString', 'valueOf']) {
+      nativePurchasesMock.purchaseProduct.mockResolvedValue({
+        transactionId: '1',
+        productIdentifier: 'premium',
+        subscriptionState: state,
+        willCancel: null,
+      });
+      const tx = await adapter.purchaseProduct({
+        productId: 'premium',
+        productType: 'subscription',
+      });
+      expect(tx.subscription?.state).toBe('unknown');
+    }
   });
 
   it('maps a state it does not recognise to unknown', async () => {
@@ -559,5 +593,132 @@ describe('CapgoNativeAdapter — renewal detail', () => {
       productType: 'consumable',
     });
     expect(tx.subscription).toBeNull();
+  });
+});
+
+describe('CapgoNativeAdapter.getProducts — Android product identity', () => {
+  /**
+   * The trap this fixes. On Android capgo reports, per subscription offer:
+   *   identifier     = the BASE PLAN id
+   *   planIdentifier = the Play PRODUCT id
+   * …while iap queries the store by Play product id, because that is what a
+   * consumer puts in `config.products[].id`.
+   *
+   * Keying the type lookup on `identifier` therefore missed on every Android
+   * subscription, fell through to `?? 'product'`, and returned a `Product`
+   * whose `id` was the base plan — so `getProducts().find(p => p.id === …)`
+   * never matched the configured id, and every subscription was reported as
+   * a one-time purchase with offers hanging off it.
+   */
+  const androidOffer = (over: Record<string, unknown> = {}) => ({
+    identifier: 'monthly-plan', // base plan id
+    planIdentifier: 'household', // Play product id — what iap asked for
+    offerToken: 'token-base',
+    offerId: null,
+    title: 'Household',
+    description: '',
+    price: 2.99,
+    priceString: '₱149.00',
+    currencyCode: 'PHP',
+    introductoryPrice: null,
+    discounts: [],
+    ...over,
+  });
+
+  it('reports the configured product id and type, not the base plan', async () => {
+    mockedPlatform = 'android';
+    nativePurchasesMock.getProducts.mockResolvedValue({ products: [androidOffer()] });
+
+    const [product] = await adapter.getProducts([{ id: 'household', type: 'subscription' }]);
+
+    expect(product?.id).toBe('household');
+    expect(product?.type).toBe('subscription');
+    // The base plan is still reported, under its own name.
+    expect(product?.androidBasePlanId).toBe('monthly-plan');
+  });
+
+  it('still matches on identifier when it is the configured id (iOS, Android in-app)', async () => {
+    mockedPlatform = 'ios';
+    nativePurchasesMock.getProducts.mockResolvedValue({
+      products: [
+        {
+          identifier: 'premium',
+          title: 'Premium',
+          description: '',
+          price: 1,
+          priceString: '$1.00',
+          currencyCode: 'USD',
+        },
+      ],
+    });
+
+    const [product] = await adapter.getProducts([{ id: 'premium', type: 'subscription' }]);
+    expect(product?.id).toBe('premium');
+    expect(product?.type).toBe('subscription');
+    expect(product?.androidBasePlanId).toBeNull();
+  });
+
+  it('collapses the one-entry-per-offer fan-out into a single product', async () => {
+    // capgo emits a separate entry for every offer on a base plan, and only
+    // the base-plan entry (offerId === null) carries introductoryPrice and
+    // discounts. Returned raw, `getProducts()` yields several products with
+    // the same configured id, most of them with no offers.
+    mockedPlatform = 'android';
+    nativePurchasesMock.getProducts.mockResolvedValue({
+      products: [
+        androidOffer({ offerId: 'promo-launch', offerToken: 'token-promo' }),
+        androidOffer({
+          offerId: null,
+          offerToken: 'token-base',
+          introductoryPrice: {
+            identifier: '',
+            type: 0,
+            price: 0,
+            priceString: '₱0.00',
+            currencyCode: 'PHP',
+            paymentMode: 0,
+            numberOfPeriods: 0,
+            subscriptionPeriod: period(1, 'month', 2),
+          },
+        }),
+      ],
+    });
+
+    const products = await adapter.getProducts([{ id: 'household', type: 'subscription' }]);
+
+    expect(products).toHaveLength(1);
+    // The base-plan entry wins, because it is the one carrying the offers.
+    expect(products[0]?.androidOfferId).toBeNull();
+    expect(products[0]?.introductoryOffer?.payment).toBe('free-trial');
+  });
+
+  it('prefers the base plan the consumer configured via androidPlanId', async () => {
+    mockedPlatform = 'android';
+    nativePurchasesMock.getProducts.mockResolvedValue({
+      products: [
+        androidOffer({ identifier: 'monthly-plan' }),
+        androidOffer({ identifier: 'yearly-plan', priceString: '₱1499.00' }),
+      ],
+    });
+
+    const products = await adapter.getProducts([
+      { id: 'household', type: 'subscription', androidPlanId: 'yearly-plan' },
+    ]);
+
+    expect(products).toHaveLength(1);
+    expect(products[0]?.androidBasePlanId).toBe('yearly-plan');
+    expect(products[0]?.priceString).toBe('₱1499.00');
+  });
+
+  it('drops a product the store does not know, rather than mistyping it', async () => {
+    mockedPlatform = 'android';
+    nativePurchasesMock.getProducts.mockResolvedValue({
+      products: [androidOffer({ identifier: 'who-knows', planIdentifier: 'not-configured' })],
+    });
+
+    // Previously this returned a Product typed 'product' with id 'who-knows'.
+    // An entry matching nothing the consumer asked for is not a product they
+    // can act on, and silently mistyping it is worse than omitting it.
+    expect(await adapter.getProducts([{ id: 'household', type: 'subscription' }])).toEqual([]);
   });
 });

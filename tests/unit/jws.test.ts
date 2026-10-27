@@ -1,21 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readJwsClaims } from '../../src/lib/jws.js';
-
-/** base64url-encode a UTF-8 string, the way Apple encodes a JWS segment. */
-function base64Url(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function makeJws(payload: unknown): string {
-  return [
-    base64Url(JSON.stringify({ alg: 'ES256', x5c: ['…'] })),
-    base64Url(JSON.stringify(payload)),
-    'c2lnbmF0dXJl',
-  ].join('.');
-}
+import { base64Url, makeJws } from '../mocks/jws.js';
 
 /**
  * `readJwsClaims` decodes the payload segment of StoreKit 2's

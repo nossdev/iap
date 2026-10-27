@@ -51,12 +51,25 @@ export interface SubscriptionOffer {
   priceMicros: string;
   /** ISO 4217 code, e.g. "PHP". */
   currency: string;
-  /** Offer period as an ISO 8601 duration, e.g. "P1W". `null` if unknown. */
+  /**
+   * Offer period as an ISO 8601 duration, e.g. `"P1W"`. `null` if unknown.
+   *
+   * Single-component on Android: the native plugin's period parser keeps
+   * only the largest non-zero unit, so a Play period of `P1M15D` arrives
+   * as `P1M`.
+   */
   period: string | null;
   /**
-   * How many periods the offer applies for. `1` for a free trial or a
-   * pay-up-front offer; higher for pay-as-you-go. `0` when the store did not
-   * say (Android reports `0` for an infinitely recurring phase).
+   * How many periods the offer applies for.
+   *
+   * On iOS: `1` for a free trial or a pay-up-front offer, higher for
+   * pay-as-you-go.
+   *
+   * **On Android this is usually `0`**, and that does not mean zero
+   * periods. It is Play's `getBillingCycleCount()`, which reports `0` for
+   * both a non-recurring phase and an infinitely recurring one — so a
+   * pay-up-front Android offer reports `0` too. Treat `0` as "the store
+   * did not say" and do not render it as a count.
    */
   periodCount: number;
 }
@@ -114,6 +127,15 @@ export interface Product {
   /**
    * Promotional and win-back offers on this subscription. Empty when there
    * are none. Same eligibility caveat as {@link Product.introductoryOffer}.
+   *
+   * **On Android, do not render these as the offer's own terms.** The
+   * native plugin builds each promotional entry from the base plan's
+   * *standard* recurring pricing phase, not from the promotional phase —
+   * so a free-trial promo arrives as `payment: 'pay-as-you-go'` at the
+   * full price. Use them to know an offer exists and to identify it; take
+   * the terms from your backend or from Play Console. iOS reports the
+   * offer's real terms, and {@link Product.introductoryOffer} is
+   * unaffected on both platforms.
    */
   promotionalOffers?: SubscriptionOffer[];
 
@@ -128,4 +150,15 @@ export interface Product {
    */
   androidOfferToken?: string | null;
   androidOfferId?: string | null;
+
+  /**
+   * Android: the base plan this entry describes, as configured in Play
+   * Console. `null` on iOS, which has no base-plan concept — there a
+   * product id identifies the subscription directly.
+   *
+   * `id` is always the product id you configured, on both platforms, so it
+   * round-trips to `purchase({ productId })`. This is the extra level Play
+   * adds underneath it.
+   */
+  androidBasePlanId?: string | null;
 }

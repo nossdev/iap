@@ -14,6 +14,7 @@ import type {
 } from '../types/results.js';
 import type { NativeTransaction, VerifiedTransaction } from '../types/transaction.js';
 import type { EntitlementCache } from './entitlement-cache.js';
+import { toStorePurchase } from './store-purchase.js';
 import type { UnfinishedTransactionsStore } from './unfinished-transactions.js';
 import { verifyNativeTransaction } from './verify-helpers.js';
 
@@ -229,6 +230,7 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
       status: 'success',
       productId,
       transaction,
+      purchase: toStorePurchase(nativeTx),
       entitlements: this.deps.getCurrentEntitlements(),
     };
   }

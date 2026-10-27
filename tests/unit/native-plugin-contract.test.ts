@@ -17,6 +17,7 @@ import pluginLicenseFile from '../../node_modules/@capgo/native-purchases/LICENS
 import androidGradle from '../../node_modules/@capgo/native-purchases/android/build.gradle?raw';
 import androidManifest from '../../node_modules/@capgo/native-purchases/android/src/main/AndroidManifest.xml?raw';
 import definitions from '../../node_modules/@capgo/native-purchases/dist/esm/definitions.d.ts?raw';
+import iosProductSource from '../../node_modules/@capgo/native-purchases/ios/Sources/NativePurchasesPlugin/Product+CapacitorPurchasesPlugin.swift?raw';
 import pluginPackageJsonRaw from '../../node_modules/@capgo/native-purchases/package.json?raw';
 
 /**
@@ -306,5 +307,69 @@ describe('@capgo/native-purchases — the surface the docs page describes', () =
     expect(ANDROID_CODE).toMatch(
       /selectedOfferDetails\s*=\s*\w+\.getSubscriptionOfferDetails\(\)\.get\(0\)/,
     );
+  });
+});
+
+describe('@capgo/native-purchases — the paymentMode legend iap maps from', () => {
+  /**
+   * This is the guard that matters most on this page, because the mapping it
+   * protects is one iap gets from reading capgo's code *against* capgo's own
+   * comment.
+   *
+   * capgo's iOS source labels the mapping "SKProductDiscount.PaymentMode-
+   * compatible: freeTrial=0, payUpFront=1, payAsYouGo=2". Apple's actual
+   * `SKProductDiscount.PaymentMode` is payAsYouGo=0, payUpFront=1,
+   * freeTrial=2 — so the comment is wrong about Apple, and the numbers it
+   * emits are what ships. Android independently uses the same order.
+   *
+   * iap maps from the emitted order. Its own unit tests can only pin iap
+   * against iap's mocks: if capgo ever "corrects" its iOS mapping toward
+   * Apple's documented order, every free trial would silently become
+   * pay-as-you-go and those tests would stay green. These assertions read
+   * capgo's source, so that change fails CI instead.
+   */
+  it('still maps iOS freeTrial to 0, payUpFront to 1, payAsYouGo to 2', () => {
+    // The Swift switch, whitespace-insensitive: `case .freeTrial: return 0`.
+    expect(iosProductSource).toMatch(/case\s+\.freeTrial:\s*\n?\s*return\s+0/);
+    expect(iosProductSource).toMatch(/case\s+\.payUpFront:\s*\n?\s*return\s+1/);
+    expect(iosProductSource).toMatch(/case\s+\.payAsYouGo:\s*\n?\s*return\s+2/);
+  });
+
+  it('still maps iOS offer types introductory=0, promotional=1, winBack=2', () => {
+    expect(iosProductSource).toMatch(/\.introductory\s*\{\s*\n?\s*return\s+0/);
+    expect(iosProductSource).toMatch(/\.promotional\s*\{\s*\n?\s*return\s+1/);
+    expect(iosProductSource).toMatch(/\.winBack\s*\{\s*\n?\s*return\s+2/);
+  });
+
+  /**
+   * Android derives the same three values from the pricing phase instead of
+   * a StoreKit enum: a zero price is a free trial, a non-recurring phase is
+   * paid up front, anything else is pay-as-you-go. Asserting the derivation
+   * keeps the two platforms' agreement from drifting apart silently.
+   */
+  it('still derives the same three values on Android', () => {
+    const paymentMode = ANDROID_CODE.slice(
+      ANDROID_CODE.indexOf('private static int paymentModeForPhase'),
+    ).slice(0, 400);
+    expect(paymentMode).toContain('getPriceAmountMicros() == 0');
+    expect(paymentMode).toContain('RECURRENCE_MODE_NON_RECURRING');
+    expect(paymentMode).toMatch(/return\s+0;/);
+    expect(paymentMode).toMatch(/return\s+1;/);
+    expect(paymentMode).toMatch(/return\s+2;/);
+  });
+
+  /**
+   * The period unit legend, same reasoning: 0=day, 1=week, 2=month, 3=year
+   * on both platforms, which is what `src/lib/subscription-period.ts` maps.
+   */
+  it('still uses the same period-unit integers on both platforms', () => {
+    for (const [unit, index] of [
+      ['day', 0],
+      ['week', 1],
+      ['month', 2],
+      ['year', 3],
+    ] as const) {
+      expect(ANDROID_CODE).toContain(`case ${index} -> "${unit}";`);
+    }
   });
 });

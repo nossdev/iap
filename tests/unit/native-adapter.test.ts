@@ -198,6 +198,7 @@ describe('CapgoNativeAdapter', () => {
       promotionalOffers: [],
       androidOfferToken: null,
       androidOfferId: null,
+      androidBasePlanId: null,
     });
     const ads = products.find((p) => p.id === 'remove_ads');
     expect(ads?.type).toBe('product');

@@ -1,5 +1,5 @@
 import { IAPError, IAPErrorCode } from '../../../lib/errors.js';
-import type { Product, ProductType } from '../../../types/product.js';
+import type { ConfiguredProduct, Product } from '../../../types/product.js';
 import type { Storefront } from '../../../types/storefront.js';
 import type { NativeTransaction } from '../../../types/transaction.js';
 import type { NativeAdapter, NativePurchaseOptions } from '../types.js';
@@ -9,7 +9,7 @@ export class WebStubAdapter implements NativeAdapter {
     return false;
   }
 
-  async getProducts(_requests: Array<{ id: string; type: ProductType }>): Promise<Product[]> {
+  async getProducts(_requests: ConfiguredProduct[]): Promise<Product[]> {
     return [];
   }
 

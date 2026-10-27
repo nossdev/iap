@@ -1,4 +1,4 @@
-import type { Product, ProductType } from '../../types/product.js';
+import type { ConfiguredProduct, Product, ProductType } from '../../types/product.js';
 import type { Storefront } from '../../types/storefront.js';
 import type { NativeTransaction } from '../../types/transaction.js';
 
@@ -17,7 +17,14 @@ export interface NativeAdapter {
   isAvailable(): Promise<boolean>;
 
   /** Get product info merged with native pricing for the given productIds. */
-  getProducts(requests: Array<{ id: string; type: ProductType }>): Promise<Product[]>;
+  /**
+   * Get product info merged with native pricing for the given products.
+   *
+   * Takes the whole {@link ConfiguredProduct}, not just id and type: on
+   * Android `androidPlanId` is what picks a base plan out of the several
+   * entries the plugin returns for one subscription.
+   */
+  getProducts(requests: ConfiguredProduct[]): Promise<Product[]>;
 
   /**
    * Start a native purchase. Resolves to a normalized NativeTransaction

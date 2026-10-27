@@ -200,9 +200,12 @@ describe('UnfinishedTransactionsStore — the purchase reference', () => {
     expect(entries[0]?.purchaseReference).toBeUndefined();
   });
 
-  it('rejects a stored entry whose reference is present but empty', async () => {
-    // An empty string is not a usable reference; the schema requires min(1),
-    // so a malformed entry is dropped rather than carried forward.
+  it('keeps an entry whose reference is empty, falling back to its token', async () => {
+    // The reference is a non-essential optional: platform, productId, token
+    // and productType are all that recovery needs, and it falls back to the
+    // token anyway. Discarding the entry would abandon a purchase that was
+    // paid for and never acknowledged — on Android, Google refunds it after
+    // three days.
     const { store, storage } = makeStore();
     await storage.set(
       'unfinished_transactions',
@@ -218,6 +221,32 @@ describe('UnfinishedTransactionsStore — the purchase reference', () => {
       ]),
     );
 
-    expect(await store.list()).toEqual([]);
+    const entries = await store.list();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.token).toBe('2000000123456789');
+  });
+
+  it('drops only the unreadable entry, never its neighbours', async () => {
+    // The list was parsed as one array, so a single malformed entry failed
+    // the whole parse and cleared every pending recovery with it. Each entry
+    // stands or falls on its own.
+    const { store, storage } = makeStore();
+    await storage.set(
+      'unfinished_transactions',
+      JSON.stringify([
+        { platform: 'martian', productId: '', token: '' },
+        {
+          platform: 'apple',
+          productId: 'premium_monthly',
+          token: '2000000123456789',
+          productType: 'subscription',
+          recordedAt: '2026-10-01T00:00:00.000Z',
+        },
+      ]),
+    );
+
+    const entries = await store.list();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.token).toBe('2000000123456789');
   });
 });

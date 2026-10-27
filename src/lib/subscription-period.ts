@@ -12,21 +12,29 @@
  * hand to any date library without a per-platform legend.
  */
 
-/** Unit integers. Both platforms emit the same legend; -1 means "unknown". */
-const UNIT_BY_INT: Readonly<Record<number, string>> = {
-  0: 'D',
-  1: 'W',
-  2: 'M',
-  3: 'Y',
-};
+/**
+ * Unit integers. Both platforms emit 0-3 with the same meaning; iOS also
+ * emits -1 for a StoreKit unit it does not recognise (Android never does).
+ *
+ * A `Map`, not an object literal: the key comes off a native bridge, and a
+ * plain object would resolve inherited names — a `unitString` of
+ * "constructor" would otherwise yield the Object constructor and render as
+ * "P1function Object() { [native code] }".
+ */
+const UNIT_BY_INT: ReadonlyMap<number, string> = new Map([
+  [0, 'D'],
+  [1, 'W'],
+  [2, 'M'],
+  [3, 'Y'],
+]);
 
 /** `unitString`, added by the plugin in 8.3.8. Preferred when present. */
-const UNIT_BY_NAME: Readonly<Record<string, string>> = {
-  day: 'D',
-  week: 'W',
-  month: 'M',
-  year: 'Y',
-};
+const UNIT_BY_NAME: ReadonlyMap<string, string> = new Map([
+  ['day', 'D'],
+  ['week', 'W'],
+  ['month', 'M'],
+  ['year', 'Y'],
+]);
 
 /**
  * The plugin's period shape, typed loosely on purpose: the value crosses a
@@ -62,8 +70,8 @@ export function toIso8601Duration(period: unknown): string | null {
   // fallback for plugin builds predating 8.3.8, and for the "unknown"
   // string, which may still arrive alongside a usable integer.
   const designator =
-    (typeof unitString === 'string' ? UNIT_BY_NAME[unitString] : undefined) ??
-    (typeof unit === 'number' ? UNIT_BY_INT[unit] : undefined);
+    (typeof unitString === 'string' ? UNIT_BY_NAME.get(unitString) : undefined) ??
+    (typeof unit === 'number' ? UNIT_BY_INT.get(unit) : undefined);
 
   if (!designator) return null;
 

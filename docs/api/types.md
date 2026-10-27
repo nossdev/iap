@@ -295,6 +295,8 @@ The discriminated union returned by `iap.purchase(opts)`. Switch on `status` to 
 interface RestoreResult<T extends EntitlementBase = EntitlementBase> {
   restored: number;
   entitlements: T[];
+  /** The store's view of every transaction the account owns. */
+  purchases: StorePurchase[];
 }
 ```
 

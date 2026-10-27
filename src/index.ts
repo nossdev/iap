@@ -42,6 +42,7 @@ export type {
   PurchaseOptions,
   PurchaseResult,
   RestoreResult,
+  StorePurchase,
 } from './types/results.js';
 
 export type {

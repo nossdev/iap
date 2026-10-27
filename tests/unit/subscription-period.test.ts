@@ -68,6 +68,15 @@ describe('toIso8601Duration', () => {
     expect(toIso8601Duration({ numberOfUnits: '1', unitString: 'month' })).toBeNull();
   });
 
+  it('returns null for a unit name that is an Object prototype member', () => {
+    // A plain-object lookup table resolves inherited keys, so a `unitString`
+    // of "constructor" used to yield the Object constructor and render
+    // "P1function Object() { [native code] }" — typed as string.
+    for (const name of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__']) {
+      expect(toIso8601Duration({ numberOfUnits: 1, unitString: name })).toBeNull();
+    }
+  });
+
   it('never throws on a shape it was not promised', () => {
     // The input crosses a native bridge, so it is untrusted by construction.
     for (const input of ['P1M', 42, [], true, {}, { numberOfUnits: {} }]) {

@@ -103,21 +103,27 @@ After `initialize()` returns, all read methods (`hasEntitlement`, `getEntitlemen
 `getProducts()` returns each subscription's introductory offer, so the paywall can describe it without a hardcoded price:
 
 ```typescript
-const [plan] = await iap.getProducts();
+const products = await iap.getProducts();
+const plan = products.find((p) => p.id === 'premium_monthly');
+if (!plan) return; // configured, but the store has not ingested it yet
 
 // Every string here is the store's own, in the store's currency and format.
-if (plan.introductoryOffer?.payment === 'free-trial') {
-  label = `${plan.introductoryOffer.period} free, then ${plan.priceString}`;
-  //        ↑ ISO 8601, e.g. "P1W" — format it for your locale
-} else if (plan.introductoryOffer) {
-  label = `${plan.introductoryOffer.priceString} to start, then ${plan.priceString}`;
+const offer = plan.introductoryOffer;
+let label: string;
+
+if (offer?.payment === 'free-trial' && offer.period) {
+  // `period` is an ISO 8601 duration, e.g. "P1W" — and it is nullable, so
+  // guard it rather than rendering "null free, then …".
+  label = `${formatDuration(offer.period)} free, then ${plan.priceString}`;
+} else if (offer) {
+  label = `${offer.priceString} to start, then ${plan.priceString}`;
 } else {
   label = plan.priceString;
 }
 ```
 
 ::: warning Do not promise an offer to a specific user
-An offer in `introductoryOffer` means **this product has one**, not **this user will get it**. Eligibility cannot be read on the device on either platform — the store's purchase sheet applies it at purchase time. Phrase copy so it is true either way ("7-day free trial for new subscribers"), or confirm eligibility server-side. See [`SubscriptionOffer`](/api/types#subscriptionoffer).
+An offer here means **this product has one**, not **this user will get it** — eligibility cannot be read on the device on either platform. Phrase copy so it is true either way ("7-day free trial for new subscribers"). On Android, also do not render `promotionalOffers` terms. Both caveats in full: [`SubscriptionOffer`](/api/types#subscriptionoffer).
 :::
 
 ## 4. Buy something

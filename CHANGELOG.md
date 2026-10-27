@@ -19,6 +19,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   "this user will get it" — the store's purchase sheet decides at purchase time. Write copy
   that reads correctly either way, or confirm server-side.
 
+- **`StorePurchase`, on `purchase()` and `restorePurchases()` — the store's own view of a
+  purchase.** `result.purchase` on a successful purchase, and `result.purchases` on a restore.
+  It carries `purchaseReference`, `appUserId` and `subscription`, which is what makes the
+  three fields below reachable: `purchase()` hands back a `VerifiedTransaction` (your
+  backend's view of the receipt) and `NativeTransaction` is internal, so without this the
+  normalized fields would have been computed and never readable by anyone.
+
+  `restorePurchases()` is the route that matters for a reference you need *later*: after a
+  reinstall or on a new device, the install that made the purchase is gone and cannot have
+  kept it.
+
 - **`NativeTransaction.purchaseReference` — the reference that survives renewals.** `token`
   is the handle for acknowledging *this* transaction, and on Apple it is a different value
   after every renewal; `purchaseReference` is the identity of the purchase itself, so it is
@@ -45,7 +56,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   transaction (`appAccountToken` / `obfuscatedAccountId`), so a consumer can check what a
   purchase is bound to.
 
-- New exported types: `SubscriptionOffer`, `SubscriptionOfferType`,
+- **`Product.androidBasePlanId`** — the base plan an Android entry describes, reported
+  separately now that `Product.id` is always the product id you configured. `null` on iOS.
+
+- New exported types: `StorePurchase`, `SubscriptionOffer`, `SubscriptionOfferType`,
   `SubscriptionOfferPayment`, `SubscriptionRenewal`, `SubscriptionState`.
 
 ### Fixed
@@ -55,7 +69,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   payUpFront=1, payAsYouGo=2", but Apple's actual order is payAsYouGo=0, payUpFront=1,
   freeTrial=2 — the comment is wrong about Apple, and both of capgo's platforms use capgo's
   own order. iap maps from the emitted values, with a test pinning the legend so nobody
-  "corrects" it to Apple's. Caught before shipping; no released version was affected.
+  "corrects" it to Apple's — and, because a unit test can only pin iap against iap's own
+  mocks, a second guard reads capgo's shipped Swift and Java so a change *there* fails CI too.
+  Caught before shipping; no released version was affected.
+
+- **Android subscriptions were reported as one-time products, under the wrong id.** capgo sets
+  a product payload's `identifier` to the **base plan** id and `planIdentifier` to the Play
+  **product** id, while iap queries by product id — so the type lookup missed on every Android
+  subscription, fell through to `'product'`, and returned a `Product` whose `id` was a base
+  plan the consumer never configured. `getProducts().find(p => p.id === configuredId)` could
+  not match it. `Product.id` and `type` are now always what you configured, with the base plan
+  reported as `androidBasePlanId`.
+
+  Relatedly, capgo emits **one payload per offer** on a base plan, and only the base-plan entry
+  carries the offers — so `getProducts()` could return several products sharing one id, most
+  with no offers. Those are now collapsed to one per configured product, preferring the base
+  plan named by `androidPlanId` and the entry that actually has the offers. A payload matching
+  no configured product is dropped rather than mistyped.
+
+- **One unreadable entry in the unfinished-transaction store wiped the whole list.** Entries
+  were validated as a single array, so one malformed record failed the parse and cleared every
+  pending recovery with it — abandoning purchases that were paid for and never acknowledged,
+  which on Android Google refunds after three days. Entries are now validated individually:
+  the bad one is dropped and logged, its neighbours survive.
+
+- **`appUserId` never compared equal to what was passed in, on iOS.** StoreKit returns
+  `UUID.uuidString`, which Swift renders uppercase, while `crypto.randomUUID()` and iap's
+  case-insensitive validator both deal in lowercase. The binding is now lower-cased, so
+  `purchase.appUserId === suppliedAppUserId` holds — the one comparison the field exists for.
+
+- **Two lookup tables resolved inherited object properties.** `subscriptionState` and a
+  subscription period's `unitString` arrive as strings off a native bridge and were looked up
+  in plain object literals, so a value of `"constructor"` returned a function rather than
+  missing: `state` could be a function at runtime while typed as a string union, and a period
+  could render as `"P1function Object() { [native code] }"`. Both are `Map`s now. Not
+  reachable from the store's own enums — but both functions are documented as total, and were
+  not.
+
+- **A price the store did not send became the string `"NaN"`.** `priceMicros` is `"0"` for a
+  non-finite price now; `priceString` remains the value to display.
 
 - **The installation guide said `@capgo/native-purchases` is MIT-licensed. It is MPL-2.0.**
   Corrected on both the `8.x` and the archived `v7` installation pages, which were the first
@@ -63,6 +115,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   changes no obligation — but the stated licence is now the actual one. The stale
   `Cap-go/native-purchases` repository links were refreshed to
   `Cap-go/capacitor-native-purchases` on the same lines.
+
+- **The configuration guide told you to do something that throws.** It said to register one
+  Play subscription product's several base plans as separate `ConfiguredProduct` entries
+  "with the same `id`" — which `createIAP()` rejects with `INVALID_CONFIG: Duplicate product
+  id`. It now describes what actually works: one Play product per cadence, or one entry
+  addressing one base plan via `androidPlanId`.
+
+- **Documented Android limitations that were silently wrong rather than absent.**
+  `promotionalOffers` on Android reports the base plan's *standard recurring* price, not the
+  promotion's — so a free-trial promo arrives as `pay-as-you-go` at full price, and the docs
+  now say not to render those terms there. `periodCount` is usually `0` on Android for any
+  offer, because Play reports `getBillingCycleCount()` as `0` for both non-recurring and
+  infinitely recurring phases. A period is single-component on Android (`P1M15D` → `P1M`).
+
+- **The installation guide said `@capgo/native-purchases` is MIT-licensed. It is MPL-2.0.**
+  Corrected on both the `8.x` and the archived `v7` installation pages, which were the first
+  place a consumer would have read it. iap uses the plugin unmodified, so the correction
+  changes no obligation — but the stated licence is now the actual one. The stale
+  `Cap-go/native-purchases` repository links were refreshed to
+  `Cap-go/capacitor-native-purchases` on the same lines.
+
+### Changed
+
+- **`NativeTransaction` gained a required field.** No consumer can produce one — there is no
+  config hook for a custom native adapter, and nothing public returns the type — so this is
+  additive for anything that only reads one. It is exported, though, so code that *constructs*
+  a `NativeTransaction` (a hand-rolled test double, a cast target) needs `purchaseReference`
+  added. Prefer `StorePurchase` for anything consumer-facing.
+
+- **`NativeAdapter.getProducts()` now takes whole `ConfiguredProduct` entries** rather than
+  `{ id, type }` pairs, because `androidPlanId` is what picks a base plan on Android. Internal
+  contract; no public surface changes.
 
 ### Documentation
 

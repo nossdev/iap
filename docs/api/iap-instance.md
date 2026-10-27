@@ -144,16 +144,17 @@ getProducts(): Promise<Product[]>
 
 Returns native pricing merged with configured metadata. One entry per product the platform store recognizes.
 
+Each entry carries the store's localized pricing, and for a subscription its
+billing period, subscription group, introductory offer and promotional offers.
+See [`Product`](/api/types#product) for the full shape — it is defined once
+there rather than repeated here.
+
 ```typescript
-interface Product {
-  id: string;
-  type: 'subscription' | 'product' | 'consumable';
-  title: string;
-  description: string;
-  priceString: string;     // localized, e.g. "$4.99"
-  priceMicros: string;     // BigInt as string
-  currency: string;        // ISO 4217, e.g. "USD"
-}
+const products = await iap.getProducts();
+// → [{ id, type, title, description, priceString, priceMicros, currency,
+//      subscriptionPeriod, subscriptionGroupId, introductoryOffer,
+//      promotionalOffers, androidOfferToken, androidOfferId,
+//      androidBasePlanId }]
 ```
 
 Products configured in `createIAP({ products })` but not yet ingested by the platform store are silently skipped. On web, returns `[]`.

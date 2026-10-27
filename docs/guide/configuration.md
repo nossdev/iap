@@ -79,7 +79,11 @@ type ConfiguredProduct = {
 - `androidPlanId` matches the **base plan** identifier in Google Play Console. **Optional**: set it when an Android subscription product has multiple base plans and you need to disambiguate which one to purchase. iOS ignores it. Single-plan Android subscriptions and iOS-only configs don't need it — the native adapter falls back to the default offer.
 
 ::: warning Multiple plans per subscription product
-If you have one subscription product with multiple base plans (e.g. monthly and yearly), register each plan as a separate `ConfiguredProduct` entry with the same `id` but different `androidPlanId`. The orchestrator routes the purchase to the right plan via `androidPlanId`.
+**Do not register the same `id` twice.** Product ids must be unique — `createIAP()` throws `INVALID_CONFIG: Duplicate product id` — so one Play subscription product with two base plans cannot be configured as two entries.
+
+If you sell monthly and yearly, create **one Play subscription product per cadence**, each with its own base plan, and register one `ConfiguredProduct` per product. That is also what makes `getProducts()` return one `Product` per thing you sell.
+
+If you must keep several base plans under one Play product, a single config entry can address only one of them: name it with `androidPlanId`. Keep that value in step with Play Console — when it matches no base plan the native plugin does **not** fail, it silently purchases the first one. See [The native layer](/guide/native-layer#what-the-plugin-does-not-expose).
 :::
 
 ### Static vs backend-driven manifest

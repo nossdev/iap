@@ -1,6 +1,46 @@
 import type { IAPError } from '../lib/errors.js';
 import type { EntitlementBase } from './entitlement.js';
-import type { VerifiedTransaction } from './transaction.js';
+import type { Platform, SubscriptionRenewal, VerifiedTransaction } from './transaction.js';
+
+/**
+ * The **store's** view of a purchase, as reported by StoreKit or Play
+ * Billing — distinct from {@link VerifiedTransaction}, which is your
+ * backend's view after Attesto validated the receipt.
+ *
+ * Both appear on a successful purchase because they answer different
+ * questions. The backend's `transaction.id` identifies the receipt *it*
+ * recorded; `purchaseReference` identifies the purchase as the store sees
+ * it, which is what survives renewals and reinstalls.
+ */
+export interface StorePurchase {
+  platform: Platform;
+  productId: string;
+  /**
+   * The store's stable reference to this purchase: Apple's
+   * `originalTransactionId`, Google's `purchaseToken`. Unchanged across
+   * renewals, so this is what to persist if you need to recognise the
+   * subscription later — re-deriving a server-side token from it months
+   * after the purchase, for instance.
+   *
+   * Recoverable after a reinstall via `restorePurchases()`, which is the
+   * only route once the install that made the purchase is gone.
+   *
+   * Treat it as a receipt: useful for correlation, not something to leak.
+   */
+  purchaseReference: string;
+  /**
+   * The binding this purchase was made with — the value passed as
+   * `purchase({ appUserId })`, read back off the transaction. `null` when
+   * the purchase carried none. iap never generates one.
+   */
+  appUserId: string | null;
+  /**
+   * Renewal detail for a subscription, or `null` when the store reported
+   * none — which is always the case on Android. See
+   * {@link SubscriptionRenewal}.
+   */
+  subscription: SubscriptionRenewal | null;
+}
 
 /**
  * Convenience context the library passes to a function-form
@@ -70,7 +110,10 @@ export type PurchaseResult<TEntitlement extends EntitlementBase = EntitlementBas
   | {
       status: 'success';
       productId: string;
+      /** Your backend's view of the receipt, after Attesto validated it. */
       transaction: VerifiedTransaction;
+      /** The store's own view of the purchase. See {@link StorePurchase}. */
+      purchase: StorePurchase;
       entitlements: TEntitlement[];
     }
   | { status: 'cancelled'; productId: string }
@@ -81,4 +124,14 @@ export type PurchaseResult<TEntitlement extends EntitlementBase = EntitlementBas
 export interface RestoreResult<TEntitlement extends EntitlementBase = EntitlementBase> {
   restored: number;
   entitlements: TEntitlement[];
+  /**
+   * The store's view of every transaction the account currently owns — one
+   * entry per transaction submitted, in the order the store reported them.
+   * Empty when the store reports nothing owned.
+   *
+   * This is the route to a {@link StorePurchase.purchaseReference} after a
+   * reinstall or on a new device, where the install that made the purchase
+   * no longer exists to have kept it.
+   */
+  purchases: StorePurchase[];
 }

@@ -285,7 +285,8 @@ function entryToNativeTransaction(entry: UnfinishedTransaction): NativeTransacti
     // Entries persisted before `purchaseReference` existed carry only the
     // token; on Android the two are the same value anyway, and on iOS the
     // token is the right fallback (see `NativeTransaction`).
-    purchaseReference: entry.purchaseReference ?? entry.token,
+    // `||`, not `??`: a stored empty string is as unusable as an absent one.
+    purchaseReference: entry.purchaseReference || entry.token,
     productType: entry.productType,
   };
   if (entry.packageName) tx.packageName = entry.packageName;

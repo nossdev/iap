@@ -59,7 +59,8 @@ export interface NativeTransaction {
    * every renewal**. Google: the `purchaseToken` from Play Billing.
    *
    * This is the handle for acknowledging *this* transaction. To store a
-   * reference to the purchase itself, use {@link NativeTransaction.purchaseReference}.
+   * reference to the purchase itself, use `purchaseReference` — which is
+   * what a consumer sees, as `StorePurchase.purchaseReference`.
    */
   token: string;
   /**

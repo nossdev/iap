@@ -12,6 +12,7 @@ import type { EntitlementBase } from '../types/entitlement.js';
 import type { RestoreResult } from '../types/results.js';
 import type { NativeTransaction } from '../types/transaction.js';
 import { type EntitlementCache, entitlementsEqual } from './entitlement-cache.js';
+import { toStorePurchase } from './store-purchase.js';
 import type { UnfinishedTransactionsStore } from './unfinished-transactions.js';
 
 interface RestoreOrchestratorDeps<TEntitlement extends EntitlementBase> {
@@ -71,7 +72,9 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
     if (owned.length === 0) {
       const entitlements = this.deps.getCurrentEntitlements();
       emitter.emit('restore-completed', { restored: 0, entitlements });
-      return { restored: 0, entitlements };
+      // `purchases` is derived from the store's own answer, not the backend
+      // response, so it is correct on this short-circuit path too.
+      return { restored: 0, entitlements, purchases: [] };
     }
 
     const request: RestoreRequest = {
@@ -144,7 +147,11 @@ export class RestoreOrchestrator<TEntitlement extends EntitlementBase = Entitlem
       emitter.emit('entitlements-changed', { entitlements: next, previous });
     }
 
-    return { restored: owned.length, entitlements: next };
+    return {
+      restored: owned.length,
+      entitlements: next,
+      purchases: owned.map(toStorePurchase),
+    };
   }
 
   private toRestoreEntry(tx: NativeTransaction): RestoreRequestTransaction {

@@ -111,7 +111,7 @@ third column is what iap does with each field **today**, not what it could.
 | `receipt` | iOS | Platform inference only. |
 | `appAccountToken` | both | Set on purchase from `appUserId`, and read back as `NativeTransaction.appUserId`. |
 | `price`, `priceString`, `currencyCode`, `title`, `description` | both | The `Product` shape returned by `getProducts()`. |
-| `planIdentifier` | Android | Passed through from `androidPlanId` to select a base plan. |
+| `planIdentifier` | Android | Two meanings, unfortunately. On `purchaseProduct()` it is the **base plan** to buy, passed through from `androidPlanId`. On a *product* payload it is the Play **product id** — which is how iap matches a payload back to a configured product, since `identifier` there is the base plan. |
 | `introductoryPrice` | both | `Product.introductoryOffer`, normalized to `SubscriptionOffer`. |
 | `discounts` | both | `Product.promotionalOffers`. |
 | `offerToken`, `offerId` | Android | `Product.androidOfferToken` / `androidOfferId` — identification only, since a purchase cannot select by token. |
@@ -119,11 +119,14 @@ third column is what iap does with each field **today**, not what it could.
 | `subscriptionGroupIdentifier` | iOS | `Product.subscriptionGroupId`. |
 | `expirationDate`, `subscriptionState` | iOS | `NativeTransaction.subscription.expiresAt` / `.state`. |
 | `renewalInfo`, `willCancel` | iOS | `NativeTransaction.subscription.autoRenewing` / `.renewsAt` / `.renewalProductId`. |
-| `pricingTerms`, `isActive`, `commitmentInfo`, `ownershipType`, `environment` | iOS | **Not surfaced** in typed form. |
+| `isActive`, `ownershipType`, `environment`, transaction `commitmentInfo` | iOS | **Not surfaced** in typed form; reachable on `NativeTransaction.raw`. |
+| `pricingTerms`, product `commitmentInfo` | iOS | **Not surfaced, and not reachable.** These are `Product` fields, and `Product` has no `raw` passthrough. |
 | `addListener('transactionUpdated')` | **iOS only** | **Not wired.** See below. |
 
-Fields marked *not surfaced* ride along untyped on `NativeTransaction.raw`, so nothing is
-lost — a consumer can reach them today at the cost of casting.
+Transaction fields marked *not surfaced* ride along untyped on `NativeTransaction.raw`, so
+nothing is lost there — a consumer can reach them at the cost of casting. **`Product` has no
+such passthrough**, so an unsurfaced product field is genuinely unavailable; the row above
+that says so is the current gap.
 
 ::: warning Two legends not to trust
 capgo's `paymentMode` integers are **not** `SKProductDiscount.PaymentMode`, despite its iOS
@@ -149,6 +152,21 @@ picked up on the next launch or resume on **both** platforms rather than live on
 
 The cost is latency, not correctness: a renewal, a refund, or an Android e-wallet purchase
 that clears while the app is in the foreground surfaces at the next resume.
+
+### iap decodes the JWS for data, and checks no signature
+
+`NativeTransaction.purchaseReference` — surfaced to consumers as
+[`StorePurchase.purchaseReference`](/api/types#storepurchase) — needs Apple's
+`originalTransactionId`, which the plugin does not expose as a field. iap reads it out of
+the `jwsRepresentation` payload: base64url-decode the middle segment, parse the JSON, take
+the claim. **No signature is verified.**
+
+That is sound here, and only here, because of the paragraph below: the value arrives having
+already been signature-checked in native code, so the claims are trustworthy by provenance
+rather than because iap checked them. The same function pointed at a JWS from anywhere else
+— one received over the network, say — would be a security hole, which is why
+`src/lib/jws.ts` says so at length, and why the backend path exists for everything that has
+to be trusted rather than merely read.
 
 ### iOS transactions are verified before they reach iap
 
