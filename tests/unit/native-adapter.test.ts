@@ -61,6 +61,7 @@ describe('WebStubAdapter', () => {
         platform: 'apple',
         productId: 'premium',
         token: 'token',
+        purchaseReference: 'token',
         productType: 'subscription',
       }),
     ).resolves.toBeUndefined();
@@ -179,6 +180,10 @@ describe('CapgoNativeAdapter', () => {
     });
 
     const monthly = products.find((p) => p.id === 'premium_monthly');
+    // Asserted exhaustively (toEqual, not toMatchObject) so the normalized
+    // Product's full shape is pinned — including that a plugin payload
+    // carrying no subscription detail yields nulls and an empty offer list
+    // rather than undefined holes.
     expect(monthly).toEqual({
       id: 'premium_monthly',
       type: 'subscription',
@@ -187,6 +192,12 @@ describe('CapgoNativeAdapter', () => {
       priceString: '$4.99',
       priceMicros: '4990000',
       currency: 'USD',
+      subscriptionPeriod: null,
+      subscriptionGroupId: null,
+      introductoryOffer: null,
+      promotionalOffers: [],
+      androidOfferToken: null,
+      androidOfferId: null,
     });
     const ads = products.find((p) => p.id === 'remove_ads');
     expect(ads?.type).toBe('product');
@@ -226,6 +237,7 @@ describe('CapgoNativeAdapter', () => {
       platform: 'apple',
       productId: 'premium_monthly',
       token: '2000000123456789',
+      purchaseReference: '2000000123456789',
       productType: 'subscription',
     });
   });
@@ -248,6 +260,7 @@ describe('CapgoNativeAdapter', () => {
     expect(result).toMatchObject({
       platform: 'google',
       token: 'play-token-abc',
+      purchaseReference: 'play-token-abc',
       productType: 'consumable',
     });
   });
@@ -329,6 +342,7 @@ describe('CapgoNativeAdapter', () => {
       platform: 'google',
       productId: 'remove_ads',
       token: 'play-token-abc',
+      purchaseReference: 'play-token-abc',
       productType: 'product',
     });
     expect(nativePurchasesMock.acknowledgePurchase).toHaveBeenCalledWith({
@@ -343,6 +357,7 @@ describe('CapgoNativeAdapter', () => {
         platform: 'google',
         productId: 'remove_ads',
         token: 'play-token-abc',
+        purchaseReference: 'play-token-abc',
         productType: 'product',
       });
       throw new Error('should have rejected');

@@ -66,10 +66,59 @@ function makeRecovery<T extends EntitlementBase = EntitlementBase>(opts: {
   return { recoverer, state, events, unfinished, storage };
 }
 
+describe('RecoveryOrchestrator — entries from before purchaseReference existed', () => {
+  /**
+   * Upgrade path: an entry persisted by an earlier version has no
+   * `purchaseReference`, and recovery must still rehydrate a usable
+   * transaction from it. Dropping it would abandon a purchase the user paid
+   * for but that was never acknowledged — which on Android means Google
+   * refunds it after three days.
+   */
+  it('verifies a legacy entry, falling back to the token as the reference', async () => {
+    const verifyApple = vi.fn().mockResolvedValue({
+      valid: true,
+      entitlements: [{ key: 'premium', productId: 'premium_monthly', expiresAt: null }],
+      transaction: { id: 'tx-1', productId: 'premium_monthly', expiresAt: null },
+    });
+    const acknowledge = vi.fn().mockResolvedValue(undefined);
+    const { recoverer, storage } = makeRecovery({
+      backend: makeBackend({ verifyApple }),
+      nativeAdapter: makeNativeAdapter({ acknowledge }),
+    });
+
+    await storage.set(
+      'unfinished_transactions',
+      JSON.stringify([
+        {
+          platform: 'apple',
+          productId: 'premium_monthly',
+          token: '2000000123456789',
+          productType: 'subscription',
+          recordedAt: '2026-10-01T00:00:00.000Z',
+        },
+      ]),
+    );
+
+    const result = await recoverer.recoverUnfinishedTransactions();
+
+    expect(result).toMatchObject({ inspected: 1, recovered: 1 });
+    expect(verifyApple).toHaveBeenCalledWith(
+      expect.objectContaining({ transactionId: '2000000123456789' }),
+    );
+    expect(acknowledge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        token: '2000000123456789',
+        purchaseReference: '2000000123456789',
+      }),
+    );
+  });
+});
+
 const sampleAppleTx: NativeTransaction = {
   platform: 'apple',
   productId: 'premium_monthly',
   token: '2000000123456789',
+  purchaseReference: '2000000123456789',
   productType: 'subscription',
 };
 
@@ -77,6 +126,7 @@ const sampleGoogleTx: NativeTransaction = {
   platform: 'google',
   productId: 'remove_ads',
   token: 'play-token-abc',
+  purchaseReference: 'play-token-abc',
   packageName: 'com.example.app',
   productType: 'product',
 };
@@ -251,6 +301,7 @@ describe('RecoveryOrchestrator — failure paths', () => {
           platform: 'google',
           productId: 'remove_ads',
           token: 'play-tok',
+          purchaseReference: 'play-tok',
           productType: 'product',
           recordedAt: new Date().toISOString(),
           // packageName intentionally missing
@@ -312,6 +363,7 @@ describe('RecoveryOrchestrator — multi-entry batch', () => {
       ...sampleAppleTx,
       productId: 'remove_ads',
       token: '2000000999',
+      purchaseReference: '2000000999',
       productType: 'product',
     });
     await unfinished.add(sampleGoogleTx);

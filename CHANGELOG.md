@@ -7,6 +7,65 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 
+- **Introductory and promotional offers on `getProducts()`.** Each subscription now carries
+  `introductoryOffer` and `promotionalOffers` as typed `SubscriptionOffer`s — offer type,
+  payment mode (`free-trial` / `pay-up-front` / `pay-as-you-go`), the store's own localized
+  price string plus micros, the period as an ISO 8601 duration, and the cycle count. Build
+  paywall copy from these rather than hardcoding a price. `subscriptionPeriod`,
+  `subscriptionGroupId`, `androidOfferToken` and `androidOfferId` come along too.
+
+  **Eligibility is not among them, and cannot be.** The native layer exposes no eligibility
+  query on either platform, so an offer being present means "this product has one", not
+  "this user will get it" — the store's purchase sheet decides at purchase time. Write copy
+  that reads correctly either way, or confirm server-side.
+
+- **`NativeTransaction.purchaseReference` — the reference that survives renewals.** `token`
+  is the handle for acknowledging *this* transaction, and on Apple it is a different value
+  after every renewal; `purchaseReference` is the identity of the purchase itself, so it is
+  what to store to recognise a subscription later. Google's `purchaseToken` already is one.
+  Apple's `originalTransactionId` is not exposed as a plugin field, so iap reads it from the
+  signed `jwsRepresentation` payload — **for its data, with no signature check**, which is
+  sound only because the native layer resolves a purchase solely for an already-verified
+  StoreKit 2 result. It falls back to `token` when the JWS is absent or unreadable, so it is
+  always set, and a malformed JWS can never fail a purchase.
+
+  It is persisted with the unfinished-transaction entry so recovery keeps it across launches.
+  Entries written before this release carry only a token and still load, falling back to it.
+
+- **`NativeTransaction.subscription` — typed renewal detail.** `state` (including
+  `in-grace-period` and `in-billing-retry`), `autoRenewing`, `renewsAt`, `renewalProductId`
+  and `expiresAt`, previously reachable only untyped on `raw`. iap passes these through and
+  does not interpret them — no subscription state machine (PLAN.md §14).
+
+  `null` on Android, where the plugin exposes no state, no renewal date and no auto-renew
+  flag: a renewal object full of nulls would be worse than none, and `null` correctly says
+  "ask the server".
+
+- **`NativeTransaction.appUserId`** — the binding a purchase was made with, read back off the
+  transaction (`appAccountToken` / `obfuscatedAccountId`), so a consumer can check what a
+  purchase is bound to.
+
+- New exported types: `SubscriptionOffer`, `SubscriptionOfferType`,
+  `SubscriptionOfferPayment`, `SubscriptionRenewal`, `SubscriptionState`.
+
+### Fixed
+
+- **Free trials were going to be reported as pay-as-you-go.** `@capgo/native-purchases`
+  labels its `paymentMode` integers "SKProductDiscount.PaymentMode-compatible: freeTrial=0,
+  payUpFront=1, payAsYouGo=2", but Apple's actual order is payAsYouGo=0, payUpFront=1,
+  freeTrial=2 — the comment is wrong about Apple, and both of capgo's platforms use capgo's
+  own order. iap maps from the emitted values, with a test pinning the legend so nobody
+  "corrects" it to Apple's. Caught before shipping; no released version was affected.
+
+- **The installation guide said `@capgo/native-purchases` is MIT-licensed. It is MPL-2.0.**
+  Corrected on both the `8.x` and the archived `v7` installation pages, which were the first
+  place a consumer would have read it. iap uses the plugin unmodified, so the correction
+  changes no obligation — but the stated licence is now the actual one. The stale
+  `Cap-go/native-purchases` repository links were refreshed to
+  `Cap-go/capacitor-native-purchases` on the same lines.
+
+### Documentation
+
 - **A documented audit of the native layer** — [The native layer](https://iap.nossdev.com/guide/native-layer)
   records what `@capgo/native-purchases` guarantees and what it does not, so the boundary
   that caps iap's feature set is written down rather than rediscovered. Audited against
@@ -29,15 +88,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   `originalTransactionId` field, no intro-offer eligibility query — are asserted
   *inverted*, so capgo adding one of them also fails, as the signal to light up the
   matching iap capability.
-
-### Fixed
-
-- **The installation guide said `@capgo/native-purchases` is MIT-licensed. It is MPL-2.0.**
-  Corrected on both the `8.x` and the archived `v7` installation pages, which were the first
-  place a consumer would have read it. iap uses the plugin unmodified, so the correction
-  changes no obligation — but the stated licence is now the actual one. The stale
-  `Cap-go/native-purchases` repository links were refreshed to
-  `Cap-go/capacitor-native-purchases` on the same lines.
 
 ## [8.0.0] — 2026-09-04
 

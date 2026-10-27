@@ -13,6 +13,12 @@ const unfinishedEntrySchema = z.object({
   token: z.string().min(1),
   productType: productTypeSchema,
   packageName: z.string().optional(),
+  /**
+   * The renewal-stable purchase reference. Optional because entries written
+   * by a version before it existed are still valid and must not be dropped
+   * on upgrade — readers fall back to `token`.
+   */
+  purchaseReference: z.string().min(1).optional(),
   /** ISO 8601 timestamp the entry was first persisted. */
   recordedAt: z.string(),
 });
@@ -94,6 +100,7 @@ export class UnfinishedTransactionsStore {
         token: tx.token,
         productType: tx.productType,
         ...(tx.packageName ? { packageName: tx.packageName } : {}),
+        ...(tx.purchaseReference ? { purchaseReference: tx.purchaseReference } : {}),
         recordedAt: new Date().toISOString(),
       };
       await this.persist([...current, entry]);

@@ -103,23 +103,40 @@ third column is what iap does with each field **today**, not what it could.
 
 | Plugin field | Platform | What iap does with it today |
 |---|---|---|
-| `transactionId` | both | The Apple transaction id on the normalized transaction. |
-| `purchaseToken` | Android | The token on the normalized transaction. |
+| `transactionId` | both | `NativeTransaction.token` on iOS; the acknowledge handle. |
+| `purchaseToken` | Android | `NativeTransaction.token` and `purchaseReference`. |
 | `purchaseState` | Android | Filters `PENDING` purchases out of the owned set. |
 | `orderId` | Android | Platform inference only. |
-| `jwsRepresentation`, `receipt` | iOS | Platform inference only — iap does not parse either payload. |
-| `appAccountToken` | both | Set on purchase from `appUserId`. Not yet read back off the transaction. |
+| `jwsRepresentation` | iOS | Decoded for its `originalTransactionId` claim → `NativeTransaction.purchaseReference`. **Data only — no signature check**; see below. |
+| `receipt` | iOS | Platform inference only. |
+| `appAccountToken` | both | Set on purchase from `appUserId`, and read back as `NativeTransaction.appUserId`. |
 | `price`, `priceString`, `currencyCode`, `title`, `description` | both | The `Product` shape returned by `getProducts()`. |
 | `planIdentifier` | Android | Passed through from `androidPlanId` to select a base plan. |
-| `introductoryPrice`, `discounts` | both | **Not surfaced.** Available for intro/promotional offers. |
-| `offerToken`, `offerId` | Android | **Not surfaced.** Available for offer identification. |
-| `subscriptionGroupIdentifier`, `pricingTerms` | iOS | **Not surfaced.** |
-| `expirationDate`, `isActive`, `subscriptionState` | iOS | **Not surfaced** in typed form; reachable on `NativeTransaction.raw`. |
-| `renewalInfo`, `willCancel` | iOS | **Not surfaced** in typed form; reachable on `NativeTransaction.raw`. |
+| `introductoryPrice` | both | `Product.introductoryOffer`, normalized to `SubscriptionOffer`. |
+| `discounts` | both | `Product.promotionalOffers`. |
+| `offerToken`, `offerId` | Android | `Product.androidOfferToken` / `androidOfferId` — identification only, since a purchase cannot select by token. |
+| `subscriptionPeriod` | iOS | `Product.subscriptionPeriod`, as an ISO 8601 duration. Absent on Android. |
+| `subscriptionGroupIdentifier` | iOS | `Product.subscriptionGroupId`. |
+| `expirationDate`, `subscriptionState` | iOS | `NativeTransaction.subscription.expiresAt` / `.state`. |
+| `renewalInfo`, `willCancel` | iOS | `NativeTransaction.subscription.autoRenewing` / `.renewsAt` / `.renewalProductId`. |
+| `pricingTerms`, `isActive`, `commitmentInfo`, `ownershipType`, `environment` | iOS | **Not surfaced** in typed form. |
 | `addListener('transactionUpdated')` | **iOS only** | **Not wired.** See below. |
 
 Fields marked *not surfaced* ride along untyped on `NativeTransaction.raw`, so nothing is
 lost — a consumer can reach them today at the cost of casting.
+
+::: warning Two legends not to trust
+capgo's `paymentMode` integers are **not** `SKProductDiscount.PaymentMode`, despite its iOS
+source saying so: it emits `freeTrial=0, payUpFront=1, payAsYouGo=2`, where Apple's documented
+order is `payAsYouGo=0, payUpFront=1, freeTrial=2`. Both of capgo's platforms use capgo's
+order, so iap maps from that — mapping from Apple's legend would report every free trial as
+pay-as-you-go.
+
+Separately, the plugin's TypeScript declares `subscriptionPeriod` and
+`subscriptionGroupIdentifier` as **required** on `Product`, but its Android side sets neither.
+Reading `product.subscriptionPeriod.unitString` typechecks clean and throws on a device. iap
+narrows both to optional at the adapter boundary.
+:::
 
 ### Out-of-band transaction updates are not wired
 
