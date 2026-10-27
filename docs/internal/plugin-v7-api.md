@@ -118,7 +118,7 @@ interface Transaction {
 
 ✅ `getPurchases()` returns owned transactions for both platforms — replaces the original plan's `syncTransactions()` reference.
 
-✅ Event listeners (`transactionUpdated`, `transactionVerificationFailed`) on iOS are useful for handling out-of-band StoreKit updates (e.g., subscription renewal), but **not wired by the 7.x adapter** — recovery replays from the `unfinished_transactions` store and `refreshOnResume` reconciles server-side renewals. They'd surface as a future additive optional `NativeAdapter` method.
+✅ Event listeners (`transactionUpdated`, `transactionVerificationFailed`) on iOS are useful for handling out-of-band StoreKit updates (e.g., subscription renewal), but **not wired by the 7.x adapter** — recovery replays from the `unfinished_transactions` store and `refreshOnResume` reconciles server-side renewals. They'd surface as a future additive optional `NativeAdapter` method. **Superseded on the 8.x line:** that method now exists (`NativeAdapter.watchTransactions`) and the 8.x adapter subscribes to both events from `initialize()` — see `docs/guide/native-layer.md`. The reasoning above still describes the Android path, which has no such event to subscribe to.
 
 ⚠️ **Cap-7 support wobbled but was restored.** `7.17.0`–`7.18.0` shipped a
 `>=8.0.0` peer, briefly making the `lts-v7` tag Cap-8-only. `7.19.1` and

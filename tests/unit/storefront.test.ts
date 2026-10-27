@@ -43,6 +43,9 @@ vi.mock('@capgo/native-purchases', () => ({
 import { CapgoNativeAdapter } from '../../src/adapters/native/capgo/native-adapter.js';
 import { WebStubAdapter } from '../../src/adapters/native/web/web-stub.js';
 import { toAlpha2 } from '../../src/lib/iso-country.js';
+import { makeSilentLogger } from '../mocks/http-helpers.js';
+
+const silentLogger = makeSilentLogger();
 
 describe('toAlpha2 — ISO 3166-1 alpha-3 → alpha-2 normalization', () => {
   it.each([
@@ -95,7 +98,7 @@ describe('CapgoNativeAdapter.getStorefront', () => {
       storefrontId: '143441',
     });
 
-    const sf = await new CapgoNativeAdapter().getStorefront();
+    const sf = await new CapgoNativeAdapter(silentLogger).getStorefront();
 
     expect(sf).toEqual({
       countryCode: 'US',
@@ -109,7 +112,7 @@ describe('CapgoNativeAdapter.getStorefront', () => {
     mockedPlatform = 'android';
     nativePurchasesMock.getStorefront.mockResolvedValue({ countryCode: 'US' });
 
-    const sf = await new CapgoNativeAdapter().getStorefront();
+    const sf = await new CapgoNativeAdapter(silentLogger).getStorefront();
 
     expect(sf).toEqual({
       countryCode: 'US',
@@ -121,18 +124,18 @@ describe('CapgoNativeAdapter.getStorefront', () => {
 
   it('returns null when the store reports an empty country (EU alt-distribution)', async () => {
     nativePurchasesMock.getStorefront.mockResolvedValue({ countryCode: '' });
-    expect(await new CapgoNativeAdapter().getStorefront()).toBeNull();
+    expect(await new CapgoNativeAdapter(silentLogger).getStorefront()).toBeNull();
   });
 
   it('returns null when the store reports a whitespace-only country', async () => {
     nativePurchasesMock.getStorefront.mockResolvedValue({ countryCode: '   ' });
-    expect(await new CapgoNativeAdapter().getStorefront()).toBeNull();
+    expect(await new CapgoNativeAdapter(silentLogger).getStorefront()).toBeNull();
   });
 
   it('trims padded native codes before normalizing', async () => {
     mockedPlatform = 'ios';
     nativePurchasesMock.getStorefront.mockResolvedValue({ countryCode: ' USA ' });
-    const sf = await new CapgoNativeAdapter().getStorefront();
+    const sf = await new CapgoNativeAdapter(silentLogger).getStorefront();
     expect(sf).toMatchObject({ countryCode: 'US', countryCodeRaw: 'USA' });
   });
 
@@ -140,19 +143,19 @@ describe('CapgoNativeAdapter.getStorefront', () => {
     mockedPlatform = 'ios';
     nativePurchasesMock.getStorefront.mockResolvedValue({ countryCode: 'xyz' });
 
-    const sf = await new CapgoNativeAdapter().getStorefront();
+    const sf = await new CapgoNativeAdapter(silentLogger).getStorefront();
 
     expect(sf).toMatchObject({ countryCode: 'XYZ', countryCodeRaw: 'xyz', platform: 'apple' });
   });
 
   it('returns null when the native value is missing entirely', async () => {
     nativePurchasesMock.getStorefront.mockResolvedValue(undefined);
-    expect(await new CapgoNativeAdapter().getStorefront()).toBeNull();
+    expect(await new CapgoNativeAdapter(silentLogger).getStorefront()).toBeNull();
   });
 
   it('returns null (silently) when the plugin call rejects', async () => {
     nativePurchasesMock.getStorefront.mockRejectedValue(new Error('no bridge'));
-    expect(await new CapgoNativeAdapter().getStorefront()).toBeNull();
+    expect(await new CapgoNativeAdapter(silentLogger).getStorefront()).toBeNull();
   });
 
   it('returns null WITHOUT crossing the bridge when the native plugin lacks getStorefront', async () => {
@@ -160,7 +163,7 @@ describe('CapgoNativeAdapter.getStorefront', () => {
     // Capacitor plugin header omits it. The adapter must short-circuit rather
     // than call the Proxy-fabricated function (which would throw natively).
     mockStorefrontRegistered = false;
-    expect(await new CapgoNativeAdapter().getStorefront()).toBeNull();
+    expect(await new CapgoNativeAdapter(silentLogger).getStorefront()).toBeNull();
     expect(nativePurchasesMock.getStorefront).not.toHaveBeenCalled();
   });
 });

@@ -198,10 +198,20 @@ await iap.purchase({
 });
 ```
 
-The supplied value (literal or fetcher-returned) **must be a UUID v4**. iap
-validates before passing to native; non-UUIDs throw `IAPError(INVALID_APP_USER_ID)`.
-Apple requires UUIDs for `appAccountToken`; we enforce the same on Android
-for a consistent contract.
+The supplied value (literal or fetcher-returned) **must be an RFC 9562 UUID — any
+version**. iap validates before passing to native; non-UUIDs throw
+`IAPError(INVALID_APP_USER_ID)`, as do the nil and max UUIDs, which carry no identity.
+Apple requires a UUID for `appAccountToken`; we enforce the same on Android for a
+consistent contract.
+
+Any version is allowed because a deterministic identifier is often the better choice: a
+UUIDv5 over a stable name (an account id, a household's address) gives the same binding on
+every device with nothing to store or keep in step. `crypto.randomUUID()` (v4) is fine when
+you have somewhere to persist it.
+
+After the purchase, `result.purchase.appUserId` reads the binding back off the transaction,
+so you can confirm what a purchase was bound to. It is lower-cased to compare equal to what
+you sent — StoreKit returns an uppercase UUID string.
 
 For purchases without a logged-in user (guest flows), simply omit
 `appUserId` — your backend falls back to mapping by Attesto's `subject.key`

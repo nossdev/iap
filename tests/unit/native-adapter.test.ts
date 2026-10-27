@@ -25,6 +25,9 @@ vi.mock('@capgo/native-purchases', () => ({
 import { CapgoNativeAdapter } from '../../src/adapters/native/capgo/native-adapter.js';
 import { WebStubAdapter } from '../../src/adapters/native/web/web-stub.js';
 import { IAPError, IAPErrorCode } from '../../src/lib/errors.js';
+import { makeSilentLogger } from '../mocks/http-helpers.js';
+
+const silentLogger = makeSilentLogger();
 
 describe('WebStubAdapter', () => {
   const adapter = new WebStubAdapter();
@@ -126,21 +129,21 @@ describe('CapgoNativeAdapter', () => {
 
   it('isAvailable() returns true when billing is supported', async () => {
     nativePurchasesMock.isBillingSupported.mockResolvedValue({ isBillingSupported: true });
-    expect(await new CapgoNativeAdapter().isAvailable()).toBe(true);
+    expect(await new CapgoNativeAdapter(silentLogger).isAvailable()).toBe(true);
   });
 
   it('isAvailable() returns false when billing is unsupported', async () => {
     nativePurchasesMock.isBillingSupported.mockResolvedValue({ isBillingSupported: false });
-    expect(await new CapgoNativeAdapter().isAvailable()).toBe(false);
+    expect(await new CapgoNativeAdapter(silentLogger).isAvailable()).toBe(false);
   });
 
   it('isAvailable() returns false when the plugin throws', async () => {
     nativePurchasesMock.isBillingSupported.mockRejectedValue(new Error('no bridge'));
-    expect(await new CapgoNativeAdapter().isAvailable()).toBe(false);
+    expect(await new CapgoNativeAdapter(silentLogger).isAvailable()).toBe(false);
   });
 
   it('getProducts() returns [] for an empty request without calling the plugin', async () => {
-    const products = await new CapgoNativeAdapter().getProducts([]);
+    const products = await new CapgoNativeAdapter(silentLogger).getProducts([]);
     expect(products).toEqual([]);
     expect(nativePurchasesMock.getProducts).not.toHaveBeenCalled();
   });
@@ -163,7 +166,7 @@ describe('CapgoNativeAdapter', () => {
       };
     });
 
-    const adapter = new CapgoNativeAdapter();
+    const adapter = new CapgoNativeAdapter(silentLogger);
     const products = await adapter.getProducts([
       { id: 'premium_monthly', type: 'subscription' },
       { id: 'remove_ads', type: 'product' },
@@ -209,7 +212,9 @@ describe('CapgoNativeAdapter', () => {
 
   it('getProducts() only calls the subs endpoint when the catalog is subs-only', async () => {
     nativePurchasesMock.getProducts.mockResolvedValue({ products: [pluginProduct()] });
-    await new CapgoNativeAdapter().getProducts([{ id: 'premium_monthly', type: 'subscription' }]);
+    await new CapgoNativeAdapter(silentLogger).getProducts([
+      { id: 'premium_monthly', type: 'subscription' },
+    ]);
     expect(nativePurchasesMock.getProducts).toHaveBeenCalledTimes(1);
     expect(nativePurchasesMock.getProducts).toHaveBeenCalledWith({
       productIdentifiers: ['premium_monthly'],
@@ -219,7 +224,7 @@ describe('CapgoNativeAdapter', () => {
 
   it('purchaseProduct() defers acknowledgement and normalizes an iOS transaction', async () => {
     nativePurchasesMock.purchaseProduct.mockResolvedValue(appleTx());
-    const result = await new CapgoNativeAdapter().purchaseProduct({
+    const result = await new CapgoNativeAdapter(silentLogger).purchaseProduct({
       productId: 'premium_monthly',
       productType: 'subscription',
       androidPlanId: 'monthly-plan',
@@ -245,7 +250,7 @@ describe('CapgoNativeAdapter', () => {
 
   it('purchaseProduct() marks consumables and normalizes a Google transaction', async () => {
     nativePurchasesMock.purchaseProduct.mockResolvedValue(googleTx());
-    const result = await new CapgoNativeAdapter().purchaseProduct({
+    const result = await new CapgoNativeAdapter(silentLogger).purchaseProduct({
       productId: 'coins_100',
       productType: 'consumable',
     });
@@ -270,7 +275,7 @@ describe('CapgoNativeAdapter', () => {
     nativePurchasesMock.purchaseProduct.mockResolvedValue(
       googleTx({ purchaseToken: undefined, transactionId: 'GPA.fallback-id' }),
     );
-    const result = await new CapgoNativeAdapter().purchaseProduct({
+    const result = await new CapgoNativeAdapter(silentLogger).purchaseProduct({
       productId: 'remove_ads',
       productType: 'product',
     });
@@ -292,7 +297,7 @@ describe('CapgoNativeAdapter', () => {
     ])('maps "%s" → %s', async (pluginMessage, expectedCode) => {
       nativePurchasesMock.purchaseProduct.mockRejectedValue(new Error(pluginMessage));
       try {
-        await new CapgoNativeAdapter().purchaseProduct({
+        await new CapgoNativeAdapter(silentLogger).purchaseProduct({
           productId: 'remove_ads',
           productType: 'product',
         });
@@ -307,7 +312,7 @@ describe('CapgoNativeAdapter', () => {
       const original = new IAPError({ code: IAPErrorCode.STORE_ERROR, message: 'boom' });
       nativePurchasesMock.purchaseProduct.mockRejectedValue(original);
       await expect(
-        new CapgoNativeAdapter().purchaseProduct({
+        new CapgoNativeAdapter(silentLogger).purchaseProduct({
           productId: 'remove_ads',
           productType: 'product',
         }),
@@ -319,7 +324,7 @@ describe('CapgoNativeAdapter', () => {
     nativePurchasesMock.getPurchases.mockResolvedValue({
       purchases: [appleTx({ productType: 'subs' }), googleTx({ productType: 'inapp' })],
     });
-    const owned = await new CapgoNativeAdapter().getOwnedTransactions();
+    const owned = await new CapgoNativeAdapter(silentLogger).getOwnedTransactions();
     expect(owned).toHaveLength(2);
     expect(owned[0]).toMatchObject({ platform: 'apple', productType: 'subscription' });
     expect(owned[1]).toMatchObject({ platform: 'google', productType: 'product' });
@@ -329,17 +334,17 @@ describe('CapgoNativeAdapter', () => {
     nativePurchasesMock.getPurchases.mockResolvedValue({
       purchases: [
         googleTx({ purchaseState: '1', productType: undefined }), // owned, no productType
-        googleTx({ purchaseState: '0', transactionId: 'GPA.pending' }), // pending — dropped
+        googleTx({ purchaseState: '2', transactionId: 'GPA.pending' }), // pending — dropped
       ],
     });
-    const owned = await new CapgoNativeAdapter().getOwnedTransactions();
+    const owned = await new CapgoNativeAdapter(silentLogger).getOwnedTransactions();
     expect(owned).toHaveLength(1);
     expect(owned[0]).toMatchObject({ platform: 'google', productType: 'product' });
   });
 
   it('acknowledge() finishes the transaction by token', async () => {
     nativePurchasesMock.acknowledgePurchase.mockResolvedValue(undefined);
-    await new CapgoNativeAdapter().acknowledge({
+    await new CapgoNativeAdapter(silentLogger).acknowledge({
       platform: 'google',
       productId: 'remove_ads',
       token: 'play-token-abc',
@@ -354,7 +359,7 @@ describe('CapgoNativeAdapter', () => {
   it('acknowledge() wraps plugin failures as a recoverable STORE_ERROR', async () => {
     nativePurchasesMock.acknowledgePurchase.mockRejectedValue(new Error('billing offline'));
     try {
-      await new CapgoNativeAdapter().acknowledge({
+      await new CapgoNativeAdapter(silentLogger).acknowledge({
         platform: 'google',
         productId: 'remove_ads',
         token: 'play-token-abc',
@@ -371,14 +376,14 @@ describe('CapgoNativeAdapter', () => {
 
   it('manageSubscriptions() delegates to the plugin', async () => {
     nativePurchasesMock.manageSubscriptions.mockResolvedValue(undefined);
-    await new CapgoNativeAdapter().manageSubscriptions();
+    await new CapgoNativeAdapter(silentLogger).manageSubscriptions();
     expect(nativePurchasesMock.manageSubscriptions).toHaveBeenCalledOnce();
   });
 
   it('manageSubscriptions() wraps plugin failures as a non-recoverable STORE_ERROR', async () => {
     nativePurchasesMock.manageSubscriptions.mockRejectedValue(new Error('cannot open'));
     try {
-      await new CapgoNativeAdapter().manageSubscriptions();
+      await new CapgoNativeAdapter(silentLogger).manageSubscriptions();
       throw new Error('should have rejected');
     } catch (error) {
       expect(error).toBeInstanceOf(IAPError);
@@ -390,7 +395,7 @@ describe('CapgoNativeAdapter', () => {
   });
 
   it('dispose() is a safe no-op', async () => {
-    await expect(new CapgoNativeAdapter().dispose()).resolves.toBeUndefined();
+    await expect(new CapgoNativeAdapter(silentLogger).dispose()).resolves.toBeUndefined();
   });
 
   describe('platform inference', () => {
@@ -398,7 +403,7 @@ describe('CapgoNativeAdapter', () => {
       nativePurchasesMock.purchaseProduct.mockResolvedValue(
         googleTx({ orderId: undefined, purchaseState: undefined }),
       );
-      const r = await new CapgoNativeAdapter().purchaseProduct({
+      const r = await new CapgoNativeAdapter(silentLogger).purchaseProduct({
         productId: 'remove_ads',
         productType: 'product',
       });
@@ -409,7 +414,7 @@ describe('CapgoNativeAdapter', () => {
       nativePurchasesMock.purchaseProduct.mockResolvedValue(
         appleTx({ receipt: undefined, jwsRepresentation: 'eyJ...' }),
       );
-      const r = await new CapgoNativeAdapter().purchaseProduct({
+      const r = await new CapgoNativeAdapter(silentLogger).purchaseProduct({
         productId: 'premium_monthly',
         productType: 'subscription',
       });
@@ -424,7 +429,7 @@ describe('CapgoNativeAdapter', () => {
         purchaseDate: '2026-05-12T00:00:00Z',
         willCancel: null,
       });
-      const r = await new CapgoNativeAdapter().purchaseProduct({
+      const r = await new CapgoNativeAdapter(silentLogger).purchaseProduct({
         productId: 'remove_ads',
         productType: 'product',
       });

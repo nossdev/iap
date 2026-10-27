@@ -15,6 +15,7 @@ const nativePurchasesMock = vi.hoisted(() => ({
   getPurchases: vi.fn(),
   acknowledgePurchase: vi.fn(),
   manageSubscriptions: vi.fn(),
+  addListener: vi.fn(),
 }));
 
 vi.mock('@capgo/native-purchases', () => ({
@@ -23,6 +24,7 @@ vi.mock('@capgo/native-purchases', () => ({
 }));
 
 import { CapgoNativeAdapter } from '../../src/adapters/native/capgo/native-adapter.js';
+import { makeSilentLogger } from '../mocks/http-helpers.js';
 import { makeJws } from '../mocks/jws.js';
 
 /** An iOS period object as the plugin emits it. */
@@ -32,7 +34,8 @@ const period = (numberOfUnits: number, unitString: string, unit: number) => ({
   unitString,
 });
 
-const adapter = new CapgoNativeAdapter();
+const silentLogger = makeSilentLogger();
+const adapter = new CapgoNativeAdapter(silentLogger);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -720,5 +723,37 @@ describe('CapgoNativeAdapter.getProducts — Android product identity', () => {
     // An entry matching nothing the consumer asked for is not a product they
     // can act on, and silently mistyping it is worse than omitting it.
     expect(await adapter.getProducts([{ id: 'household', type: 'subscription' }])).toEqual([]);
+  });
+});
+
+describe('CapgoNativeAdapter — the transaction-feed delegations', () => {
+  // Thin wrappers, but a typo in one is invisible until a device test: the
+  // listener would simply never fire, and iap would look like it had no
+  // transaction feed at all.
+  it('watchTransactions registers the plugin listener', async () => {
+    const remove = vi.fn().mockResolvedValue(undefined);
+    nativePurchasesMock.addListener.mockResolvedValue({ remove });
+
+    const handle = await adapter.watchTransactions(() => {});
+
+    expect(handle).not.toBeNull();
+    expect(nativePurchasesMock.addListener).toHaveBeenCalledWith(
+      'transactionUpdated',
+      expect.any(Function),
+    );
+  });
+
+  it('getPendingProductIds delegates to the module', async () => {
+    // One assertion that the wiring exists; the state semantics are covered
+    // in `watch-transactions.test.ts` rather than re-tested through here.
+    mockedPlatform = 'android';
+    nativePurchasesMock.getPurchases.mockResolvedValue({
+      purchases: [
+        { productIdentifier: 'waiting', purchaseState: '2' },
+        { productIdentifier: 'owned', purchaseState: '1' },
+      ],
+    });
+
+    expect(await adapter.getPendingProductIds()).toEqual(['waiting']);
   });
 });

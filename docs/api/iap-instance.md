@@ -92,7 +92,7 @@ interface PurchaseOptions {
 | Field       | Type                          | Required | Notes                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------- | ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `productId` | `string`                      | yes      | Must be in `config.products`.                                                                                                                                                                                                                                                                                                                                                        |
-| `appUserId` | [`AppUserId`](/api/types#appuserid) | no       | UUID v4 (literal or async-fetched) forwarded to StoreKit's `appAccountToken` (iOS) / Play Billing's `obfuscatedAccountId` (Android). Three forms accepted: plain string, zero-arg fetcher `() => Promise<string>`, or ctx-form fetcher `(ctx) => Promise<string>` where `ctx.authHeaders` is populated from `backend.getAuthHeaders()`. See [`AppUserId`](/api/types#appuserid) for full semantics. |
+| `appUserId` | [`AppUserId`](/api/types#appuserid) | no       | An RFC 9562 UUID of any version (literal or async-fetched) forwarded to StoreKit's `appAccountToken` (iOS) / Play Billing's `obfuscatedAccountId` (Android). Three forms accepted: plain string, zero-arg fetcher `() => Promise<string>`, or ctx-form fetcher `(ctx) => Promise<string>` where `ctx.authHeaders` is populated from `backend.getAuthHeaders()`. See [`AppUserId`](/api/types#appuserid) for full semantics. |
 
 ```typescript
 type PurchaseResult<T> =
@@ -108,7 +108,7 @@ type PurchaseResult<T> =
 - `IAPError(ALREADY_IN_PROGRESS)` — a purchase for the same productId is already running
 - `IAPError(PRODUCT_NOT_FOUND)` — productId not in `config.products`
 - `IAPError(PLATFORM_NOT_SUPPORTED)` — called on web
-- `IAPError(INVALID_APP_USER_ID)` — `appUserId` (literal or fetcher-returned) isn't a UUID v4
+- `IAPError(INVALID_APP_USER_ID)` — `appUserId` (literal or fetcher-returned) isn't an RFC 9562 UUID
 - `IAPError(APP_USER_ID_FETCH_FAILED)` — async fetcher threw or rejected (original error attached as `cause`)
 
 Emits `purchase-started`, then exactly one of: `purchase-success` (+ `entitlements-changed`), `purchase-cancelled`, `purchase-pending`, `verification-failed`, `purchase-failed`. The two appUserId errors are pre-flight (caller-side fault) and surface synchronously without emitting `purchase-started`.
@@ -258,9 +258,7 @@ const unsubscribe = iap.on('entitlements-changed', ({ entitlements }) => {
 unsubscribe();
 ```
 
-Available events: `ready`, `purchase-started`, `purchase-success`, `purchase-cancelled`, `purchase-pending`, `purchase-failed`, `verification-failed`, `restore-started`, `restore-completed`, `entitlements-changed`, `recovery-dropped-permanent`.
-
-See [Events guide](/guide/events) and [`EventMap`](/api/events-reference) for full payload definitions.
+See [Events guide](/guide/events) for what each event means, and [`EventMap`](/api/events-reference) for the full payload definitions — the event list lives there rather than being repeated here.
 
 ## See also
 

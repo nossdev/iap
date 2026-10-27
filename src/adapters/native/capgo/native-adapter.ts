@@ -5,14 +5,16 @@ import {
   type Transaction as PluginTransaction,
 } from '@capgo/native-purchases';
 import { IAPError, IAPErrorCode } from '../../../lib/errors.js';
+import type { Logger } from '../../../lib/logger.js';
 import type { ConfiguredProduct, Product, ProductType } from '../../../types/product.js';
 import type { Storefront } from '../../../types/storefront.js';
 import type { NativeTransaction } from '../../../types/transaction.js';
-import type { NativeAdapter, NativePurchaseOptions } from '../types.js';
+import type { NativeAdapter, NativePurchaseOptions, TransactionWatchHandle } from '../types.js';
 import { mapPurchaseError } from './map-purchase-error.js';
 import { resolveProducts } from './normalize-product.js';
 import { inferProductType, normalizeTransaction } from './normalize-transaction.js';
 import { readStorefront } from './storefront.js';
+import { getCapgoPendingProductIds, watchCapgoTransactions } from './watch-transactions.js';
 
 /**
  * Capacitor 8 adapter for the `@capgo/native-purchases` `^8` line (this is the
@@ -42,6 +44,9 @@ import { readStorefront } from './storefront.js';
  *   tolerate historical iOS entries gracefully.
  */
 export class CapgoNativeAdapter implements NativeAdapter {
+  /** Used only by the best-effort paths that swallow their own failures. */
+  constructor(private readonly logger: Logger) {}
+
   async isAvailable(): Promise<boolean> {
     try {
       const result = await NativePurchases.isBillingSupported();
@@ -109,9 +114,12 @@ export class CapgoNativeAdapter implements NativeAdapter {
     const result = await NativePurchases.getPurchases();
     return (
       result.purchases
-        // Drop Android PENDING purchases (purchaseState '0'); iOS has no
-        // purchaseState. A pending Play purchase isn't owned yet — sending
-        // it to the backend's /restore would only get rejected. (iOS-side
+        // Keep only Android PURCHASED purchases; iOS has no purchaseState.
+        // A pending Play purchase isn't owned yet — sending it to the
+        // backend's /restore would only get rejected. Note Play's enum is
+        // UNSPECIFIED_STATE=0, PURCHASED=1, PENDING=2 — the plugin's own
+        // .d.ts claims 0 means pending and is wrong; keeping only '1' is
+        // correct regardless. (iOS-side
         // expired/revoked subs are NOT filtered here — they're part of
         // `Transaction.all` per the class-level JSDoc; the backend decides.)
         .filter((tx) => tx.purchaseState === undefined || tx.purchaseState === '1')
@@ -159,6 +167,23 @@ export class CapgoNativeAdapter implements NativeAdapter {
    */
   async getStorefront(): Promise<Storefront | null> {
     return readStorefront();
+  }
+
+  /**
+   * Subscribe to Apple's `Transaction.updates`. See
+   * {@link watchCapgoTransactions} — iOS only in practice, and silent
+   * about its own failures, since a missing listener degrades to
+   * reconciliation rather than breaking anything.
+   */
+  async watchTransactions(
+    onUpdate: (transaction: NativeTransaction) => void,
+  ): Promise<TransactionWatchHandle | null> {
+    return watchCapgoTransactions(onUpdate, this.logger);
+  }
+
+  /** Android only; `null` on iOS. See {@link getCapgoPendingProductIds}. */
+  async getPendingProductIds(): Promise<string[] | null> {
+    return getCapgoPendingProductIds(this.logger);
   }
 
   async dispose(): Promise<void> {

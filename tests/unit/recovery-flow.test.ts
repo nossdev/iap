@@ -3,6 +3,7 @@ import type { BackendAdapter } from '../../src/adapters/backend/types.js';
 import type { NativeAdapter } from '../../src/adapters/native/types.js';
 import { MemoryAdapter } from '../../src/adapters/storage/memory-adapter.js';
 import { EntitlementCache } from '../../src/core/entitlement-cache.js';
+import { PendingPurchasesStore } from '../../src/core/pending-purchases.js';
 import {
   DEFAULT_PERMANENT_ERROR_CODES,
   RecoveryOrchestrator,
@@ -50,6 +51,7 @@ function makeRecovery<T extends EntitlementBase = EntitlementBase>(opts: {
     backend: opts.backend ?? makeBackend<T>(),
     cache,
     unfinished,
+    pending: new PendingPurchasesStore(storage, silentLogger),
     emitter,
     logger: silentLogger,
     getCurrentEntitlements: () => state.entitlements,
@@ -569,6 +571,7 @@ describe('RecoveryOrchestrator — defensive paths', () => {
       }),
       cache,
       unfinished,
+      pending: new PendingPurchasesStore(memStorage, silentLogger),
       emitter,
       logger: silentLogger,
       getCurrentEntitlements: () => state.entitlements,
@@ -781,6 +784,7 @@ describe('RecoveryOrchestrator — permanent failure classification', () => {
       }),
       cache,
       unfinished,
+      pending: new PendingPurchasesStore(wrappedStorage, silentLogger),
       emitter,
       logger: silentLogger,
       getCurrentEntitlements: () => [],

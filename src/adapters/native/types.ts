@@ -9,6 +9,11 @@ export interface NativePurchaseOptions {
   appAccountToken?: string;
 }
 
+/** Handle for removing a {@link NativeAdapter.watchTransactions} listener. */
+export interface TransactionWatchHandle {
+  remove(): Promise<void>;
+}
+
 export interface NativeAdapter {
   /**
    * Whether the underlying platform supports native purchases.
@@ -60,6 +65,41 @@ export interface NativeAdapter {
    * Optional: adapters may omit it. Read live; do not cache.
    */
   getStorefront?(): Promise<Storefront | null>;
+
+  /**
+   * Subscribe to transactions that arrive **outside** a `purchase()` call:
+   * a subscription renewal, a refund or revocation, an Ask-to-Buy request
+   * the parent approved later, a pending purchase that finally cleared.
+   *
+   * `onUpdate` may be called at any time after subscribing, including
+   * immediately for transactions the platform had queued. The handler must
+   * not throw; implementations should swallow and log.
+   *
+   * Resolves to a handle for removing the listener, or `null` when the
+   * platform has no such feed. **In practice that means Android**: the
+   * capgo plugin's `transactionUpdated` event is wired from Apple's
+   * `Transaction.updates` only, so Android relies on reconciliation at
+   * launch and on resume instead.
+   *
+   * Optional: adapters may omit it entirely (the web stub does).
+   */
+  watchTransactions?(
+    onUpdate: (transaction: NativeTransaction) => void,
+  ): Promise<TransactionWatchHandle | null>;
+
+  /**
+   * Product ids the store reports as having a purchase awaiting clearance.
+   *
+   * Resolves `null` when the platform **cannot report** pending state, which
+   * is a different answer from "nothing is pending" and is treated as such:
+   * iap will not conclude a tracked pending purchase was cancelled on a
+   * platform that cannot tell it apart from one still waiting. Only Android
+   * can (Play's `purchaseState`), so the capgo adapter resolves `null` on
+   * iOS.
+   *
+   * Optional: adapters may omit it.
+   */
+  getPendingProductIds?(): Promise<string[] | null>;
 
   /**
    * Tear down any long-lived listeners or timers the adapter owns.

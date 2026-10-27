@@ -62,7 +62,7 @@ export interface AppUserIdFetcherContext {
 }
 
 /**
- * Value supplied to `iap.purchase({ appUserId })`. Either a UUID v4
+ * Value supplied to `iap.purchase({ appUserId })`. Either a UUID
  * string the caller already has (e.g. from local cache / app state) or
  * an async fetcher the library invokes once per purchase to retrieve
  * the UUID from the caller's backend (typical pattern: backend mints +
@@ -78,10 +78,12 @@ export interface AppUserIdFetcherContext {
  *   requests can be reused without redefining a helper. See
  *   {@link AppUserIdFetcherContext}.
  *
- * Either form is validated as UUID v4 before being forwarded to
- * StoreKit's `appAccountToken` (iOS) / Play Billing's
- * `obfuscatedAccountId` (Android). Non-UUID values throw
- * `IAPError(INVALID_APP_USER_ID)`. A throwing/rejecting fetcher
+ * Either form is validated as an RFC 9562 UUID — **any version**, so a
+ * deterministic UUIDv5 over a stable name works as well as a random v4 —
+ * before being forwarded to StoreKit's `appAccountToken` (iOS) / Play
+ * Billing's `obfuscatedAccountId` (Android). Non-UUID values throw
+ * `IAPError(INVALID_APP_USER_ID)`, as do the nil and max UUIDs, which
+ * carry no identity. A throwing/rejecting fetcher
  * surfaces as `IAPError(APP_USER_ID_FETCH_FAILED, cause: <original>)`.
  */
 export type AppUserId =

@@ -121,7 +121,9 @@ third column is what iap does with each field **today**, not what it could.
 | `renewalInfo`, `willCancel` | iOS | `NativeTransaction.subscription.autoRenewing` / `.renewsAt` / `.renewalProductId`. |
 | `isActive`, `ownershipType`, `environment`, transaction `commitmentInfo` | iOS | **Not surfaced** in typed form; reachable on `NativeTransaction.raw`. |
 | `pricingTerms`, product `commitmentInfo` | iOS | **Not surfaced, and not reachable.** These are `Product` fields, and `Product` has no `raw` passthrough. |
-| `addListener('transactionUpdated')` | **iOS only** | **Not wired.** See below. |
+| `addListener('transactionUpdated')` | **iOS only** | Subscribed from `initialize()`. Feeds `transaction-updated`, and settles the transaction through the recovery path. |
+| `addListener('transactionVerificationFailed')` | **iOS only** | Subscribed, and logged. Its payload carries no product id, so there is no iap event it could populate honestly. |
+| `purchaseState === '0'` | Android | Read to tell a pending purchase from a vanished one, which is what makes `purchase-pending-resolved` honest. |
 
 Transaction fields marked *not surfaced* ride along untyped on `NativeTransaction.raw`, so
 nothing is lost there — a consumer can reach them at the cost of casting. **`Product` has no
@@ -141,17 +143,54 @@ Reading `product.subscriptionPeriod.unitString` typechecks clean and throws on a
 narrows both to optional at the adapter boundary.
 :::
 
-### Out-of-band transaction updates are not wired
+### Out-of-band transaction updates: live on iOS, reconciled on Android
 
-The plugin offers `transactionUpdated` (and a companion `transactionVerificationFailed`),
-fed from Apple's `Transaction.updates` — **iOS only**; there is no Android equivalent in
-8.6.5. iap does not subscribe to either. That was a deliberate choice, recorded in
-`docs/internal/plugin-v7-api.md`: recovery replays from the `unfinished_transactions` store
-at launch and `refreshOnResume` reconciles server-side renewals, so out-of-band changes are
-picked up on the next launch or resume on **both** platforms rather than live on one.
+The plugin offers `transactionUpdated` and a companion
+`transactionVerificationFailed`, fed from Apple's `Transaction.updates` — **iOS only**;
+there is no Android equivalent in 8.6.5, where the native side notifies no listeners at
+all. iap subscribes to both from `initialize()` and removes them in `destroy()`.
 
-The cost is latency, not correctness: a renewal, a refund, or an Android e-wallet purchase
-that clears while the app is in the foreground surfaces at the next resume.
+(Earlier versions deliberately did not, as `docs/internal/plugin-v7-api.md` records. The
+reasoning there — that recovery at launch plus refresh on resume covers the same ground —
+still holds for Android, and is exactly what Android now relies on.)
+
+So the two platforms reach the same state by different routes:
+
+| | iOS | Android |
+|---|---|---|
+| A renewal or refund | Pushed to the listener, settled immediately | Picked up at the next launch or resume |
+| An Ask-to-Buy approval | Pushed to the listener | n/a |
+| A pending purchase clearing | Pushed to the listener | Found by asking the store at launch/resume |
+| A pending purchase *failing* | No signal exists — iap stays quiet, and drops the mark after 30 days | Detected via `purchaseState` (Play's `PENDING = 2`), reported as `cancelled` |
+
+An arriving transaction goes through the **same path recovery uses** — persisted before
+verification, left in the store to retry on failure. A second settlement path would be a
+second place for those invariants to drift.
+
+One invariant does **not** carry over, and it is worth being exact about: the plugin calls
+`transaction.finish()` *before* it notifies listeners, so on this path the platform has
+already finished the transaction by the time iap sees it. "Acknowledged only after the backend
+confirms" describes the purchase flow, not this one — iap has no say in the ordering here.
+That makes persisting first matter *more*, not less: StoreKit will not redeliver a finished
+transaction, so iap's own record is the only remaining handle on it. It also means an
+`acknowledge` that fails with "already finished" is treated as success on this path only, or a
+pending purchase that in fact completed would never be reported.
+
+::: warning A cleared Play purchase is acknowledged, not consumed
+iap acknowledges every transaction it settles. Play distinguishes acknowledging a purchase
+from **consuming** one, and a consumable must be consumed before it can be bought again —
+`@capgo/native-purchases` does that at purchase time via `isConsumable`, which this path does
+not go through. So a consumable that clears out of band (the common shape for cash and
+e-wallet payments) is acknowledged and then stays owned, and the user cannot rebuy it.
+
+Entitlement is unaffected — the backend confirmed it and the grant is in place. If you sell
+consumables through a pending payment method, verify the rebuy flow on a device before
+relying on it. Closing this needs a consume path in the native adapter.
+:::
+
+A transaction that arrives while `purchase()` is handling the same product is ignored here:
+StoreKit delivers it to both, and the flow that started it owns it. Settling twice would
+verify twice, acknowledge twice, and emit a spurious `entitlements-changed`.
 
 ### iap decodes the JWS for data, and checks no signature
 
