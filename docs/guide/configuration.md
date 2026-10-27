@@ -185,7 +185,7 @@ type StorageConfig = {
 };
 ```
 
-- `'preferences'` — backed by `@capacitor/preferences` (NSUserDefaults / SharedPreferences / localStorage).
+- `'preferences'` — backed by `@capacitor/preferences` (NSUserDefaults / SharedPreferences / localStorage). The plugin is an **optional** peer, loaded lazily: this is the only `storage.type` that needs it installed, and choosing it without the plugin fails at `initialize()` with `INVALID_CONFIG`.
 - `'memory'` — in-memory map. Good for tests, transient sessions.
 - `'custom'` — your own adapter implementing `StorageAdapter` (`get` / `set` / `remove` / `clear`).
 

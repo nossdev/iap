@@ -6,7 +6,7 @@ which you install alongside it as a peer dependency. This page records what that
 what it guarantees, and — just as usefully — what it does **not** expose, because that
 boundary is what decides which iap features can exist.
 
-Everything here was audited against **`@capgo/native-purchases@8.6.5`**, the release iap's
+Everything here was audited against **`@capgo/native-purchases@8.9.6`**, the release iap's
 `8.x` line is developed and tested against.
 
 ::: tip Most of this page is tested
@@ -20,13 +20,19 @@ than quietly making this page wrong.
 The guards hold the **major** version lines (plugin `8.x`, Play Billing `8+`), so exact patch
 numbers quoted in prose are free to move under them. Claims about *behaviour* rather than
 surface — what the native code does with a value at runtime — are not asserted; they were
-read out of the plugin's source at `8.6.5` and are the first thing to re-check on a major bump.
+read out of the plugin's source at `8.9.6` and are the first thing to re-check on a major bump.
 :::
 
 ## Play Billing Library version
 
-The plugin builds against **Play Billing Library 8.x** (currently `8.3.0`, in
-`android/build.gradle`).
+The plugin builds against **Play Billing Library 9.x** (currently `9.1.0`, in
+`android/build.gradle`); the guard holds a floor of 8, not an exact version.
+
+The 8 → 9 bump changed nothing iap depends on, and that was checked rather than assumed:
+`Purchase.PurchaseState` still reads `UNSPECIFIED_STATE = 0, PURCHASED = 1, PENDING = 2` in the
+9.1.0 artifact, and `consumeAsync`, `acknowledgePurchase` and `queryPurchasesAsync` keep their
+signatures. Those three facts are what iap's Android purchase-state check and its consumable
+path are built on.
 
 Google requires new apps and app updates to ship Billing Library 8 or later. Google's own
 pages disagree on the exact cut-off — the
@@ -81,20 +87,23 @@ The only user-scoped value that crosses the bridge is the one **you** supply: th
 `appAccountToken` / `obfuscatedAccountId` binding passed to `iap.purchase({ appUserId })`.
 iap never generates one of its own.
 
-### One caveat: purchase tokens reach the device log
+### Purchase tokens in the device log: fixed upstream
 
-The audit above is about identifiers the plugin *collects*. There is one thing it *emits*
-that is worth knowing: **the Android plugin writes purchase tokens to logcat in the clear**,
-in several places, with no `BuildConfig.DEBUG` or `isLoggable` gate — for example
-`Log.d(TAG, "Purchase token: " + purchase.getPurchaseToken())`. It does redact the account
-identifier (logging `[REDACTED]` rather than the value), so this looks like an oversight
-rather than a policy. iOS writes a smaller number of `print(...)` lines.
+Through `8.6.5` the Android plugin wrote **purchase tokens to logcat in the clear**, in several
+places, with no `BuildConfig.DEBUG` or `isLoggable` gate. This page used to warn about it.
 
-This matters because iap's own rule is never to log a raw token, JWS payload or auth header —
-its internal logs mask them (`src/lib/redact.ts`). That rule stops at the bridge: a purchase
-token is a receipt, and on Android it is readable by anything that can read the device log.
-Treat it as a reason to keep release builds' log access locked down, not as a reason to avoid
-the plugin. Closing it needs an upstream change.
+**capgo closed it in the `8.9.x` line.** Every Android log now goes through
+`NativePurchasesLog`, gated on `BuildConfig.DEBUG` or an explicit `debugLogging` plugin
+config, and the purchase summary it logs carries product ids, purchase state and the
+acknowledged flag — no token. Verified rather than taken on trust: no `android.util.Log` call
+survives outside the gated wrapper, which the contract test asserts, so a future release that
+reintroduces one fails CI.
+
+iOS still writes a smaller number of `print(...)` lines.
+
+iap's own rule is unchanged and independent of this: never log a raw token, JWS payload or
+auth header — its internal logs mask them (`src/lib/redact.ts`). Keeping release builds' log
+access locked down is still good practice, but it is no longer compensating for the plugin.
 
 ## What the plugin exposes
 
@@ -114,7 +123,7 @@ third column is what iap does with each field **today**, not what it could.
 | `planIdentifier` | Android | Two meanings, unfortunately. On `purchaseProduct()` it is the **base plan** to buy, passed through from `androidPlanId`. On a *product* payload it is the Play **product id** — which is how iap matches a payload back to a configured product, since `identifier` there is the base plan. |
 | `introductoryPrice` | both | `Product.introductoryOffer`, normalized to `SubscriptionOffer`. |
 | `discounts` | both | `Product.promotionalOffers`. |
-| `offerToken`, `offerId` | Android | `Product.androidOfferToken` / `androidOfferId` — identification only, since a purchase cannot select by token. |
+| `offerToken`, `offerId` | Android | `Product.androidOfferToken` / `androidOfferId`. Identification only *through iap* — the plugin accepts an `offerToken` on `purchaseProduct()` since `8.9.x`, but `iap.purchase()` does not forward one yet. |
 | `subscriptionPeriod` | iOS | `Product.subscriptionPeriod`, as an ISO 8601 duration. Absent on Android. |
 | `subscriptionGroupIdentifier` | iOS | `Product.subscriptionGroupId`. |
 | `expirationDate`, `subscriptionState` | iOS | `NativeTransaction.subscription.expiresAt` / `.state`. |
@@ -147,7 +156,7 @@ narrows both to optional at the adapter boundary.
 
 The plugin offers `transactionUpdated` and a companion
 `transactionVerificationFailed`, fed from Apple's `Transaction.updates` — **iOS only**;
-there is no Android equivalent in 8.6.5, where the native side notifies no listeners at
+there is no Android equivalent in 8.9.6, where the native side notifies no listeners at
 all. iap subscribes to both from `initialize()` and removes them in `destroy()`.
 
 (Earlier versions deliberately did not, as `docs/internal/plugin-v7-api.md` records. The
@@ -244,15 +253,19 @@ never made.
 
 ## What the plugin does not expose
 
-These are the gaps as of 8.6.5. Each one caps what iap could offer, and each is guarded by an
+These are the gaps as of 8.9.6. Each one caps what iap could offer, and each is guarded by an
 *inverted* test — when capgo adds one, CI fails, which is the signal to revisit this page.
+
+That mechanism has now earned its keep twice: the `8.6.5` → `8.9.6` bump failed exactly two
+guards, and both were capgo closing a gap — the logcat tokens above, and the offer token in
+the table below.
 
 | Gap | Consequence |
 |---|---|
 | **Play purchase signature and original JSON** (`getSignature()` / `getOriginalJson()` are read nowhere in the Android sources) | No cryptographic check against the app's licence key is possible on the device. Were one built, it could only cover purchase state, product match, and the binding — which is a claim about the store's say-so, not a signature. |
 | **`originalTransactionId` as a field** | The stable iOS purchase reference — the one that survives renewals — is only reachable by decoding the `jwsRepresentation` payload. `transactionId` changes with each renewal. |
 | **Intro-offer eligibility** (no `isEligibleForIntroOffer`, no eligibility query; the `INTRO_ELIGIBILITY_STATUS` enum is declared but unused) | Whether *this user* qualifies for an introductory offer cannot be known on the device. The offer's existence and terms can; the eligibility cannot. |
-| **A caller-chosen offer token on `purchaseProduct()`** (it accepts `planIdentifier`, a base plan) | The plugin *does* pass an offer token to Play — it just picks one itself: the first offer whose base plan id matches, which may be a promotional offer. The caller cannot choose which offer within a base plan is purchased. |
+| ~~**A caller-chosen offer token on `purchaseProduct()`**~~ — **available since plugin `8.9.x`** | The plugin now accepts `offerToken`, so choosing a specific offer within a base plan is possible at the native layer. **iap does not pass it yet**: `purchase()` has no way to name an offer, so buying a particular promotional or win-back offer is still out of reach through iap, even though `Product.androidOfferToken` already surfaces the tokens. A feature to build, not a gap to live with. |
 | **An error when `planIdentifier` matches nothing** | The plugin falls back to the **first** available subscription offer. So a typo'd or stale `androidPlanId` does not fail — it silently purchases a different base plan. Keep `androidPlanId` in step with Play Console; there is no client-side signal when it drifts. |
 | **Android purchase-update events** (`transactionUpdated` is fed from Apple's `Transaction.updates` only) | There is no live Android signal for a renewal, a refund, or a pending purchase clearing. |
 

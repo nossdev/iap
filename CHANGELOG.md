@@ -3,6 +3,63 @@
 All notable changes to `@nosslabs/iap` will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **`@capacitor/preferences` is now an optional peer, loaded only when it is used.** It was a
+  required peer reached through a *static* import, so it ended up in the bundle's top-level
+  imports and every consumer shipped the native plugin — including one passing
+  `storage.type: 'custom'` with its own storage, which never calls Preferences at all.
+
+  `PreferencesAdapter` now reaches the plugin through `await import()`, memoised per instance,
+  the way the resume listener reaches `@capacitor/app`. Neither `dist/index.js` nor
+  `dist/index.cjs` names it at the top level any more, asserted on the built artifact by a new
+  `npm run verify:bundle` step in CI and before publish — a static import behaves identically
+  at runtime and differs only in what the bundler hoists, so no unit test can see it.
+
+  Choosing `storage.type: 'preferences'` (still the default) without the plugin installed now
+  fails at `initialize()` with `INVALID_CONFIG`, naming what to install and the two
+  alternatives that need no plugin. It is reported there, via the new optional
+  `StorageAdapter.ensureAvailable()`, rather than at the first cache read: that read treats any
+  failure as "nothing cached", so a missing plugin would have looked like a cold start while
+  iap silently persisted nothing.
+
+  **If you use `storage.type: 'preferences'`, keep the plugin installed** — but check it is in
+  your *own* `dependencies`. npm 7+ installs a required peer into the tree without listing it
+  in your `package.json`; now that it is optional, a fresh install or a regenerated lockfile
+  can drop it, and `npx cap sync` with it.
+
+  If you pass your own adapter or use `'memory'`, you can uninstall it — and then you must
+  **externalise it in your bundler**, because a dynamic `import()` is still resolved at build
+  time: without it Vite/Rollup fails with `failed to resolve import "@capacitor/preferences"`.
+  The installation guide has the one-line config. (This is not new to this release — the
+  optional `@capacitor/app` has always behaved the same way — but it is now worth stating.)
+
+- **Developed and tested against `@capgo/native-purchases@8.9.6`** (was `8.6.5`). The peer
+  range is unchanged at `^8.2.0`. Nothing in iap broke, and two of the plugin's documented
+  gaps closed — both caught by the inverted contract guards rather than by reading release
+  notes:
+
+  - **Purchase tokens no longer reach logcat.** Through `8.6.5` the Android plugin logged them
+    in the clear with no debug gate, which [the native-layer
+    page](https://iap.nossdev.com/guide/native-layer) warned about. Every Android log now goes
+    through a `NativePurchasesLog` wrapper gated on `BuildConfig.DEBUG` or an explicit
+    `debugLogging` config, and the purchase summary it emits carries no token. Verified by
+    asserting that no `android.util.Log` call survives outside the wrapper, so a regression
+    fails CI; the warning is off the page.
+  - **`purchaseProduct()` accepts an `offerToken`.** Choosing a specific offer within a base
+    plan is now possible at the native layer. iap does not forward one yet — `purchase()` has
+    no way to name an offer — so this is recorded as a feature to build rather than a gap to
+    live with.
+
+  The plugin also moved to **Play Billing Library 9.1.0** (from 8.3.0), a native major. It
+  changes nothing iap relies on, and that was checked against the 9.1.0 artifact rather than
+  assumed: `Purchase.PurchaseState` still reads `UNSPECIFIED_STATE = 0, PURCHASED = 1,
+  PENDING = 2`, and `consumeAsync`, `acknowledgePurchase` and `queryPurchasesAsync` keep their
+  signatures — the three facts the Android purchase-state check and the consumable path are
+  built on.
+
 ## [8.1.0] — 2026-10-27
 
 ### Changed

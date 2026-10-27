@@ -84,20 +84,41 @@ It does **not**: talk to Attesto directly, manage user auth, or ship paywall UI.
 
 | `@nosslabs/iap` | Capacitor | Native plugin | dist-tag | Status |
 |---|---|---|---|---|
-| 8.x | 8.x | `@capgo/native-purchases ^8` | `@latest`, `@latest-8` | **Current** — `8.0.0` |
+| 8.x | 8.x | `@capgo/native-purchases ^8.2` | `@latest`, `@latest-8` | **Current** — `8.1.0` |
 | 7.x | 7.x | `@capgo/native-purchases@lts-v7` | `@latest-7` (pin via `^7`) | Maintenance |
 | 5.x | 5.x | `cordova-plugin-purchase ^13.x` | `@latest-5` (pin via `^5`) | Maintenance |
 
-## Optional peer dependency
+## Optional peer dependencies
 
-If you want auto-refresh on app resume (default behavior):
+Both are reached through a lazy `import()`, so an app that does not use them never loads them
+and keeps them out of its bundle. If you *uninstall* one, externalise it in your bundler
+(`build.rollupOptions.external` in Vite) — a dynamic import is still resolved at build time.
+See the [installation guide](https://iap.nossdev.com/guide/installation).
+
+**`@capacitor/app`** — auto-refresh on app resume (the default behaviour):
 
 ```bash
 npm install @capacitor/app
 npx cap sync
 ```
 
-Or disable the listener with `options.refreshOnResume: false`. See [installation guide](https://iap.nossdev.com/guide/installation#optional-app-resume-listener).
+Or disable the listener with `options.refreshOnResume: false`.
+
+**`@capacitor/preferences`** — the entitlement cache and unfinished-transaction storage, under
+the default `storage.type: 'preferences'`:
+
+```bash
+npm install @capacitor/preferences
+npx cap sync
+```
+
+Skip it if you set `storage.type` to `'custom'` (your own adapter) or `'memory'`. Choosing
+`'preferences'` without it fails at `initialize()` with a message saying so, rather than
+silently persisting nothing.
+
+If you use the default `'preferences'` and never declared the package yourself, add it to your
+`dependencies` now: npm installed it for you while it was a *required* peer, and that will stop
+happening.
 
 ## Development
 

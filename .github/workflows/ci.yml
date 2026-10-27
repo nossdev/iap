@@ -42,6 +42,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify the optional peers stay out of the bundle's top-level imports
+        run: npm run verify:bundle
+
       - name: Verify dist artifacts
         run: |
           test -f dist/index.js

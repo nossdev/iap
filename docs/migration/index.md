@@ -22,9 +22,13 @@ The `8.x` line is the current line, on `@latest`. If you install
    ```bash
    npm install @nosslabs/iap @capgo/native-purchases
    ```
-3. **Upgrade the Capacitor peer deps** you already have to v8 (`@capacitor/core`, `@capacitor/preferences`, and the optional `@capacitor/app`).
+3. **Upgrade the Capacitor peer deps** you already have to v8 (`@capacitor/core`, plus the optional `@capacitor/preferences` and `@capacitor/app` if you use them).
 4. **Run `npx cap sync`.**
 5. **No changes to your code.** The `createIAP({ ... })` config, the `IAP` instance surface, the event map, the error codes and the backend contract are byte-for-byte what `7.1.0` shipped. This upgrade is a peer-dependency bump, nothing more.
+
+Android consumables require `@capgo/native-purchases` **>= 8.2.0**, which is the peer floor
+from iap `8.1.0`: `consumePurchase()` arrived there, and it is what releases ownership so a
+consumable can be bought again.
 
 `getStorefront()` requires `@capgo/native-purchases` **>= 8.5.0** — earlier `8.x`
 releases don't register the native method, and the library resolves `null`
@@ -91,7 +95,8 @@ Everything else (config, events, error codes, return shape) is unchanged. The op
 
 | Library version | Capacitor major | Native plugin | dist-tag | Status |
 |---|---|---|---|---|
-| 8.0.x | 8 | `@capgo/native-purchases` `^8` | `@latest`, `@latest-8` | **Current** |
+| 8.1.x | 8 | `@capgo/native-purchases` `^8.2` | `@latest`, `@latest-8` | **Current** |
+| 8.0.x | 8 | `@capgo/native-purchases` `^8` | — | Superseded by `8.1.0` |
 | 7.1.x | 7 | `@capgo/native-purchases` `lts-v7` | `@latest-7` (pin via `^7`) | Maintenance |
 | 5.0.x | 5 | `cordova-plugin-purchase` ^13.x | `@latest-5` (pin via `^5`) | Maintenance |
 | 0.2.x – 0.4.x | 5 | `cordova-plugin-purchase` ^13.x | — | Superseded by `5.0.0` (same code, renumbered) |

@@ -1,5 +1,5 @@
 import type { StorageAdapter } from '../adapters/storage/types.js';
-import { IAPError, IAPErrorCode } from '../lib/errors.js';
+import { IAPError, IAPErrorCode, toIAPError } from '../lib/errors.js';
 import type { Logger } from '../lib/logger.js';
 import { entitlementBaseSchema } from '../types/entitlement.js';
 import type { EntitlementBase } from '../types/entitlement.js';
@@ -88,12 +88,14 @@ export class EntitlementCache<TEntitlement extends EntitlementBase> {
     try {
       await this.storage.set(ENTITLEMENTS_KEY, JSON.stringify(envelope));
     } catch (cause) {
-      throw new IAPError({
-        code: IAPErrorCode.STORAGE_ERROR,
-        message: 'Failed to persist entitlement cache.',
-        cause,
-        recoverable: true,
-      });
+      // `toIAPError`, not a fresh IAPError: an error that already *is* an
+      // IAPError keeps its own code. A storage adapter can fail for a
+      // reason that is not transient — `PreferencesAdapter` raises
+      // INVALID_CONFIG when its plugin is not installed — and flattening
+      // that to a `recoverable: true` STORAGE_ERROR is what the recovery
+      // loop acts on, so the entry would be retried at every launch
+      // forever for a cause no retry can fix.
+      throw toIAPError(cause, 'Failed to persist entitlement cache.', IAPErrorCode.STORAGE_ERROR);
     }
     return cachedAt;
   }

@@ -279,6 +279,11 @@ unfinished-transaction record is written *before* verification precisely so a pu
 crash, and deleting it mid-flight would leave a purchase neither acknowledged nor tracked — which
 Google auto-refunds after three days. The error is `recoverable`: await the purchase, then reset.
 
+It also throws if the storage backend cannot be reached at all — an uninstalled
+`@capacitor/preferences`, say. A failure to clear one key is logged and the rest still cleared,
+but reporting success having erased nothing is the one outcome a delete-everything control must
+not have.
+
 After `destroy()` it still wipes, and does not throw. That is the safest moment to do it — the
 orchestrators are gone, so nothing can re-persist — and a teardown racing a "delete my data" tap
 is a real sequence. `destroy()` deliberately leaves the cache on disk, so returning early would

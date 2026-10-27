@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { StorageAdapter } from '../adapters/storage/types.js';
-import { IAPError, IAPErrorCode } from '../lib/errors.js';
+import { IAPError, IAPErrorCode, toIAPError } from '../lib/errors.js';
 import type { Logger } from '../lib/logger.js';
 import { productTypeSchema } from '../types/config.js';
 import type { NativeTransaction } from '../types/transaction.js';
@@ -185,12 +185,18 @@ export class UnfinishedTransactionsStore {
     try {
       await this.storage.set(STORE_KEY, JSON.stringify(entries));
     } catch (cause) {
-      throw new IAPError({
-        code: IAPErrorCode.STORAGE_ERROR,
-        message: 'Failed to persist unfinished transactions list.',
+      // `toIAPError`, not a fresh IAPError: an error that already *is* an
+      // IAPError keeps its own code. A storage adapter can fail for a
+      // reason that is not transient — `PreferencesAdapter` raises
+      // INVALID_CONFIG when its plugin is not installed — and flattening
+      // that to a `recoverable: true` STORAGE_ERROR is what the recovery
+      // loop acts on, so the entry would be retried at every launch
+      // forever for a cause no retry can fix.
+      throw toIAPError(
         cause,
-        recoverable: true,
-      });
+        'Failed to persist unfinished transactions list.',
+        IAPErrorCode.STORAGE_ERROR,
+      );
     }
   }
 

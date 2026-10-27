@@ -40,6 +40,16 @@ export async function initializeIap<TEntitlement extends EntitlementBase>(
     return;
   }
 
+  // Storage first, before anything reads or writes it.
+  //
+  // `PreferencesAdapter` reaches `@capacitor/preferences` through a lazy
+  // `import()` — so the plugin stays out of a bundle that does not use it —
+  // and this is where a missing one is reported. It has to be here rather
+  // than left to the first cache read, because that read treats any failure
+  // as "nothing cached": an uninstalled plugin would look like a cold start
+  // and iap would go on silently persisting nothing.
+  await state.storage.ensureAvailable?.();
+
   const platform = getPlatform();
   if (!isNative()) {
     state.logger.info('Native purchases unavailable on web; entitlement queries still functional.');

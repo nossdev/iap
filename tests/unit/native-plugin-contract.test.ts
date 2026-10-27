@@ -66,6 +66,13 @@ function sourcesUnder(segment: string): Array<[string, string]> {
 }
 
 const ANDROID_SOURCES = sourcesUnder('/android/');
+
+/** One shipped source by file name, asserted to exist rather than defaulted. */
+function sourceNamed(name: string): string {
+  const found = Object.entries(nativeSources).find(([path]) => path.endsWith(`/${name}`));
+  if (!found) throw new Error(`${name} is not in the installed plugin`);
+  return found[1];
+}
 const IOS_SOURCES = sourcesUnder('/ios/');
 
 /** All Android source text as one blob, for whole-platform assertions. */
@@ -185,16 +192,36 @@ describe('@capgo/native-purchases — no device or advertising identifiers', () 
   });
 
   /**
-   * Inverted: the Android plugin writes purchase tokens to logcat in the
-   * clear, with no debug gate — while redacting the account identifier.
-   * The docs page warns about it because iap's own rule is never to log a
-   * raw token. When capgo gates or redacts these, this fails, and the
-   * warning should come off the page.
+   * **Fixed by capgo in 8.9.x, and this now asserts the fix holds.**
+   *
+   * Up to 8.6.5 the Android plugin wrote purchase tokens to logcat in the
+   * clear with no debug gate, and the docs page warned about it because
+   * iap's own rule is never to log a raw token. The plugin now routes every
+   * log through `NativePurchasesLog`, gated on `BuildConfig.DEBUG` or an
+   * explicit `debugLogging` config, with a purchase summary that carries
+   * product ids and state but no token.
+   *
+   * Two things are checked, because the gate alone is not the guarantee: no
+   * `android.util.Log` call survives *outside* the gated wrapper, and the
+   * summary helper does not reach for a token.
    */
-  it('still logs purchase tokens to logcat with no debug gate', () => {
-    expect(ANDROID_CODE).toMatch(/Log\.[dewiv]\([^)]*[Tt]oken/);
-    expect(ANDROID_CODE).not.toContain('BuildConfig.DEBUG');
-    expect(ANDROID_CODE).not.toContain('isLoggable');
+  it('routes every Android log through the gated logger, with no token', () => {
+    const plugin = sourceNamed('NativePurchasesPlugin.java');
+    const logger = sourceNamed('NativePurchasesLog.java');
+
+    // The gate exists...
+    expect(logger).toContain('BuildConfig.DEBUG');
+    expect(logger).toContain('explicitDebugLogging');
+
+    // ...and nothing bypasses it. `NativePurchasesLog.d(` also ends in
+    // `Log.d(`, so the raw-call sweep has to exclude the wrapper's own
+    // name rather than just matching `Log.`.
+    const rawCalls = [...plugin.matchAll(/(^|[^a-zA-Z.])Log\.[dewiv]\(/gm)];
+    expect(rawCalls).toHaveLength(0);
+
+    // And the one summary the plugin logs for a purchase names no token.
+    const summary = logger.slice(logger.indexOf('purchaseDebugSummary'));
+    expect(summary).not.toMatch(/[Tt]oken/);
   });
 });
 
@@ -283,7 +310,7 @@ describe('@capgo/native-purchases — the surface the docs page describes', () =
    * and takes no offer token, so the caller cannot choose which offer
    * within a base plan is purchased.
    */
-  it('still accepts planIdentifier but not an offer token on purchaseProduct', () => {
+  it('now accepts an offer token on purchaseProduct, as well as planIdentifier', () => {
     const start = definitions.indexOf('purchaseProduct(options: {');
     expect(start).toBeGreaterThan(-1);
     // Search for the closing line *from* `start` — the first occurrence in
@@ -294,7 +321,12 @@ describe('@capgo/native-purchases — the surface the docs page describes', () =
 
     const purchaseOptions = definitions.slice(start, end);
     expect(purchaseOptions).toContain('planIdentifier?: string;');
-    expect(purchaseOptions).not.toContain('offerToken');
+    // Arrived in 8.9.x. iap does not pass it yet: `SubscriptionOffer`
+    // already exposes the offers to a consumer, but `purchase()` has no
+    // way to name one, so buying a specific promotional or win-back offer
+    // is still out of reach. This asserts the capability is there to build
+    // on rather than silently assuming it is not.
+    expect(purchaseOptions).toContain('offerToken?: string;');
   });
 
   /**

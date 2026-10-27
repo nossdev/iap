@@ -50,6 +50,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "verify:bundle": "node scripts/verify-bundle.mjs",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -60,7 +61,7 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "prepublishOnly": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "prepublishOnly": "npm run typecheck && npm run lint && npm run test && npm run build && npm run verify:bundle"
   },
   "peerDependencies": {
     "@capacitor/app": ">=8.0.0",
@@ -70,6 +71,9 @@
   },
   "peerDependenciesMeta": {
     "@capacitor/app": {
+      "optional": true
+    },
+    "@capacitor/preferences": {
       "optional": true
     }
   },
@@ -81,7 +85,7 @@
     "@capacitor/app": "^8.1.1",
     "@capacitor/core": "^8.5.0",
     "@capacitor/preferences": "^8.0.1",
-    "@capgo/native-purchases": "8.6.5",
+    "@capgo/native-purchases": "^8.9.6",
     "@vitest/coverage-v8": "^1.6.1",
     "jsdom": "^29.1.0",
     "tsup": "^8.5.1",

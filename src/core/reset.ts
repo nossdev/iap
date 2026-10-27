@@ -43,6 +43,17 @@ export async function resetIap<TEntitlement extends EntitlementBase>(
     });
   }
 
+  // Fail loudly if the storage backend cannot be reached at all.
+  //
+  // Every step below is swallow-and-warn, which is right for one key that
+  // will not delete — but it also means an adapter that can reach *nothing*
+  // resolves this promise normally after logging six warnings and deleting
+  // nothing. For a "delete everything" control, telling the caller their
+  // data is gone when it is still on the device is the one outcome worth
+  // throwing over. `reset()` has no `requireInitialized`, so this is the
+  // only place that check happens on this path.
+  await state.storage.ensureAvailable?.();
+
   const previous = state.entitlements;
   state.entitlements = [];
   state.cachedAt = null;

@@ -58,7 +58,46 @@ npx cap sync
 
 (On the `7.x` line, use `@^7` for both — see the [v7 docs](/v7/guide/installation).)
 
-`@capacitor/preferences` is what the library uses for the entitlement cache and unfinished-transaction storage. It's backed by `NSUserDefaults` on iOS, `SharedPreferences` on Android, and `localStorage` on web.
+`@capacitor/preferences` is what the library uses for the entitlement cache and
+unfinished-transaction storage, under the default `storage.type: 'preferences'`. It's backed by
+`NSUserDefaults` on iOS, `SharedPreferences` on Android, and `localStorage` on web.
+
+::: tip `@capacitor/preferences` is optional if you bring your own storage
+It is an **optional** peer, and iap reaches it through a lazy `import()` — so an app that sets
+`storage.type` to `'custom'` (your own adapter) or `'memory'` never loads it, and the native
+plugin stays out of the bundle.
+
+**If you uninstall it, tell your bundler.** A dynamic `import()` is still resolved at *build*
+time, so Rollup/Vite fails with `Rollup failed to resolve import "@capacitor/preferences"`
+unless you externalise it. The import is never evaluated in this configuration, so
+externalising it is safe:
+
+```ts
+// vite.config.ts
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      // Only if you have uninstalled these optional peers.
+      external: ['@capacitor/preferences'],
+    },
+  },
+});
+```
+
+The same applies to `@capacitor/app` when `options.refreshOnResume` is `false`. Keeping the
+packages installed needs no configuration at all — this is only for dropping them.
+
+Choosing `'preferences'` without it installed fails at `initialize()` with `INVALID_CONFIG`
+rather than silently persisting nothing, and the message says what to install.
+:::
+
+::: warning If you never declared it yourself
+npm 7+ installs a *required* peer into your tree without it appearing in your
+`package.json`. Now that this one is optional, a fresh `npm install` or a regenerated lockfile
+can drop it — and with it `npx cap sync`'s view of the plugin. If you use the default
+`storage.type: 'preferences'`, add `@capacitor/preferences` to your own `dependencies` rather
+than relying on it arriving transitively.
+:::
 
 ## Optional: app-resume listener
 

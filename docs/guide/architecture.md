@@ -50,7 +50,7 @@
 - Talks to the native plugin to start purchases and observe transaction events.
 - Talks to **your** backend (never Attesto directly) to verify receipts.
 - Acknowledges native transactions only **after** the backend confirms (see [Safety guarantees](/guide/safety-guarantees)).
-- Persists entitlements + unfinished-transaction queue via `@capacitor/preferences`.
+- Persists entitlements + unfinished-transaction queue via `@capacitor/preferences` by default — an optional peer, loaded lazily, so an app with its own storage adapter neither needs nor ships it.
 - Stays small — no UI, no business rules, no auth.
 
 ### Native plugin (`@capgo/native-purchases`)

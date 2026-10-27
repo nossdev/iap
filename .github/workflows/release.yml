@@ -57,6 +57,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify the optional peers stay out of the bundle's top-level imports
+        run: npm run verify:bundle
+
       # Last gate before an irreversible publish. See the equivalent step in
       # ci.yml for why asserting on the built output (not the source) is the
       # only thing that catches a missing `__PKG_VERSION__` define.

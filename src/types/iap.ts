@@ -159,6 +159,11 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
    * A no-op after `destroy()`, rather than an error: a teardown racing a
    * "delete my data" tap is a real sequence, not a programming mistake.
    *
+   * It also throws if the storage backend cannot be reached at all — an
+   * uninstalled `@capacitor/preferences`, say. Individual key failures are
+   * logged and the rest still cleared, but reporting success having erased
+   * nothing is the one outcome a delete-everything control must not have.
+   *
    * It does **not** revoke the purchase. The store still owns it, and a
    * restore will bring the entitlement back — which is correct: the user
    * paid.
