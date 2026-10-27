@@ -64,6 +64,7 @@ await iap.purchase({
 - [Getting started](https://iap.nossdev.com/guide/getting-started) — first purchase in 30 minutes
 - [Backend contract](https://iap.nossdev.com/guide/backend-contract) — four endpoints your backend implements
 - [Architecture](https://iap.nossdev.com/guide/architecture) — three-tier model
+- [The native layer](https://iap.nossdev.com/guide/native-layer) — what `@capgo/native-purchases` exposes, its licence, its privacy audit
 - [Vue + Quasar recipe](https://iap.nossdev.com/recipes/vue-quasar) / [React recipe](https://iap.nossdev.com/recipes/react)
 
 ## Why this library
@@ -112,3 +113,8 @@ npm run docs:dev    # vitepress dev (http://localhost:5173)
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+The native layer, [`@capgo/native-purchases`](https://github.com/Cap-go/capacitor-native-purchases),
+is **MPL-2.0** and is used **unmodified**, so its file-level copyleft imposes no obligation on
+iap or on your app's source. [The native layer](https://iap.nossdev.com/guide/native-layer)
+has the full note, with the Play Billing version and the device-identifier audit.

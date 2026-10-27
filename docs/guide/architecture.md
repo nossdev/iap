@@ -59,6 +59,8 @@
 - Hands the library a transaction with a token (Apple `transactionId` or Google `purchaseToken`).
 - Honours **deferred finish** on both platforms — with `autoAcknowledgePurchases: false` the transaction stays open until we explicitly call `acknowledgePurchase()`. Critical for the safety guarantee, with no iOS-specific finish-before-verify race.
 
+For what the plugin exposes, what iap surfaces of it today, its licence and its privacy audit, see [The native layer](/guide/native-layer).
+
 ### Your backend
 
 - Receives `{ platform, token, packageName?, productType }` from the library.

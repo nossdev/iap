@@ -1,6 +1,6 @@
 # What is `@nosslabs/iap`?
 
-`@nosslabs/iap` is a thin, framework-agnostic TypeScript library that orchestrates the in-app purchase flow on the **client side** of a Capacitor app. It wraps [`@capgo/native-purchases`](https://github.com/Cap-go/native-purchases) and coordinates with **your backend**, which in turn talks to [Attesto](https://attesto.nossdev.com) for receipt validation.
+`@nosslabs/iap` is a thin, framework-agnostic TypeScript library that orchestrates the in-app purchase flow on the **client side** of a Capacitor app. It wraps [`@capgo/native-purchases`](https://github.com/Cap-go/capacitor-native-purchases) and coordinates with **your backend**, which in turn talks to [Attesto](https://attesto.nossdev.com) for receipt validation.
 
 This library is the client-side counterpart to Attesto. **Attesto** answers _"is this transaction real?"_ on the server. **`@nosslabs/iap`** answers _"how do we orchestrate the purchase flow and entitlement state cleanly on the client?"_
 
