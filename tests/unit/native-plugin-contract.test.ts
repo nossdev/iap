@@ -303,6 +303,24 @@ describe('@capgo/native-purchases — the surface the docs page describes', () =
    * failing — so a typo'd plan id silently buys something else. The docs
    * page warns about it; when capgo makes this an error, this fails.
    */
+  /**
+   * Inverted-ish, and the guard for the bug this page's sibling tests did
+   * not catch: `purchaseState` is Play's own `Purchase.PurchaseState` int,
+   * stringified verbatim — not a code capgo assigns. That matters because
+   * the plugin's `.d.ts` documents `"0": Payment pending`, while the billing
+   * library defines UNSPECIFIED_STATE=0, PURCHASED=1, PENDING=2 and
+   * `getPurchaseState()` returns only 1 or 2. iap reads the library's
+   * numbering, so this asserts the plugin is still passing it through
+   * rather than translating it.
+   */
+  it('still stringifies Play purchase state verbatim rather than translating it', () => {
+    expect(ANDROID_CODE).toContain('String.valueOf(purchase.getPurchaseState())');
+    // And still compares symbolically against the library's own constants,
+    // so a renumbering upstream would move both together.
+    expect(ANDROID_CODE).toContain('Purchase.PurchaseState.PURCHASED');
+    expect(ANDROID_CODE).toContain('Purchase.PurchaseState.PENDING');
+  });
+
   it('still falls back to the first subscription offer on a planIdentifier miss', () => {
     expect(ANDROID_CODE).toMatch(
       /selectedOfferDetails\s*=\s*\w+\.getSubscriptionOfferDetails\(\)\.get\(0\)/,

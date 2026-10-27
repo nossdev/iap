@@ -32,8 +32,9 @@ export const IAPErrorCode = {
   // appUserId pre-attach
   /**
    * The supplied `appUserId` (literal or fetcher-returned) is not a valid
-   * UUID v4. Apple requires a UUID for `appAccountToken`; we enforce the
-   * same constraint cross-platform for a consistent contract.
+   * RFC 9562 UUID. Apple requires a UUID for `appAccountToken`; we enforce
+   * the same constraint cross-platform for a consistent contract. Any
+   * version is accepted — see `isValidUuid` for what is still refused.
    */
   INVALID_APP_USER_ID: 'INVALID_APP_USER_ID',
   /**
@@ -107,7 +108,7 @@ const HINTS: Readonly<Record<IAPErrorCode, string>> = {
 
   // appUserId pre-attach
   INVALID_APP_USER_ID:
-    'appUserId must be a UUID v4 (e.g. crypto.randomUUID()). Apple requires this for appAccountToken; we enforce the same on Android for consistency.',
+    'appUserId must be an RFC 9562 UUID of any version (e.g. crypto.randomUUID(), or a UUIDv5 over a stable name). Apple requires a UUID for appAccountToken; we enforce the same on Android for consistency. Refused: the nil and max UUIDs, and non-RFC version/variant nibbles — so an id that merely looks like a UUID (a hyphen-formatted hash) will not pass.',
   APP_USER_ID_FETCH_FAILED:
     'The async appUserId fetcher threw or rejected. Inspect the cause field for the underlying error (network failure, backend non-2xx, parse failure).',
 };

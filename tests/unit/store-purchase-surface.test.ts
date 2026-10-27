@@ -3,6 +3,7 @@ import type { BackendAdapter } from '../../src/adapters/backend/types.js';
 import type { NativeAdapter } from '../../src/adapters/native/types.js';
 import { MemoryAdapter } from '../../src/adapters/storage/memory-adapter.js';
 import { EntitlementCache } from '../../src/core/entitlement-cache.js';
+import { PendingPurchasesStore } from '../../src/core/pending-purchases.js';
 import { PurchaseOrchestrator } from '../../src/core/purchase-flow.js';
 import { RestoreOrchestrator } from '../../src/core/restore-flow.js';
 import { UnfinishedTransactionsStore } from '../../src/core/unfinished-transactions.js';
@@ -54,6 +55,7 @@ function makeDeps<T extends EntitlementBase>(opts: {
       state.cachedAt = cachedAt;
     },
     getAuthHeaders: async () => ({}),
+    pending: new PendingPurchasesStore(storage, silentLogger),
   };
 }
 

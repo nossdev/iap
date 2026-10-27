@@ -4,6 +4,7 @@ import { IAPError, IAPErrorCode } from '../lib/errors.js';
 import type { Logger } from '../lib/logger.js';
 import { productTypeSchema } from '../types/config.js';
 import type { NativeTransaction } from '../types/transaction.js';
+import { type MutationLock, createMutationLock } from './mutation-lock.js';
 
 const STORE_KEY = 'unfinished_transactions';
 
@@ -58,7 +59,7 @@ export class UnfinishedTransactionsStore {
    * could each `list()` the same snapshot and overwrite each other's
    * `persist()`.
    */
-  private mutationLock: Promise<void> = Promise.resolve();
+  private readonly runExclusive: MutationLock = createMutationLock();
 
   constructor(
     private readonly storage: StorageAdapter,
@@ -152,26 +153,6 @@ export class UnfinishedTransactionsStore {
   /** Clear every unfinished entry. */
   async clear(): Promise<void> {
     return this.runExclusive(() => this.safeClear());
-  }
-
-  /**
-   * Run `fn` with exclusive access to the storage key. Implements a simple
-   * promise chain — every mutation awaits the previous one's completion.
-   * Reads (`list()`) are NOT serialized because they're tolerant of stale
-   * snapshots (callers either compose or accept the read-once semantic).
-   */
-  private async runExclusive<T>(fn: () => Promise<T>): Promise<T> {
-    const prev = this.mutationLock;
-    let release!: () => void;
-    this.mutationLock = new Promise((resolve) => {
-      release = resolve;
-    });
-    try {
-      await prev;
-      return await fn();
-    } finally {
-      release();
-    }
   }
 
   private async persist(entries: UnfinishedTransaction[]): Promise<void> {

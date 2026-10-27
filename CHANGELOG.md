@@ -19,6 +19,55 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   "this user will get it" — the store's purchase sheet decides at purchase time. Write copy
   that reads correctly either way, or confirm server-side.
 
+- **Transactions that happen outside a purchase now reach the consumer.** iap subscribes to
+  Apple's `Transaction.updates` from `initialize()`, so a renewal, a refund or revocation, an
+  Ask-to-Buy approval, or a pending purchase clearing is verified, acknowledged and reflected
+  in entitlements while the app is running — previously none of that surfaced until the next
+  launch. Two new events: `transaction-updated` (the store says something happened, before
+  verification) and the authoritative `entitlements-changed` that follows.
+
+  **iOS only, because that is the only feed that exists**: the native layer has no Android
+  equivalent. On Android the same ground is covered by reconciliation at launch and on resume,
+  which is what the previous behaviour already relied on for both platforms.
+
+  An arriving transaction goes through the same path recovery uses — persisted before
+  verification, acknowledged only after the backend confirms — rather than a second settlement
+  path that could drift from it. One that arrives while `purchase()` is handling the same
+  product is left to the purchase flow, since StoreKit delivers it to both and settling twice
+  would verify twice, acknowledge twice and emit a spurious change.
+
+- **`purchase-pending-resolved` — pending purchases now close out.** `purchase-pending` had no
+  counterpart, so a paywall that put up "waiting for payment" had nothing to take it back down
+  with. The new event reports `purchased` (cleared, and the entitlement is already in place) or
+  `cancelled`, at most once per pending purchase.
+
+  Pending purchases are remembered across launches, because that is when they resolve — a Play
+  e-wallet payment can take hours with the app closed. The mark is checked at `initialize()`
+  and on every resume, so the event can arrive in a much later session than the purchase.
+
+  **`cancelled` is Android-only, deliberately.** It fires only where the platform can tell
+  "gone" from "still waiting" — Play's purchase state. On iOS a deferred purchase that is never
+  approved produces no signal at all, so iap says nothing rather than guessing and clearing a
+  paywall's pending copy while a parent is still deciding. A mark iap cannot resolve is dropped
+  after 30 days, silently and with no event: by then it is iap's unanswered question rather
+  than a purchase in progress, and keeping it would make every foreground re-query the store
+  for the life of the install.
+
+  Known limitation, documented rather than half-fixed: a **consumable** that clears out of band
+  is acknowledged but not *consumed*, so Play keeps reporting it owned and it cannot be
+  rebought. Entitlement is unaffected. Closing it needs a consume path in the native adapter.
+
+- **`appUserId` accepts any RFC 9562 UUID, not only v4.** A deterministic identifier is often
+  the better choice: a UUIDv5 over a stable name gives the same binding on every device with
+  nothing to persist or keep in step, and v7 is the current recommendation for time-ordered
+  ids. Restricting to v4 forced consumers who already had a deterministic identity to mint a
+  second one.
+
+  Still refused: anything that is not a canonical UUID, non-RFC variant nibbles (which Apple
+  rejects anyway), and the nil and max UUIDs — both are valid RFC 9562 constructs that
+  deliberately carry no identity, so accepting one would bind a purchase to nothing while
+  looking well-formed.
+
 - **`StorePurchase`, on `purchase()` and `restorePurchases()` — the store's own view of a
   purchase.** `result.purchase` on a successful purchase, and `result.purchases` on a restore.
   It carries `purchaseReference`, `appUserId` and `subscription`, which is what makes the
@@ -136,7 +185,65 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   `Cap-go/native-purchases` repository links were refreshed to
   `Cap-go/capacitor-native-purchases` on the same lines.
 
+### Fixed
+
+- **Android would have reported every pending purchase as `cancelled` while it was still
+  processing.** The pending-state check looked for Play `purchaseState === '0'`, following the
+  plugin's own type declarations, which document `"0": Payment pending`. That is wrong: Play's
+  `Purchase.PurchaseState` is `UNSPECIFIED_STATE = 0, PURCHASED = 1, PENDING = 2`, and
+  `getPurchaseState()` only ever returns 1 or 2 — so the filter matched nothing and every
+  tracked pending purchase read as vanished. Worse, the marker was then cleared, so when the
+  payment really cleared the `purchased` event never fired either.
+
+  Now expressed as "the store has it but does not call it owned", so `UNSPECIFIED_STATE` and
+  any state Play adds later also read as not-yet-granted. Erring towards "still pending"
+  self-corrects on the next pass; erring towards "cancelled" is permanent. A contract test
+  pins that the plugin still passes Play's own integer through rather than translating it.
+
+- **`purchase-pending-resolved` could fire twice, with two verifies and two acknowledges.**
+  The resolution did a read-then-write across an `await`, and reconciliation had no
+  re-entrancy guard — and both overlaps are reachable: the transaction listener is
+  fire-and-forget, and the resume listener does not debounce, so two foreground events ran two
+  reconciliations. On Android the second acknowledge of an already-acked token errors, which
+  the settle path reads as a failure and retains the entry for. Now a single atomic
+  take-if-present, a single-flight reconciliation, and a per-token settle guard.
+
+- **A pending purchase settled by any other path was later reported `cancelled`.** Only the
+  update orchestrator cleared the marker, so a purchase finished by a `purchase()` retry, by
+  `restore()`, or by launch recovery left it behind — and the next reconcile found it neither
+  owned nor pending and announced that it had failed. Resolution now happens inside the
+  settle path itself, so every route to a settled transaction clears the mark.
+
+- **An out-of-band transaction could never be acknowledged on iOS, and never resolve.** The
+  native layer calls `transaction.finish()` *before* notifying listeners, and its
+  `acknowledgePurchase` then looks the transaction up in `Transaction.all` and rejects
+  "already finished" — which `Transaction.all` guarantees for a finished consumable. That read
+  as a settlement failure. An already-finished acknowledge is now success **on that path
+  only**; a real acknowledge failure on Android is still a failure.
+
+- **Refunds and revocations accumulated in the recovery store forever.** They verify
+  `valid:false` with a code no permanent-error list knows, so they were retained and
+  re-verified at every launch, eating the recovery batch that entries which can still succeed
+  need. A revocation is no longer persisted — there is nothing to recover from.
+
+- **Reconciliation could report `cancelled` for a purchase that had just cleared.** The owned
+  and pending snapshots are two separate native round-trips, and reading owned first meant a
+  purchase that cleared in between appeared in neither. Pending is read first now, so that
+  window resolves to "still pending".
+
+- **A transaction arriving during or after `destroy()` repopulated the torn-down instance**,
+  writing through the shared state closures and the entitlement cache after teardown.
+
+- **`reconcilePending()` ran inside `initialize()`**, so a tracked pending purchase delayed
+  `ready` by a store round-trip plus a backend verify, uncapped. It runs just after `ready`
+  now.
+
 ### Changed
+
+- **`NativeAdapter` gained two optional methods**, `watchTransactions` and
+  `getPendingProductIds`. Internal contract; both are optional, so an adapter that omits them
+  degrades to reconciliation. `selectNativeAdapter()` now takes a logger, which the capgo
+  adapter uses for the best-effort paths that swallow their own failures.
 
 - **`NativeTransaction` gained a required field.** No consumer can produce one — there is no
   config hook for a custom native adapter, and nothing public returns the type — so this is

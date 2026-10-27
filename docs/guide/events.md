@@ -61,7 +61,43 @@ User dismissed the system purchase sheet. No charge, no state change. Most apps 
 iap.on('purchase-pending', ({ productId }) => { /* ... */ });
 ```
 
-Android-only. The user chose a payment method that requires external clearance (cash, certain bank transfers). The transaction is in a holding state — Google will eventually call your backend's RTDN webhook when it clears, and your backend should update entitlements. Tell the user "we'll grant access when payment clears", then trust your backend.
+Android-only in practice. The user chose a payment method that requires external clearance (cash, an e-wallet, certain bank transfers). Nothing is granted yet. Tell the user "we'll grant access when payment clears", and wait for `purchase-pending-resolved`.
+
+### `purchase-pending-resolved`
+
+```typescript
+iap.on('purchase-pending-resolved', ({ productId, status }) => {
+  // status: 'purchased' | 'cancelled'
+});
+```
+
+The counterpart to `purchase-pending`, and what lets a paywall take its "waiting for payment" copy back down. Fires at most once per pending purchase.
+
+`purchased` means it cleared **and the entitlement is already in place** — iap verified and acknowledged the transaction before emitting. `cancelled` means the store has it neither owned nor waiting: the payment failed, expired, or was abandoned.
+
+iap remembers pending purchases across launches, because they usually resolve with the app closed — a Play e-wallet payment can take hours. The mark is checked shortly after `initialize()` and on every resume, so the event can arrive in a much later session than the purchase.
+
+::: warning `cancelled` is Android-only, and may never arrive
+It fires only where the platform can distinguish "gone" from "still waiting" — Play's purchase state. On iOS a deferred purchase (Ask to Buy) that is never approved produces **no signal at all**, so iap says nothing rather than guessing.
+
+So treat `purchased` as the event you build on, and `cancelled` as a bonus when the platform can supply it. Do not leave a UI permanently blocked waiting for either: iap drops a pending mark it has not been able to resolve after **30 days**, silently and with no event, because by then the mark is iap's unanswered question rather than a purchase in progress.
+:::
+
+### `transaction-updated`
+
+```typescript
+iap.on('transaction-updated', ({ productId, purchase }) => {
+  // purchase: StorePurchase
+});
+```
+
+A transaction arrived **outside** a `purchase()` call: a subscription renewal, a refund or revocation, an Ask-to-Buy approval, a pending purchase clearing.
+
+It fires *before* iap has verified anything, so treat it as "the store says something happened", not as an entitlement change. The authoritative signal is still `entitlements-changed`, which follows if your backend confirms it. Useful for logging, or for showing a spinner while the verification round-trip happens.
+
+::: warning iOS only
+The native layer feeds this from Apple's `Transaction.updates`; there is no Android equivalent. On Android the same ground is covered by reconciliation at launch and on resume, so a renewal or refund surfaces as `entitlements-changed` without a preceding `transaction-updated`. See [The native layer](/guide/native-layer).
+:::
 
 ### `purchase-failed`
 
@@ -130,18 +166,25 @@ Within a single flow, events fire in deterministic order:
 **Successful purchase:**
 ```
 purchase-started
-  → entitlements-changed (if entitlements actually changed)
   → purchase-success
+  → entitlements-changed (only if the entitlements actually changed)
 ```
 
 **Successful restore:**
 ```
 restore-started
-  → entitlements-changed (if entitlements actually changed)
   → restore-completed
+  → entitlements-changed (only if the entitlements actually changed)
 ```
 
-`entitlements-changed` always fires **before** `purchase-success`/`restore-completed`, so a listener on the latter can already read the new state via `iap.getEntitlements()`.
+**A transaction arriving on its own** (a renewal, a refund, an Ask-to-Buy approval, a pending purchase clearing — iOS; see [`transaction-updated`](#transaction-updated)):
+```
+transaction-updated
+  → entitlements-changed (only if the entitlements actually changed)
+  → purchase-pending-resolved (only if this product was awaiting clearance)
+```
+
+In every case the **state is already updated before the first of these fires**, so a listener on any of them can read it with `iap.getEntitlements()`. The emission order above is the order the events arrive in, not a dependency: do not write a handler that assumes `entitlements-changed` has already run, because it is skipped entirely when the content did not change.
 
 ## Compared to `iap.purchase()` return value
 

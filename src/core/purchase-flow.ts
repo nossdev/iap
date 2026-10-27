@@ -3,7 +3,7 @@ import type { NativeAdapter } from '../adapters/native/types.js';
 import type { TypedEventEmitter } from '../events/emitter.js';
 import { IAPError, IAPErrorCode, toIAPError } from '../lib/errors.js';
 import type { Logger } from '../lib/logger.js';
-import { isValidUuidV4 } from '../lib/uuid.js';
+import { isValidUuid } from '../lib/uuid.js';
 import type { EntitlementBase } from '../types/entitlement.js';
 import type { ConfiguredProduct } from '../types/product.js';
 import type {
@@ -14,6 +14,8 @@ import type {
 } from '../types/results.js';
 import type { NativeTransaction, VerifiedTransaction } from '../types/transaction.js';
 import type { EntitlementCache } from './entitlement-cache.js';
+import type { PendingPurchasesStore } from './pending-purchases.js';
+import { resolvePendingPurchase } from './resolve-pending.js';
 import { toStorePurchase } from './store-purchase.js';
 import type { UnfinishedTransactionsStore } from './unfinished-transactions.js';
 import { verifyNativeTransaction } from './verify-helpers.js';
@@ -56,6 +58,12 @@ interface PurchaseOrchestratorDeps<TEntitlement extends EntitlementBase> {
    * keeps working.
    */
   getAuthHeaders: () => Promise<Record<string, string>>;
+  /**
+   * Records a product whose purchase is awaiting clearance, so the
+   * pending state can be closed out in a later session — a Play
+   * e-wallet purchase usually clears with the app closed.
+   */
+  pending: PendingPurchasesStore;
 }
 
 /**
@@ -86,6 +94,17 @@ interface PurchaseOrchestratorDeps<TEntitlement extends EntitlementBase> {
  */
 export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = EntitlementBase> {
   private readonly inFlight = new Set<string>();
+
+  /**
+   * Whether this orchestrator is currently handling `productId`.
+   *
+   * Read by the transaction-update orchestrator: StoreKit delivers the
+   * transaction a purchase produced to `Transaction.updates` as well, and
+   * whichever path started it owns settling it.
+   */
+  isInFlight(productId: string): boolean {
+    return this.inFlight.has(productId);
+  }
 
   constructor(private readonly deps: PurchaseOrchestratorDeps<TEntitlement>) {}
 
@@ -220,6 +239,10 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
       );
     }
 
+    // A pending purchase the user retried and completed directly: clear the
+    // mark, or a later reconcile finds it unowned and reports `cancelled`.
+    await resolvePendingPurchase(this.deps, productId, 'purchased');
+
     emitter.emit('purchase-success', { productId, transaction });
     emitter.emit('entitlements-changed', {
       entitlements: this.deps.getCurrentEntitlements(),
@@ -253,7 +276,10 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     return { status: 'verification_failed', productId, error };
   }
 
-  private handleNativeError(productId: string, error: unknown): PurchaseResult<TEntitlement> {
+  private async handleNativeError(
+    productId: string,
+    error: unknown,
+  ): Promise<PurchaseResult<TEntitlement>> {
     const iapError = toIAPError(
       error,
       `Native purchase of "${productId}" failed.`,
@@ -266,6 +292,10 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     }
 
     if (iapError.code === IAPErrorCode.PURCHASE_PENDING) {
+      // Remember it before announcing it. The purchase can clear hours
+      // later in another session, and without a persisted mark nothing
+      // would ever tell the consumer the pending state had ended.
+      await this.deps.pending.add(productId);
       this.deps.emitter.emit('purchase-pending', { productId });
       return { status: 'pending', productId };
     }
@@ -289,7 +319,8 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
 }
 
 /**
- * Resolve an `appUserId` supply to a validated UUID v4 string.
+ * Resolve an `appUserId` supply to a validated UUID string (any RFC 9562
+ * version — see {@link isValidUuid}).
  *
  * - String input: validate directly.
  * - Async fetcher: invoke once (fresh per purchase — iap caches nothing,
@@ -322,10 +353,10 @@ async function resolveAppUserId(supply: AppUserId, ctx: AppUserIdFetcherContext)
   } else {
     resolved = supply;
   }
-  if (typeof resolved !== 'string' || !isValidUuidV4(resolved)) {
+  if (!isValidUuid(resolved)) {
     throw new IAPError({
       code: IAPErrorCode.INVALID_APP_USER_ID,
-      message: `appUserId must be a UUID v4; received ${
+      message: `appUserId must be an RFC 9562 UUID (any version); received ${
         typeof resolved === 'string' ? `"${resolved}"` : typeof resolved
       }.`,
     });

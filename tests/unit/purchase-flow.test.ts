@@ -3,6 +3,7 @@ import type { BackendAdapter } from '../../src/adapters/backend/types.js';
 import type { NativeAdapter, NativePurchaseOptions } from '../../src/adapters/native/types.js';
 import { MemoryAdapter } from '../../src/adapters/storage/memory-adapter.js';
 import { EntitlementCache } from '../../src/core/entitlement-cache.js';
+import { PendingPurchasesStore } from '../../src/core/pending-purchases.js';
 import { PurchaseOrchestrator } from '../../src/core/purchase-flow.js';
 import { UnfinishedTransactionsStore } from '../../src/core/unfinished-transactions.js';
 import { TypedEventEmitter } from '../../src/events/emitter.js';
@@ -83,6 +84,7 @@ function makeOrchestrator<T extends EntitlementBase = EntitlementBase>(opts: {
       state.cachedAt = cachedAt;
     },
     getAuthHeaders: opts.getAuthHeaders ?? (async () => ({})),
+    pending: new PendingPurchasesStore(storage, silentLogger),
   });
 
   return { orchestrator, emitter, cache, unfinished, storage, events, state };
@@ -543,6 +545,7 @@ describe('PurchaseOrchestrator — defensive paths post-backend-success', () => 
         state.cachedAt = ts;
       },
       getAuthHeaders: async () => ({}),
+      pending: new PendingPurchasesStore(memStore, silentLogger),
     });
 
     const result = await orchestrator.purchase({ productId: 'premium_monthly' });
@@ -605,6 +608,7 @@ describe('PurchaseOrchestrator — defensive paths post-backend-success', () => 
         state.cachedAt = ts;
       },
       getAuthHeaders: async () => ({}),
+      pending: new PendingPurchasesStore(tracker, silentLogger),
     });
 
     const result = await orchestrator.purchase({ productId: 'premium_monthly' });
@@ -897,5 +901,53 @@ describe('PurchaseOrchestrator — appUserId pre-attach', () => {
         cause,
       });
     });
+  });
+});
+
+describe('PurchaseOrchestrator — isInFlight', () => {
+  /**
+   * The guard the whole double-settlement defence rests on: the
+   * transaction-update orchestrator asks this before settling a transaction
+   * the platform pushed, because StoreKit delivers the one `purchase()`
+   * produced to the update feed as well.
+   *
+   * Worth testing directly — the wiring in `createIAP` reads
+   * `orchestrator?.isInFlight(productId) ?? false`, and a wrong key or an
+   * inverted default would ship green.
+   */
+  it('reports true only while a purchase for that product is running', async () => {
+    const seen: Array<{ during: boolean; other: boolean }> = [];
+    const { orchestrator } = makeOrchestrator({
+      nativeAdapter: makeNativeAdapter({
+        purchaseProduct: async () => {
+          // Observed from inside the native call, i.e. mid-flight.
+          seen.push({
+            during: orchestrator.isInFlight('premium_monthly'),
+            other: orchestrator.isInFlight('remove_ads'),
+          });
+          return makeAppleTransaction('premium_monthly');
+        },
+      }),
+    });
+
+    expect(orchestrator.isInFlight('premium_monthly')).toBe(false);
+    await orchestrator.purchase({ productId: 'premium_monthly' });
+
+    expect(seen).toEqual([{ during: true, other: false }]);
+    // Cleared once the flow finishes, so a later renewal is not dropped.
+    expect(orchestrator.isInFlight('premium_monthly')).toBe(false);
+  });
+
+  it('clears the flag even when the purchase fails', async () => {
+    const { orchestrator } = makeOrchestrator({
+      nativeAdapter: makeNativeAdapter({
+        purchaseProduct: async () => {
+          throw new Error('store exploded');
+        },
+      }),
+    });
+
+    await orchestrator.purchase({ productId: 'premium_monthly' });
+    expect(orchestrator.isInFlight('premium_monthly')).toBe(false);
   });
 });

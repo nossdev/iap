@@ -17,6 +17,11 @@ interface EventMap<TEntitlement extends EntitlementBase = EntitlementBase> {
   'purchase-success':     { productId: string; transaction: VerifiedTransaction };
   'purchase-cancelled':   { productId: string };
   'purchase-pending':     { productId: string };
+  'purchase-pending-resolved': {
+    productId: string;
+    status: 'purchased' | 'cancelled';
+  };
+  'transaction-updated':  { productId: string; purchase: StorePurchase };
   'purchase-failed':      { productId: string; error: IAPError };
   'verification-failed':  { productId: string; error: IAPError };
   'restore-started':      undefined;

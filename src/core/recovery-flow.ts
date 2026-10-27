@@ -6,6 +6,8 @@ import { maskToken } from '../lib/redact.js';
 import type { EntitlementBase } from '../types/entitlement.js';
 import type { NativeTransaction } from '../types/transaction.js';
 import { type EntitlementCache, entitlementsEqual } from './entitlement-cache.js';
+import type { PendingPurchasesStore } from './pending-purchases.js';
+import { resolvePendingPurchase } from './resolve-pending.js';
 import type {
   UnfinishedTransaction,
   UnfinishedTransactionsStore,
@@ -36,6 +38,12 @@ interface RecoveryOrchestratorDeps<TEntitlement extends EntitlementBase> {
   backend: BackendAdapter<TEntitlement>;
   cache: EntitlementCache<TEntitlement>;
   unfinished: UnfinishedTransactionsStore;
+  /**
+   * Pending marks, so a purchase settled here clears the one it was
+   * announced under. Every settlement path has to, or a reconcile later
+   * reports `cancelled` for a purchase that succeeded.
+   */
+  pending: PendingPurchasesStore;
   emitter: TypedEventEmitter<TEntitlement>;
   logger: Logger;
   getCurrentEntitlements: () => TEntitlement[];
@@ -159,6 +167,56 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
     return { recovered, failures, droppedPermanent, inspected: entries.length };
   }
 
+  /**
+   * Verify, acknowledge and settle one transaction that arrived outside a
+   * `purchase()` call — a renewal, a refund, an Ask-to-Buy approval, a
+   * pending Play purchase that cleared.
+   *
+   * Routed through the same path recovery uses, deliberately: persisted
+   * before verification so app death cannot lose it, and left in the store
+   * to retry if anything fails. A second settlement path would be a second
+   * place for those to drift.
+   *
+   * **One invariant does not carry over, and it is worth being exact about.**
+   * On the iOS update feed the native plugin calls `transaction.finish()`
+   * *before* it notifies listeners, so by the time iap sees the transaction
+   * the platform has already finished it. "Acknowledged only after the
+   * backend confirms" therefore describes the purchase flow, not this path —
+   * iap has no say in the ordering here. The consequence is that persisting
+   * first matters *more*, not less: StoreKit will not redeliver a finished
+   * transaction, so the `unfinished` entry is the only remaining handle on
+   * it. Callers on that path pass `alreadyFinished`.
+   */
+  async settleTransaction(
+    tx: NativeTransaction,
+    opts: { persist?: boolean; alreadyFinished?: boolean } = {},
+  ): Promise<'settled' | 'failed' | 'dropped-permanent'> {
+    // At-least-once: persist before verifying, as the purchase flow does.
+    //
+    // `persist: false` is for a transaction there is nothing to recover from
+    // — a revocation, say. Those verify `valid:false` with a code no
+    // permanent-error list knows, so they would be retained and re-verified
+    // at every launch forever, eating the recovery batch that real entries
+    // need. The store has no age-based eviction to catch that.
+    if (opts.persist !== false) {
+      try {
+        await this.deps.unfinished.add(tx);
+      } catch (error) {
+        this.deps.logger.warn(
+          `Transaction update: failed to persist unfinished entry for "${tx.productId}"; verifying anyway.`,
+          error,
+        );
+      }
+    }
+
+    const result = await this.processTransaction(tx, opts);
+    if (result.kind === 'recovered') {
+      await this.applyEntitlements(result.entitlements);
+      return 'settled';
+    }
+    return result.kind === 'dropped-permanent' ? 'dropped-permanent' : 'failed';
+  }
+
   private async processEntry(
     entry: UnfinishedTransaction,
   ): Promise<
@@ -166,9 +224,19 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
     | { kind: 'failed' }
     | { kind: 'dropped-permanent' }
   > {
+    return this.processTransaction(entryToNativeTransaction(entry));
+  }
+
+  private async processTransaction(
+    tx: NativeTransaction,
+    opts: { alreadyFinished?: boolean } = {},
+  ): Promise<
+    | { kind: 'recovered'; entitlements: TEntitlement[] }
+    | { kind: 'failed' }
+    | { kind: 'dropped-permanent' }
+  > {
     const { nativeAdapter, unfinished, logger, emitter, permanentErrorCodes } = this.deps;
-    const tx = entryToNativeTransaction(entry);
-    const tokenLabel = maskToken(entry.token);
+    const tokenLabel = maskToken(tx.token);
 
     try {
       const response = await verifyNativeTransaction(this.deps.backend, tx);
@@ -176,7 +244,7 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
       if (!response.valid) {
         if (permanentErrorCodes.has(response.error)) {
           logger.info(
-            `Recovery: dropping permanently-invalid token=${tokenLabel} productId=${entry.productId} (${response.error}).`,
+            `Recovery: dropping permanently-invalid token=${tokenLabel} productId=${tx.productId} (${response.error}).`,
           );
 
           // Best-effort native ack — clears StoreKit's queue. Failure here
@@ -188,23 +256,23 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
             await nativeAdapter.acknowledge(tx);
           } catch (error) {
             logger.warn(
-              `Recovery: best-effort acknowledge() failed for productId=${entry.productId}; proceeding with removal anyway.`,
+              `Recovery: best-effort acknowledge() failed for productId=${tx.productId}; proceeding with removal anyway.`,
               error,
             );
           }
 
           try {
-            await unfinished.remove(entry.token);
+            await unfinished.remove(tx.token);
           } catch (error) {
             logger.warn(
-              `Recovery: unfinished.remove() failed for productId=${entry.productId} after permanent classification; will dedupe on next launch.`,
+              `Recovery: unfinished.remove() failed for productId=${tx.productId} after permanent classification; will dedupe on next launch.`,
               error,
             );
           }
 
           emitter.emit('recovery-dropped-permanent', {
-            productId: entry.productId,
-            token: entry.token,
+            productId: tx.productId,
+            token: tx.token,
             error: response.error,
             ...(response.message !== undefined ? { message: response.message } : {}),
           });
@@ -213,7 +281,7 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
         }
 
         logger.debug(
-          `Recovery: backend rejected token=${tokenLabel} productId=${entry.productId} (${response.error}); leaving in list for retry.`,
+          `Recovery: backend rejected token=${tokenLabel} productId=${tx.productId} (${response.error}); leaving in list for retry.`,
         );
         return { kind: 'failed' };
       }
@@ -222,11 +290,25 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
       try {
         await nativeAdapter.acknowledge(tx);
       } catch (error) {
-        logger.warn(
-          `Recovery: acknowledge() failed for productId=${entry.productId}; entry retained for next launch.`,
-          error,
-        );
-        return { kind: 'failed' };
+        // …unless the platform already finished it, which is the case for a
+        // transaction off the iOS update feed. There the plugin finishes
+        // before notifying, and `acknowledgePurchase` then looks the
+        // transaction up in `Transaction.all` and rejects with "not found or
+        // already finished" — which `Transaction.all` guarantees for a
+        // finished consumable. Treating that as a failure would retain the
+        // entry forever and never resolve a pending purchase that in fact
+        // completed.
+        if (opts.alreadyFinished) {
+          logger.debug(
+            `Recovery: acknowledge() failed for productId=${tx.productId}, but the platform had already finished it; treating as settled.`,
+          );
+        } else {
+          logger.warn(
+            `Recovery: acknowledge() failed for productId=${tx.productId}; entry retained for next launch.`,
+            error,
+          );
+          return { kind: 'failed' };
+        }
       }
 
       // Remove from unfinished. A failure here is logged but treated as
@@ -234,18 +316,23 @@ export class RecoveryOrchestrator<TEntitlement extends EntitlementBase = Entitle
       // happens, and the next recovery's idempotent verify will be a
       // no-op (token already verified by backend).
       try {
-        await unfinished.remove(entry.token);
+        await unfinished.remove(tx.token);
       } catch (error) {
         logger.warn(
-          `Recovery: unfinished.remove() failed for productId=${entry.productId}; will dedupe on next launch.`,
+          `Recovery: unfinished.remove() failed for productId=${tx.productId}; will dedupe on next launch.`,
           error,
         );
       }
 
+      // Settled, so a pending mark announced for this product is over.
+      // Done here rather than in the caller so recovery at launch, the
+      // update listener and reconciliation all get it.
+      await resolvePendingPurchase(this.deps, tx.productId, 'purchased');
+
       return { kind: 'recovered', entitlements: response.entitlements };
     } catch (error) {
       logger.warn(
-        `Recovery: verify failed for productId=${entry.productId}; will retry next launch.`,
+        `Recovery: verify failed for productId=${tx.productId}; will retry next launch.`,
         error,
       );
       return { kind: 'failed' };
