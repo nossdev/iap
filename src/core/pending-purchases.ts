@@ -15,7 +15,10 @@ const STORE_KEY = 'pending_purchases';
  */
 const pendingEntrySchema = z.union([
   z.object({ productId: z.string().min(1), recordedAt: z.string().min(1) }),
-  z.string().min(1).transform((productId) => ({ productId, recordedAt: '' })),
+  z
+    .string()
+    .min(1)
+    .transform((productId) => ({ productId, recordedAt: '' })),
 ]);
 
 const pendingListSchema = z.array(pendingEntrySchema);
