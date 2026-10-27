@@ -52,6 +52,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   the purchase, and a restore brings the entitlement back, which is correct because the user
   paid.
 
+  Every key comes from one registry, so a store added in a later version cannot quietly survive
+  a wipe, and each is removed **by name** as well as through its store — the Preferences adapter
+  can only clear keys it has seen this session, so clearing the namespace alone is a no-op on a
+  fresh launch.
+
+  It throws `ALREADY_IN_PROGRESS` (as `recoverable`) while a `purchase()` is in flight: that
+  purchase's unfinished-transaction record is written before verification precisely so it
+  survives a crash, and deleting it mid-flight would leave a purchase neither acknowledged nor
+  tracked — which Google auto-refunds after three days. Await the purchase, then reset. After
+  `destroy()` it still wipes and does not throw; that is the safest moment, since no
+  orchestrator is left to re-persist.
+
+- **`verification.appUserId` accepts a getter**, `string | (() => string | null)`, read at the
+  time of each check so the binding follows the session. A fixed string is captured at
+  `createIAP()` time, so in a multi-user app it is the previous user's after a login change and
+  every purchase made afterwards is refused as a mismatch, with no recovery short of rebuilding
+  the instance.
+
+  A getter returning `null` means "nobody is signed in", which is **not** the same as using no
+  binding: purchases and restores are refused (`BINDING_UNAVAILABLE`) rather than falling back
+  to an unguarded check, since the alternative is accepting a purchase bound to someone else. A
+  refresh in that state keeps the current entitlements instead of revoking them — a multi-user
+  app restores its session asynchronously, and "I cannot tell you" must never read as "you own
+  nothing".
+
+- **`LocalVerificationError` gains `BINDING_UNAVAILABLE`.** Additive, but it widens a public
+  union, so an exhaustive `switch` over it will need the new arm.
+
 - **`BackendAdapter.verifyNative`**, optional. An adapter that can answer from the whole
   transaction gets it whole, rather than the extracted `{ productId, token, type }` the HTTP
   contract sends — an on-device check needs the binding, the subscription state and the expiry,

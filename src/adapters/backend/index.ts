@@ -49,7 +49,12 @@ export function selectBackendAdapter<TEntitlement extends EntitlementBase = Enti
       entitlements: verification.entitlements as (
         purchase: LocallyVerifiedPurchase,
       ) => TEntitlement[],
-      getAppUserId: () => verification.appUserId ?? null,
+      // Passed only when the app actually binds purchases: the adapter
+      // reads "no resolver" as "no binding required", and a resolver
+      // returning null as "required, but nobody is signed in".
+      ...(verification.appUserId === undefined
+        ? {}
+        : { getAppUserId: resolveAppUserId(verification.appUserId) }),
       getCurrentEntitlements: () => (options.getCurrentEntitlements?.() ?? []) as TEntitlement[],
       graceMs: iapConfig.options.entitlementGraceMs,
       logger,
@@ -96,6 +101,17 @@ export function selectBackendAdapter<TEntitlement extends EntitlementBase = Enti
     logger,
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
   });
+}
+
+/**
+ * Normalise `verification.appUserId`'s two forms into one resolver.
+ *
+ * The function form exists so the binding can follow the session — a fixed
+ * string is captured at `createIAP()` time and is the previous user's after
+ * a login change, which refuses every purchase made afterwards.
+ */
+function resolveAppUserId(appUserId: string | (() => string | null)): () => string | null {
+  return typeof appUserId === 'function' ? appUserId : () => appUserId;
 }
 
 export { HttpBackendAdapter } from './http-adapter.js';

@@ -271,7 +271,18 @@ Two things it is not:
 - **Not `destroy()`.** That tears the instance down and deliberately *keeps* the cache, so a new instance sees the user's entitlements immediately. `reset()` is the opposite — the instance stays usable, and a `refresh()` repopulates from the verification source.
 - **Not a revocation.** The store still owns the purchase, because the user paid for it, and a restore will bring the entitlement back.
 
-Best-effort and non-throwing. Emits `entitlements-changed` carrying the real previous list, unless there was nothing to remove.
+Best-effort on storage: a failure to clear one key is logged and the rest is still cleared. Emits
+`entitlements-changed` carrying the real previous list, unless there was nothing to remove.
+
+It throws in one case: `ALREADY_IN_PROGRESS`, while a `purchase()` is in flight. The
+unfinished-transaction record is written *before* verification precisely so a purchase survives a
+crash, and deleting it mid-flight would leave a purchase neither acknowledged nor tracked — which
+Google auto-refunds after three days. The error is `recoverable`: await the purchase, then reset.
+
+After `destroy()` it still wipes, and does not throw. That is the safest moment to do it — the
+orchestrators are gone, so nothing can re-persist — and a teardown racing a "delete my data" tap
+is a real sequence. `destroy()` deliberately leaves the cache on disk, so returning early would
+leave it there while telling the caller their data was gone.
 
 ## `on(event, handler)`
 

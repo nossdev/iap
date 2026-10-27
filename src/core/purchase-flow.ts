@@ -106,6 +106,26 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
     return this.inFlight.has(productId);
   }
 
+  /**
+   * The products currently being purchased.
+   *
+   * Read by `reset()`, which refuses to run while one is in flight. The
+   * reason is the unfinished-transaction entry, not the cache: that entry is
+   * written *before* verification precisely so a purchase survives a crash,
+   * and deleting it mid-flight leaves a purchase that is neither
+   * acknowledged nor tracked — which Play auto-refunds in three days. The
+   * cache coming back is harmless by comparison, since `reset()` is not a
+   * revocation.
+   *
+   * Marked from the moment the purchase is committed to running, before any
+   * consumer-supplied `appUserId` fetcher is awaited — that await is a
+   * network round-trip, and a window in which this said "nothing in flight"
+   * while a purchase was already under way.
+   */
+  inFlightProducts(): string[] {
+    return [...this.inFlight];
+  }
+
   constructor(private readonly deps: PurchaseOrchestratorDeps<TEntitlement>) {}
 
   async purchase(opts: PurchaseOptions): Promise<PurchaseResult<TEntitlement>> {
@@ -124,28 +144,36 @@ export class PurchaseOrchestrator<TEntitlement extends EntitlementBase = Entitle
       });
     }
 
-    // Resolve and validate appUserId BEFORE marking inFlight or emitting
-    // purchase-started — these throws are pre-flight (caller bug or
-    // backend-fetcher failure), not purchase outcomes. They surface
-    // synchronously to the awaiter without polluting the event stream.
-    //
-    // For function-form fetchers, eagerly resolve `getAuthHeaders()` so
-    // we can pass it via ctx. String-form supplies skip the await. The
-    // ctx is always populated (with `{}` when no headers are wired) so
-    // fetchers that destructure `({ authHeaders })` never see undefined.
-    let resolvedAppUserId: string | undefined;
-    if (appUserId !== undefined) {
-      const ctx: AppUserIdFetcherContext =
-        typeof appUserId === 'function'
-          ? { authHeaders: await this.deps.getAuthHeaders() }
-          : { authHeaders: {} };
-      resolvedAppUserId = await resolveAppUserId(appUserId, ctx);
-    }
-
+    // In flight from here, before the appUserId resolution below. That
+    // resolution awaits consumer code — typically an HTTP call — and
+    // marking only after it left a window the length of a network
+    // round-trip in which `isInFlight`/`inFlightProducts` reported nothing
+    // while the purchase was already committed. `reset()` could wipe the
+    // unfinished queue in that window, and a second tap could open a
+    // second native sheet.
     this.inFlight.add(productId);
-    this.deps.emitter.emit('purchase-started', { productId });
 
     try {
+      // Resolve and validate appUserId BEFORE emitting purchase-started —
+      // these throws are pre-flight (caller bug or backend-fetcher
+      // failure), not purchase outcomes. They surface synchronously to the
+      // awaiter without polluting the event stream.
+      //
+      // For function-form fetchers, eagerly resolve `getAuthHeaders()` so
+      // we can pass it via ctx. String-form supplies skip the await. The
+      // ctx is always populated (with `{}` when no headers are wired) so
+      // fetchers that destructure `({ authHeaders })` never see undefined.
+      let resolvedAppUserId: string | undefined;
+      if (appUserId !== undefined) {
+        const ctx: AppUserIdFetcherContext =
+          typeof appUserId === 'function'
+            ? { authHeaders: await this.deps.getAuthHeaders() }
+            : { authHeaders: {} };
+        resolvedAppUserId = await resolveAppUserId(appUserId, ctx);
+      }
+
+      this.deps.emitter.emit('purchase-started', { productId });
+
       return await this.runFlow(product, resolvedAppUserId);
     } finally {
       this.inFlight.delete(productId);

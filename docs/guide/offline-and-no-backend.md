@@ -23,7 +23,8 @@ const iap = createIAP({
       { key: 'household', productId: purchase.productId, expiresAt: purchase.expiresAt },
     ],
     // Optional: every purchase must carry this binding, or it is refused.
-    appUserId: householdBinding,
+    // A function, so it follows the session — see below.
+    appUserId: () => session.householdId,
   },
 });
 ```
@@ -61,6 +62,41 @@ transaction the store reports as revoked. On iOS a refund *is* such a signal
 (`Transaction.all` keeps revoked transactions, and iap refuses them); on Android a refunded
 purchase simply disappears, which is indistinguishable from the failure above — so refund
 detection there needs the server API.
+:::
+
+### Binding purchases to an account
+
+`verification.appUserId` is the binding every purchase must carry, matching
+`purchase({ appUserId })`. It takes either the id or a **function returning it**, and the
+function form is the one to reach for in any app where the signed-in user can change:
+
+```typescript
+verification: {
+  mode: 'local',
+  entitlements: entitlementsFor,
+  // Read at the time of each check.
+  appUserId: () => session.householdId,
+}
+```
+
+A fixed string is captured at `createIAP()` time and cannot track a login change. After a
+switch it is still the previous user's, so every purchase made afterwards is refused as a
+mismatch — and the only recovery is to tear the instance down and build a new one.
+
+::: warning Returning `null` is not the same as omitting it
+`null` means "nobody is signed in right now". iap then **refuses** purchases and restores
+(`BINDING_UNAVAILABLE`) rather than falling back to an unguarded check: treating a signed-out
+session as "this app uses no binding" would accept a purchase bound to *someone else*, silently,
+which is the one failure a binding exists to prevent. The purchase stays unacknowledged, so the
+store keeps it and it is retried once someone is signed in.
+
+A **refresh** in that state is the exception: it keeps the current entitlements rather than
+revoking them. A multi-user app restores its session asynchronously, so a refresh can land while
+the binding is unresolved, and "I cannot tell you" must never read as "you own nothing" — the
+same asymmetry that governs [an empty answer from the store](#no-backend-at-all).
+
+Omit `appUserId` entirely if the app does not bind purchases. A getter that throws is treated
+exactly like one returning `null`.
 :::
 
 ### What the device can actually check
@@ -199,4 +235,12 @@ Two things it is not:
 - **Not a revocation.** The store still owns the purchase, because the user paid for it, and a
   restore will bring the entitlement back. `reset()` erases iap's record, not the store's.
 
-It is best-effort and never throws: a storage failure is logged and the rest is still cleared.
+Best-effort on storage: a failure to clear one key is logged and the rest is still cleared.
+
+Two cases where it does not simply wipe:
+
+- **A purchase in flight** throws `ALREADY_IN_PROGRESS`. That purchase would re-populate the
+  state and re-persist the cache moments after the wipe, and leave its unfinished entry behind
+  — so the erase would look like it had silently failed. Await the purchase, then reset.
+- **After `destroy()`** it does nothing, rather than erroring. A teardown racing a "delete my
+  data" tap is a real sequence, not a programming mistake.

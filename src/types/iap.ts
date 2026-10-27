@@ -147,9 +147,17 @@ export interface IAP<TEntitlement extends EntitlementBase = EntitlementBase> {
    * the instance stays usable and a `refresh()` will repopulate from the
    * verification source.
    *
-   * Best-effort and non-throwing: a storage failure is logged, and the rest
-   * is still cleared. Emits `entitlements-changed` with an empty list, so a
-   * reactive UI follows.
+   * Best-effort on storage: a failure to clear one key is logged and the
+   * rest is still cleared. Emits `entitlements-changed` with an empty list,
+   * so a reactive UI follows.
+   *
+   * Throws `ALREADY_IN_PROGRESS` if a `purchase()` is in flight. That
+   * purchase would re-populate the state and re-persist the cache moments
+   * after the wipe, and leave its unfinished entry behind, so the erase
+   * would look like it had silently failed. Await the purchase, then reset.
+   *
+   * A no-op after `destroy()`, rather than an error: a teardown racing a
+   * "delete my data" tap is a real sequence, not a programming mistake.
    *
    * It does **not** revoke the purchase. The store still owns it, and a
    * restore will bring the entitlement back — which is correct: the user

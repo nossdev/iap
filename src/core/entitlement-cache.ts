@@ -4,8 +4,9 @@ import type { Logger } from '../lib/logger.js';
 import { entitlementBaseSchema } from '../types/entitlement.js';
 import type { EntitlementBase } from '../types/entitlement.js';
 import { isExpired } from './local-verification.js';
+import { IAP_STORAGE_KEYS } from './storage-keys.js';
 
-const ENTITLEMENTS_KEY = 'entitlements';
+const ENTITLEMENTS_KEY = IAP_STORAGE_KEYS.entitlements;
 
 interface CacheEnvelope<T> {
   entitlements: T[];

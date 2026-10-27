@@ -26,6 +26,14 @@ export type PurchaseAssurance = 'store-signed' | 'store-reported';
 export type LocalVerificationError =
   | 'PRODUCT_NOT_CONFIGURED'
   | 'BINDING_MISMATCH'
+  /**
+   * The app binds purchases to an account, and there is no account to bind
+   * to right now — a signed-out session, or a `verification.appUserId`
+   * getter that threw. Raised by `LocalVerificationAdapter`, never by
+   * {@link verifyPurchaseOnDevice}, which is told the binding rather than
+   * resolving it.
+   */
+  | 'BINDING_UNAVAILABLE'
   | 'NOT_PURCHASED'
   | 'REVOKED'
   | 'SUBSCRIPTION_EXPIRED';

@@ -157,7 +157,10 @@ running with no backend at all.
   test on every build](/guide/native-layer#privacy-no-device-identifiers).
 - **No generated user id.** iap never invents an `appUserId`; the only user-scoped value that
   crosses the bridge is one you passed to `purchase()`.
-- **Erasable.** `iap.reset()` wipes everything iap stored on the device.
+- **Erasable.** `iap.reset()` wipes everything iap stored on the device — every key, from one
+  registry, so a store added in a later version cannot quietly survive it. It still wipes after
+  `destroy()`; it refuses only while a `purchase()` is in flight, whose unfinished-transaction
+  record is the one thing a wipe must not take.
 
 Running with no backend at all? See [Offline and no-backend
 use](/guide/offline-and-no-backend), which also covers what the device can and cannot

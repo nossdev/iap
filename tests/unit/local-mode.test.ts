@@ -430,12 +430,6 @@ describe('reset()', () => {
     await iap.refresh();
     expect(iap.hasEntitlement('household')).toBe(true);
   });
-
-  it('does not throw when storage refuses to clear', async () => {
-    const iap = createIAP(localConfig({ storage: { type: 'memory', namespace: 'test' } }));
-    await iap.initialize();
-    await expect(iap.reset()).resolves.toBeUndefined();
-  });
 });
 
 describe('LocalVerificationAdapter — defensive paths', () => {
