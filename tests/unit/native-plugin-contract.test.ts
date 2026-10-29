@@ -297,12 +297,64 @@ describe('@capgo/native-purchases — the surface the docs page describes', () =
   });
 
   /**
-   * `INTRO_ELIGIBILITY_STATUS` is declared but no signature uses it, so
-   * matching the word anywhere would false-fail. Match the method form:
-   * any declaration whose name mentions eligibility.
+   * Eligibility arrives as a **field on the product**, not as a query you
+   * can ask about an arbitrary product: `introEligibility` is whatever was
+   * true when `getProducts()` ran. So this matches the method form — any
+   * declaration whose name mentions eligibility — and not the word
+   * anywhere, which the field and its enum would now trip.
+   *
+   * It matters because the two have different semantics for a paywall: a
+   * query could be re-asked after a refund, while a field has to be
+   * re-fetched, which is what `Product.introductoryOfferEligible` documents.
    */
-  it('still exposes no intro-offer eligibility query', () => {
+  it('still exposes no intro-offer eligibility query, only the field', () => {
     expect(definitions).not.toMatch(/^\s*\w*eligib\w*\s*\(/im);
+    expect(definitions).toContain('readonly introEligibility?: INTRO_ELIGIBILITY_STATUS;');
+  });
+
+  /**
+   * The numbering `normalize-product.ts` maps from.
+   *
+   * It hardcodes 1 and 2 rather than importing the enum, because importing
+   * it would pull the plugin into the module graph for three integers. That
+   * trade is only safe while these numbers hold: renumbered, iap would map
+   * eligible to ineligible and hide a trial from someone entitled to it,
+   * silently and on every iOS paywall. So the numbers are read out of the
+   * installed package here instead.
+   */
+  it('still numbers INTRO_ELIGIBILITY_STATUS unknown 0, ineligible 1, eligible 2', () => {
+    const start = definitions.indexOf('export declare enum INTRO_ELIGIBILITY_STATUS');
+    expect(start).toBeGreaterThan(-1);
+    const body = definitions.slice(start, definitions.indexOf('}', start));
+    expect(body).toMatch(/INTRO_ELIGIBILITY_STATUS_UNKNOWN\s*=\s*0/);
+    expect(body).toMatch(/INTRO_ELIGIBILITY_STATUS_INELIGIBLE\s*=\s*1/);
+    expect(body).toMatch(/INTRO_ELIGIBILITY_STATUS_ELIGIBLE\s*=\s*2/);
+  });
+
+  /**
+   * And that the iOS side actually fills it, which the declaration alone
+   * does not promise.
+   *
+   * This plugin has shipped a declared-but-unread option before — the
+   * subscription `offerToken`, read only on the one-time path — so a field
+   * iap now reports to consumers is checked against the Swift that sets it,
+   * including the hop that matters: `getProducts()` must call
+   * `pluginDictionary()`, since `dictionary` alone carries no eligibility.
+   */
+  it('still fills introEligibility from StoreKit, through the dictionary getProducts uses', () => {
+    const mapper = sourceNamed('NativePurchasesLog.swift');
+    const product = sourceNamed('Product+CapacitorPurchasesPlugin.swift');
+    const plugin = sourceNamed('NativePurchasesPlugin.swift');
+
+    // StoreKit's own answer reaches the mapper, which emits 2/1/0.
+    expect(product).toContain('isEligibleForIntroOffer');
+    expect(product).toContain('product["introEligibility"] = IntroEligibilityMapper.status');
+    expect(mapper).toContain('enum IntroEligibilityMapper');
+    expect(mapper).toMatch(/isEligibleForIntroOffer\s*\?\s*2\s*:\s*1/);
+
+    // And the payload it is set on is the one the plugin returns.
+    expect(product).toContain('func pluginDictionary() async');
+    expect(plugin).toContain('await product.pluginDictionary()');
   });
 
   /**

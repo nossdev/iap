@@ -115,18 +115,52 @@ export interface Product {
   /**
    * The introductory offer on this subscription, or `null` when it has none.
    *
-   * **Whether *this user* is eligible for it cannot be known on the device.**
-   * The native plugin exposes no eligibility query on either platform, so an
-   * offer being present here means "this product has one", not "this user
-   * will get it". The store's own purchase sheet applies eligibility at
-   * purchase time and is the authority. Write paywall copy that reads
-   * correctly either way, or confirm eligibility server-side.
+   * An offer here means **this product has one**, which is not the same as
+   * *this user* getting it. On iOS
+   * {@link Product.introductoryOfferEligible} answers that; on Android
+   * nothing on the device does. Either way the store's own purchase sheet
+   * applies eligibility at purchase time and is the authority on what is
+   * charged.
    */
   introductoryOffer?: SubscriptionOffer | null;
 
   /**
+   * Whether *this store account* is eligible for
+   * {@link Product.introductoryOffer}, or `null` when the device cannot say.
+   *
+   * **iOS only**, from StoreKit's `isEligibleForIntroOffer`. StoreKit
+   * answers per account and per **subscription group**, not per product, so
+   * every product sharing a {@link Product.subscriptionGroupId} reports the
+   * same value: taking any introductory offer in a group spends it for all
+   * of them.
+   *
+   * `null` means "unknown", and three different things produce it:
+   * - **Android, always.** Play has no equivalent query on the phone. It
+   *   filters offers the account cannot take out of what it returns
+   *   instead, so an offer you can see is usually one you can take — but
+   *   that is the store's filtering, not an answer, and not a promise.
+   * - This product has no introductory offer, so there is nothing to be
+   *   eligible for.
+   * - iOS had an offer but StoreKit did not answer.
+   *
+   * It is a **snapshot**, read when the product was fetched. A refund, or a
+   * purchase on another device, changes the answer — and `getProducts()` is
+   * what re-reads it. So treat it as "what the paywall should show now",
+   * never as a decision already made: the purchase sheet still applies
+   * eligibility itself, and a `false` here with `true` there costs you a
+   * sale, while the reverse charges full price under trial copy.
+   */
+  introductoryOfferEligible?: boolean | null;
+
+  /**
    * Promotional and win-back offers on this subscription. Empty when there
-   * are none. Same eligibility caveat as {@link Product.introductoryOffer}.
+   * are none.
+   *
+   * **Whether this account can take one is not knowable on the device, on
+   * either platform.** {@link Product.introductoryOfferEligible} answers
+   * only for the *introductory* offer: StoreKit has no equivalent query for
+   * promotional or win-back offers, and Play has none for anything. The
+   * purchase sheet decides.
    *
    * **On Android, do not render these as the offer's own terms.** The
    * native plugin builds each promotional entry from the base plan's

@@ -62,6 +62,8 @@ interface Product {
   subscriptionGroupId?: string | null;
   /** The introductory offer, or null when there is none. */
   introductoryOffer?: SubscriptionOffer | null;
+  /** Eligible for the introductory offer? iOS only; null when unknown. */
+  introductoryOfferEligible?: boolean | null;
   /** Promotional and win-back offers. Empty when there are none. */
   promotionalOffers?: SubscriptionOffer[];
   /** Android: Play's offer token and offer id, for identification only. */
@@ -103,10 +105,14 @@ interface SubscriptionOffer {
 
 Build paywall copy from these fields rather than hardcoding — `priceString` is the store's own localized string, in the store's currency and format.
 
-::: warning Eligibility cannot be determined on the device
-An offer appearing here means **this product has one**, not **this user will get it**. The native plugin exposes no eligibility query on either platform (see [The native layer](/guide/native-layer#what-the-plugin-does-not-expose)), so iap cannot tell you whether the current user qualifies.
+::: warning Eligibility: iOS answers for the introductory offer, nothing else does
+An offer appearing here means **this product has one**, which is not the same as **this user getting it**.
 
-The store's own purchase sheet applies eligibility at purchase time and is the authority. Write copy that reads correctly either way — "7-day free trial for new subscribers" rather than "your 7 days free" — or confirm eligibility server-side.
+`Product.introductoryOfferEligible` answers it for the **introductory** offer on **iOS**, from StoreKit's `isEligibleForIntroOffer`: `true`, `false`, or `null` when the device cannot say. StoreKit answers per account and per *subscription group*, so every product in one group reports the same value — taking any introductory offer in a group spends it for all of them.
+
+It is `null` everywhere else: always on Android, which has no such query on the phone (Play filters offers the account cannot take out of what it returns, which helps but is not an answer); for a product with no introductory offer; and when StoreKit did not say. `promotionalOffers` has no eligibility signal on either platform. See [The native layer](/guide/native-layer#what-the-plugin-does-not-expose).
+
+Treat `true` as what the paywall should show *now*, not as a decision made: it is a snapshot from when `getProducts()` ran, and a refund or a purchase on another device changes it. The store's own purchase sheet applies eligibility at purchase time and remains the authority on what is charged. Where the answer is `null`, write copy that reads correctly either way — "7-day free trial for new subscribers" rather than "your 7 days free" — or confirm eligibility server-side.
 :::
 
 ## `ConfiguredProduct`

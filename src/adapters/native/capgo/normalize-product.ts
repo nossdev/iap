@@ -33,6 +33,34 @@ type DeliveredProduct = Omit<
 };
 
 /**
+ * capgo's `INTRO_ELIGIBILITY_STATUS`, by value rather than by import.
+ *
+ * The enum is a runtime object, and importing it would make this module
+ * `import` the plugin for three integers — on web, where the plugin is a
+ * proxy that implements nothing, and in every consumer's bundle. The numbers
+ * are pinned instead by `tests/unit/native-plugin-contract.test.ts`, which
+ * reads them out of the installed package: if capgo renumbers them, that
+ * fails rather than this silently mapping eligible to ineligible.
+ */
+const INTRO_ELIGIBILITY_INELIGIBLE = 1;
+const INTRO_ELIGIBILITY_ELIGIBLE = 2;
+
+/**
+ * capgo's `introEligibility` as a tri-state.
+ *
+ * Anything that is not a clear yes or no becomes `null`, deliberately: the
+ * status is `0` both for "this product has no introductory offer" and for
+ * "StoreKit did not answer", Android always sends `0`, and an older plugin
+ * sends nothing at all. None of those is a `false` — reporting one as
+ * ineligible would hide an offer the account can actually take.
+ */
+function toEligibility(status: number | undefined): boolean | null {
+  if (status === INTRO_ELIGIBILITY_ELIGIBLE) return true;
+  if (status === INTRO_ELIGIBILITY_INELIGIBLE) return false;
+  return null;
+}
+
+/**
  * Match the plugin's product payloads back to what the consumer asked for,
  * and return one {@link Product} per request.
  *
@@ -145,6 +173,7 @@ function normalizeProduct(raw: PluginProduct, request: { id: string; type: Produ
     // capgo sends "" rather than null for a product with no group.
     subscriptionGroupId: p.subscriptionGroupIdentifier || null,
     introductoryOffer: p.introductoryPrice ? normalizeOffer(p.introductoryPrice) : null,
+    introductoryOfferEligible: toEligibility(p.introEligibility),
     promotionalOffers: (p.discounts ?? []).map(normalizeOffer),
     androidOfferToken: p.offerToken ?? null,
     androidOfferId: p.offerId ?? null,

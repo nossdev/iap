@@ -319,6 +319,82 @@ describe('CapgoNativeAdapter.getProducts — subscription offers', () => {
   });
 });
 
+describe('CapgoNativeAdapter.getProducts — introductory offer eligibility', () => {
+  const subscription = (introEligibility?: number) => ({
+    identifier: 'premium',
+    title: 'Premium',
+    description: 'All features',
+    price: 4.99,
+    priceString: '$4.99',
+    currencyCode: 'USD',
+    subscriptionGroupIdentifier: 'group-1',
+    subscriptionPeriod: period(1, 'month', 2),
+    introductoryPrice: {
+      identifier: 'intro',
+      type: 0,
+      price: 0,
+      priceString: '$0.00',
+      currencyCode: 'USD',
+      paymentMode: 0,
+      numberOfPeriods: 1,
+      subscriptionPeriod: period(1, 'week', 1),
+    },
+    discounts: [],
+    ...(introEligibility === undefined ? {} : { introEligibility }),
+  });
+
+  /**
+   * capgo's `INTRO_ELIGIBILITY_STATUS` is 0 unknown, 1 ineligible, 2
+   * eligible, and only the last two are answers. `0` is what its iOS side
+   * sends both for "no introductory offer" and for "StoreKit did not say",
+   * and its Android side sends `0` unconditionally — so mapping `0` to
+   * `false` would hide an offer the account can take.
+   */
+  it.each([
+    [2, true],
+    [1, false],
+    [0, null],
+  ])('maps introEligibility %i to %s', async (status, expected) => {
+    nativePurchasesMock.getProducts.mockResolvedValue({ products: [subscription(status)] });
+
+    const [product] = await adapter.getProducts([{ id: 'premium', type: 'subscription' }]);
+    expect(product?.introductoryOfferEligible).toBe(expected);
+  });
+
+  /** An older plugin sends no such field; absent is unknown, not ineligible. */
+  it('maps a missing introEligibility to null', async () => {
+    nativePurchasesMock.getProducts.mockResolvedValue({ products: [subscription()] });
+
+    const [product] = await adapter.getProducts([{ id: 'premium', type: 'subscription' }]);
+    expect(product?.introductoryOfferEligible).toBeNull();
+  });
+
+  /**
+   * Not a platform branch in iap: Android reports `0` from the native side,
+   * and `0` already maps to null. Pinned because the *docs* promise null on
+   * Android, and that promise rests on capgo's Android mapper rather than on
+   * anything here.
+   */
+  it('reports null on Android, which has no eligibility query', async () => {
+    mockedPlatform = 'android';
+    nativePurchasesMock.getProducts.mockResolvedValue({ products: [subscription(0)] });
+
+    const [product] = await adapter.getProducts([{ id: 'premium', type: 'subscription' }]);
+    expect(product?.introductoryOfferEligible).toBeNull();
+  });
+
+  /** A product with no introductory offer has nothing to be eligible for. */
+  it('reports null for a product with no introductory offer', async () => {
+    nativePurchasesMock.getProducts.mockResolvedValue({
+      products: [{ ...subscription(0), introductoryPrice: null }],
+    });
+
+    const [product] = await adapter.getProducts([{ id: 'premium', type: 'subscription' }]);
+    expect(product?.introductoryOffer).toBeNull();
+    expect(product?.introductoryOfferEligible).toBeNull();
+  });
+});
+
 describe('CapgoNativeAdapter — the purchase reference', () => {
   it('reads originalTransactionId out of the iOS JWS payload', async () => {
     nativePurchasesMock.purchaseProduct.mockResolvedValue({

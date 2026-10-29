@@ -123,7 +123,7 @@ if (offer?.payment === 'free-trial' && offer.period) {
 ```
 
 ::: warning Do not promise an offer to a specific user
-An offer here means **this product has one**, not **this user will get it** — eligibility cannot be read on the device on either platform. Phrase copy so it is true either way ("7-day free trial for new subscribers"). On Android, also do not render `promotionalOffers` terms. Both caveats in full: [`SubscriptionOffer`](/api/types#subscriptionoffer).
+An offer here means **this product has one**, not **this user will get it**. On iOS, `introductoryOfferEligible` answers that for the *introductory* offer (`true`/`false`, or `null` when the store did not say); on Android it is always `null`, and no promotional or win-back offer has an answer on either platform. Where it is `null`, phrase copy so it is true either way ("7-day free trial for new subscribers"). On Android, also do not render `promotionalOffers` terms. All of it in full: [`SubscriptionOffer`](/api/types#subscriptionoffer).
 :::
 
 ## 4. Buy something

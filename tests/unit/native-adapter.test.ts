@@ -199,6 +199,7 @@ describe('CapgoNativeAdapter', () => {
       subscriptionPeriod: null,
       subscriptionGroupId: null,
       introductoryOffer: null,
+      introductoryOfferEligible: null,
       promotionalOffers: [],
       androidOfferToken: null,
       androidOfferId: null,

@@ -5,6 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- **`Product.introductoryOfferEligible`** — whether *this store account* can take the
+  product's introductory offer. `true`/`false` on iOS, from StoreKit's
+  `isEligibleForIntroOffer` by way of capgo's `introEligibility` (added in capgo 8.8.3);
+  `null` on Android, and `null` on iOS when the product has no introductory offer or StoreKit
+  did not answer.
+
+  This closes a gap iap's own docs called permanent: `introductoryOffer` said eligibility
+  "cannot be known on the device", which was true of capgo before 8.8.3 and has since not
+  been. A paywall could only write copy that read correctly either way — "free for new
+  subscribers" — and an account that had already used its trial was still shown the offer.
+
+  Three things worth knowing before using it. StoreKit answers per **subscription group**, not
+  per product, so every product sharing a `subscriptionGroupId` reports the same value: taking
+  any introductory offer in a group spends it for all of them. `null` is "unknown" and never
+  "ineligible" — mapping Android's unconditional `0` to `false` would hide an offer the account
+  can take. And it is a **snapshot** from when `getProducts()` ran: a refund or a purchase on
+  another device changes the answer, and the store's purchase sheet still applies eligibility
+  itself at purchase time.
+
+  Three contract tests pin what this rests on, since the mapping hardcodes capgo's enum
+  numbering rather than importing the enum: that the numbers are still 0/1/2, that the field is
+  still declared, and that the iOS source still fills it *through the payload `getProducts()`
+  actually returns* — this plugin has shipped a declared-but-unread option before.
+
 ### Fixed
 
 - **Corrected what omitting `androidOfferToken` actually does.** 8.3.0's own note above says
