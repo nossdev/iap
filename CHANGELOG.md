@@ -3,6 +3,29 @@
 All notable changes to `@nosslabs/iap` will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Corrected what omitting `androidOfferToken` actually does.** 8.3.0's own note above says
+  "the native layer takes the first unless told which". That is wrong for the case a caller is
+  most likely to hit, and the claim came from reading the plugin's TypeScript rather than its
+  Java.
+
+  The plugin sets the first offer in the list **only** when the product has no
+  backward-compatible purchase option. While it has one — Play treats the offer *created* first
+  in Play Console as that — `setOfferToken` is never called at all and Play applies that offer
+  itself. So the default lands on creation order in Play Console, not on the order
+  `getProducts()` returned, and a consumer who believed the first entry of
+  `Product.androidOneTimeOffers` was the default could display one price while the store charged
+  another. The same correction was accepted upstream in
+  [Cap-go/capacitor-native-purchases#242](https://github.com/Cap-go/capacitor-native-purchases/pull/242).
+
+  `PurchaseOptions.androidOfferToken` and the native-layer guide now state both branches and say
+  to pass the token whenever the offer matters. A contract test pins the behaviour, so when capgo
+  starts setting a token unconditionally, CI says so instead of the docs quietly going stale
+  again.
+
 ## [8.3.0] — 2026-10-27
 
 ### Added

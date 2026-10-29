@@ -113,8 +113,14 @@ export interface PurchaseOptions {
    * Pass an `offerToken` from `Product.androidOneTimeOffers`, read on the
    * **same** `getProducts()` call: Play supports several one-time purchase
    * offers on one product — a base price plus, say, a launch discount — and
-   * without this the native layer takes the first. The tokens are per-query
-   * device tokens, so a persisted one is rejected as
+   * without this the choice is Play's, not yours. The native layer sets no
+   * offer token at all while the product still has a backward-compatible
+   * purchase option, and Play then applies *that* one — the first offer
+   * **created** in Play Console, which need not be the one listed first
+   * here. Only for a product with no backward-compatible option does the
+   * first offer get used. So pass the token whenever the offer matters,
+   * rather than relying on the default landing where you expect. The tokens
+   * are per-query device tokens, so a persisted one is rejected as
    * `INVALID_PURCHASE_OPTIONS`.
    *
    * `null` means "no offer chosen" and behaves as if omitted, since

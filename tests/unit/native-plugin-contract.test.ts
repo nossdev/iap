@@ -381,6 +381,51 @@ describe('@capgo/native-purchases — the surface the docs page describes', () =
     expect(inappBranch).toContain('Offer token not found for product');
   });
 
+  /**
+   * Inverted, and the reason `PurchaseOptions.androidOfferToken`'s own
+   * wording had to be corrected: omitting the token does **not** buy the
+   * first entry in `Product.androidOneTimeOffers`.
+   *
+   * The `inapp` branch sets the first list entry only when the product has
+   * no backward-compatible purchase option. While it has one — the usual
+   * case, since Play treats the first *created* buy purchase option as the
+   * backward-compatible one — `setOfferToken` is never called at all, and
+   * Play applies that offer itself. Which is to say the default lands on
+   * creation order in Play Console, not on the order `getProducts()`
+   * returned.
+   *
+   * When capgo starts setting a token unconditionally, this fails, and
+   * "the choice is Play's" in `androidOfferToken` can become "the first
+   * offer" — which is what it said before, wrongly.
+   */
+  it('still leaves the default one-time offer to Play', () => {
+    const plugin = sourceNamed('NativePurchasesPlugin.java');
+
+    const loopStart = plugin.indexOf(
+      'List<BillingFlowParams.ProductDetailsParams> productDetailsParamsList',
+    );
+    expect(loopStart).toBeGreaterThan(-1);
+    const inappStart = plugin.indexOf('} else if (productType.equals("inapp"))', loopStart);
+    expect(inappStart).toBeGreaterThan(loopStart);
+    const inappBranch = plugin.slice(
+      inappStart,
+      plugin.indexOf('productDetailsParamsList.add', inappStart),
+    );
+
+    // Whitespace-tolerant: prettier-java is free to re-wrap the condition,
+    // and a reformat is not the change this guard exists to catch.
+    const guard =
+      /getOneTimePurchaseOfferDetails\(\)\s*==\s*null\s*&&\s*!oneTimeOffers\.isEmpty\(\)/;
+    expect(inappBranch).toMatch(guard);
+
+    // The first-entry fallback exists, appears exactly once, and sits after
+    // the guard — so it is the guarded branch rather than an unconditional
+    // default that happens to be written lower down.
+    const fallback = 'setOfferToken(oneTimeOffers.get(0).getOfferToken())';
+    expect(inappBranch.split(fallback).length - 1).toBe(1);
+    expect(inappBranch.indexOf(fallback)).toBeGreaterThan(inappBranch.search(guard));
+  });
+
   /** iOS has no offer-token concept at all, so nothing is forwarded there. */
   it('still reads no offer token on the iOS side', () => {
     const iosCode = IOS_SOURCES.map(([, contents]) => contents).join('\n');
